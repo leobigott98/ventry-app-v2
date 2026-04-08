@@ -27,14 +27,14 @@ export function AppShell({ children, currentUser }: AppShellProps) {
     appNavigation.find((item) => pathname.startsWith(item.href)) ?? navigation[0] ?? appNavigation[0];
 
   return (
-    <div className="min-h-[100dvh] bg-[radial-gradient(circle_at_top_left,_rgba(21,128,61,0.08),_transparent_22%),linear-gradient(180deg,_#f8fafc,_#f1f5f9)] pb-24 md:pb-0">
-      <div className="mx-auto flex min-h-[100dvh] max-w-7xl gap-6 px-4 py-4 md:px-6 lg:px-8">
+    <div className="min-h-[100dvh] bg-[radial-gradient(circle_at_top_left,_rgba(0,212,255,0.14),_transparent_24%),linear-gradient(180deg,_#111827,_#0A0E1A)] pb-24 md:pb-0">
+      <div className="mx-auto flex min-h-[100dvh] max-w-7xl gap-4 px-4 py-4 md:px-6 lg:px-8">
         <aside className="hidden w-72 shrink-0 md:block">
-          <div className="sticky top-4 flex h-[calc(100dvh-2rem)] flex-col rounded-[28px] border border-white/70 bg-white/90 p-5 shadow-panel backdrop-blur">
+          <div className="sticky top-4 flex h-[calc(100dvh-2rem)] flex-col rounded-[28px] border border-border bg-surface/95 p-5 shadow-panel backdrop-blur">
             <Logo />
-            <div className="mt-8 rounded-2xl border border-border bg-secondary/60 p-4">
+            <div className="mt-8 rounded-2xl border border-border bg-secondary/85 p-4">
               <div className="flex items-center gap-3">
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary">
                   <ShieldCheck className="h-5 w-5" />
                 </div>
                 <div>
@@ -55,19 +55,19 @@ export function AppShell({ children, currentUser }: AppShellProps) {
                     key={item.href}
                     href={item.href}
                     className={cn(
-                      "flex items-center gap-3 rounded-2xl px-4 py-3 text-sm transition-colors",
+                      "flex items-center gap-3 rounded-2xl border border-transparent px-4 py-3 text-sm transition-colors",
                       isActive
-                        ? "bg-primary text-primary-foreground"
-                        : "text-muted-foreground hover:bg-secondary hover:text-foreground",
+                        ? "border-primary/30 bg-primary/12 text-primary shadow-[0_0_0_1px_rgba(0,212,255,0.08)]"
+                        : "text-muted-foreground hover:border-border hover:bg-secondary hover:text-foreground",
                     )}
                   >
                     <Icon className="h-4 w-4" />
                     <div>
-                      <div className="font-semibold">{item.label}</div>
+                      <div className={cn("font-semibold", isActive && "text-foreground")}>{item.label}</div>
                       <div
                         className={cn(
                           "text-xs",
-                          isActive ? "text-primary-foreground/80" : "text-muted-foreground",
+                          isActive ? "text-primary" : "text-muted-foreground",
                         )}
                       >
                         {item.description}
@@ -82,11 +82,11 @@ export function AppShell({ children, currentUser }: AppShellProps) {
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col gap-4">
-          <header className="rounded-[24px] border border-white/70 bg-white/90 p-4 shadow-panel backdrop-blur md:p-5">
+          <header className="sticky top-4 z-20 rounded-[24px] border border-border bg-[#111827]/90 p-4 shadow-panel backdrop-blur md:p-5">
             <div className="flex items-start justify-between gap-4">
               <div>
-                <div className="text-sm font-medium text-primary">Operacion del acceso</div>
-                <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-950">
+                <div className="eyebrow">Operacion del acceso</div>
+                <h1 className="mt-1 font-display text-2xl font-semibold tracking-tight text-foreground">
                   {activeItem.label}
                 </h1>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
@@ -112,7 +112,7 @@ export function AppShell({ children, currentUser }: AppShellProps) {
             </div>
             {mobileMenuOpen ? (
               <div className="mt-4 space-y-3 md:hidden">
-                <div className="rounded-2xl border border-border bg-secondary/40 p-4">
+                <div className="rounded-2xl border border-border bg-secondary/85 p-4">
                   <div className="font-semibold text-foreground">{currentUser.fullName}</div>
                   <div className="mt-1 text-sm text-muted-foreground">{currentUser.email}</div>
                   <Badge variant="outline" className="mt-3 w-fit capitalize">
@@ -130,8 +130,8 @@ export function AppShell({ children, currentUser }: AppShellProps) {
                         className={cn(
                           "flex items-center gap-3 rounded-2xl border px-4 py-3 text-sm",
                           isActive
-                            ? "border-primary bg-primary text-primary-foreground"
-                            : "border-border bg-secondary/40 text-foreground",
+                            ? "border-primary/30 bg-primary/12 text-primary"
+                            : "border-border bg-secondary/70 text-foreground",
                         )}
                         onClick={() => setMobileMenuOpen(false)}
                       >
@@ -154,7 +154,7 @@ export function AppShell({ children, currentUser }: AppShellProps) {
         </div>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-white/95 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 shadow-[0_-12px_30px_rgba(15,23,42,0.06)] backdrop-blur md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-[#111827]/96 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 shadow-[0_-16px_36px_rgba(0,0,0,0.32)] backdrop-blur md:hidden">
         <div className="mx-auto grid max-w-xl grid-cols-5 gap-1">
           {navigation.slice(0, 5).map((item) => {
             const Icon = item.icon;
@@ -165,7 +165,7 @@ export function AppShell({ children, currentUser }: AppShellProps) {
                 href={item.href}
                 className={cn(
                   "flex flex-col items-center gap-1 rounded-2xl px-2 py-2 text-[11px] font-medium",
-                  isActive ? "bg-primary text-primary-foreground" : "text-muted-foreground",
+                  isActive ? "bg-primary/12 text-primary" : "text-muted-foreground",
                 )}
               >
                 <Icon className="h-4 w-4" />

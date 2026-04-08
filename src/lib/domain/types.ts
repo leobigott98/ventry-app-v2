@@ -103,6 +103,31 @@ export type InvitationAccessType = (typeof invitationAccessTypeOptions)[number][
 export type InvitationStatus = (typeof invitationStatusOptions)[number]["value"];
 export type CredentialType = (typeof credentialTypeOptions)[number]["value"];
 
+export const accessEventStatusOptions = [
+  { value: "validated", label: "Validado" },
+  { value: "rejected", label: "Rechazado" },
+  { value: "entered", label: "Entrada registrada" },
+  { value: "exited", label: "Salida registrada" },
+  { value: "logged", label: "Registrado" },
+] as const;
+
+export const accessEventDirectionOptions = [
+  { value: "validation", label: "Validacion" },
+  { value: "entry", label: "Entrada" },
+  { value: "exit", label: "Salida" },
+] as const;
+
+export const accessEventSourceOptions = [
+  { value: "invitation", label: "Invitacion" },
+  { value: "validation", label: "Validacion manual" },
+  { value: "unannounced", label: "No anunciado" },
+  { value: "vehicle_manual", label: "Vehiculo manual" },
+] as const;
+
+export type AccessEventStatus = (typeof accessEventStatusOptions)[number]["value"];
+export type AccessEventDirection = (typeof accessEventDirectionOptions)[number]["value"];
+export type AccessEventSource = (typeof accessEventSourceOptions)[number]["value"];
+
 export type CommunityRecord = {
   id: string;
   name: string;
@@ -224,6 +249,10 @@ export type AccessEventRecord = {
   community_id: string;
   invitation_id: string | null;
   visitor_entry_id: string | null;
+  resident_id: string | null;
+  unit_id: string | null;
+  visitor_name: string | null;
+  access_type: InvitationAccessType | null;
   access_event_type:
     | "validation_success"
     | "validation_failed"
@@ -231,7 +260,12 @@ export type AccessEventRecord = {
     | "exit_registered"
     | "unannounced_registered"
     | "vehicle_registered";
+  event_status: AccessEventStatus;
+  event_direction: AccessEventDirection;
+  event_source: AccessEventSource;
   event_label: string;
+  validated_by_email: string | null;
+  notes: string | null;
   details: Record<string, unknown>;
   created_by_email: string;
   created_at: string;

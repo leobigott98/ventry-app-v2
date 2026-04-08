@@ -14,7 +14,7 @@ export default async function NewResidentPage() {
       title="Nuevo residente"
       description="Registra un residente con los datos minimos operativos para relacionarlo con su unidad."
     >
-      <Card className="border-white/70 bg-white/90">
+      <Card>
         <CardHeader>
           <CardTitle>Datos del residente</CardTitle>
           <CardDescription>

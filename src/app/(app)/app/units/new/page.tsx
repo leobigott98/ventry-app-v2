@@ -12,7 +12,7 @@ export default async function NewUnitPage() {
       title="Nueva unidad"
       description="Agrega una unidad operativa a la comunidad. Manten el identificador corto y facil de leer desde porteria."
     >
-      <Card className="border-white/70 bg-white/90">
+      <Card>
         <CardHeader>
           <CardTitle>Datos de unidad</CardTitle>
           <CardDescription>

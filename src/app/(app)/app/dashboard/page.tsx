@@ -45,7 +45,7 @@ export default async function DashboardPage() {
             ["Historial", String(historyInvitations.length), "Usadas, vencidas o revocadas"],
             ["Acceso", "Residente", "Tu cuenta ya puede crear invitaciones"],
           ].map(([label, value, helper]) => (
-            <Card key={label} className="border-white/70 bg-white/90">
+            <Card key={label}>
               <CardHeader className="gap-2">
                 <CardDescription>{label}</CardDescription>
                 <CardTitle className="text-3xl">{value}</CardTitle>
@@ -56,7 +56,7 @@ export default async function DashboardPage() {
         </div>
 
         <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
-          <Card className="border-white/70 bg-white/90">
+          <Card>
             <CardHeader>
               <Badge variant="success" className="w-fit">
                 Acceso rapido
@@ -69,7 +69,7 @@ export default async function DashboardPage() {
             <CardContent className="space-y-3">
               {activeInvitations.length > 0 ? (
                 activeInvitations.slice(0, 4).map((invitation) => (
-                  <div key={invitation.id} className="rounded-2xl border border-border bg-secondary/35 p-4">
+                  <div key={invitation.id} className="rounded-2xl border border-border bg-secondary/85 p-4">
                     <div className="font-semibold text-foreground">
                       {invitation.visitor_name || "Acceso rapido sin nombre"}
                     </div>
@@ -86,7 +86,7 @@ export default async function DashboardPage() {
             </CardContent>
           </Card>
 
-          <Card className="border-white/70 bg-white/90">
+          <Card>
             <CardHeader>
               <Badge variant="outline" className="w-fit">
                 Accion recomendada
@@ -97,7 +97,7 @@ export default async function DashboardPage() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
-              <div className="rounded-2xl border border-border bg-white p-4 text-sm leading-6">
+              <div className="rounded-2xl border border-border bg-secondary p-4 text-sm leading-6">
                 Usa PIN para validar rapido en garita o QR si prefieres mostrarlo en pantalla.
               </div>
               <div className="grid gap-3 pt-2 sm:grid-cols-2">
@@ -149,7 +149,7 @@ export default async function DashboardPage() {
     >
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {stats.map((item) => (
-          <Card key={item.label} className="border-white/70 bg-white/90">
+          <Card key={item.label}>
             <CardHeader className="gap-2">
               <CardDescription>{item.label}</CardDescription>
               <CardTitle className="text-3xl">{item.value}</CardTitle>
@@ -160,7 +160,7 @@ export default async function DashboardPage() {
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-        <Card className="border-white/70 bg-white/90">
+          <Card>
           <CardHeader>
             <Badge variant="success" className="w-fit">
               Configuracion base lista
@@ -175,7 +175,7 @@ export default async function DashboardPage() {
               summary.latestResidents.map((resident) => (
                 <div
                   key={resident.id}
-                  className="rounded-2xl border border-border bg-secondary/35 p-4"
+                  className="rounded-2xl border border-border bg-secondary/85 p-4"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div>
@@ -203,7 +203,7 @@ export default async function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-white/70 bg-white/90">
+        <Card>
           <CardHeader>
             <Badge variant="outline" className="w-fit">
               Siguiente paso recomendado
@@ -220,7 +220,7 @@ export default async function DashboardPage() {
               "Definir guardias adicionales y contactos operativos.",
               "Iniciar el flujo de invitaciones y validacion de acceso.",
             ].map((item) => (
-              <div key={item} className="rounded-2xl border border-border bg-white p-4 text-sm leading-6">
+              <div key={item} className="rounded-2xl border border-border bg-secondary p-4 text-sm leading-6">
                 {item}
               </div>
             ))}

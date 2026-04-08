@@ -17,7 +17,7 @@ export default async function SettingsPage() {
       description="Ajusta los datos centrales de la comunidad sin caer en una pantalla cargada de parametros. Solo lo necesario para operar bien."
     >
       <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-        <Card className="border-white/70 bg-white/90">
+        <Card>
           <CardHeader>
             <CardTitle>Perfil basico</CardTitle>
             <CardDescription>
@@ -30,7 +30,7 @@ export default async function SettingsPage() {
         </Card>
 
         <div className="grid gap-4">
-          <Card className="border-white/70 bg-white/90">
+          <Card>
             <CardHeader>
               <Badge variant="outline" className="w-fit">
                 Resumen actual
@@ -49,7 +49,7 @@ export default async function SettingsPage() {
             </CardContent>
           </Card>
 
-          <Card className="border-white/70 bg-white/90">
+          <Card>
             <CardHeader>
               <CardTitle>Notas de producto</CardTitle>
               <CardDescription>
@@ -66,7 +66,7 @@ export default async function SettingsPage() {
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
-        <Card className="border-white/70 bg-white/90">
+        <Card>
           <CardHeader>
             <CardTitle>Accesos del equipo</CardTitle>
             <CardDescription>
@@ -78,7 +78,7 @@ export default async function SettingsPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-white/70 bg-white/90">
+        <Card>
           <CardHeader>
             <CardTitle>Equipo con acceso</CardTitle>
             <CardDescription>
@@ -87,7 +87,7 @@ export default async function SettingsPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {teamMembers.map((member) => (
-              <div key={member.id} className="rounded-2xl border border-border bg-secondary/35 p-4">
+              <div key={member.id} className="rounded-2xl border border-border bg-secondary/85 p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="font-semibold text-foreground">{member.full_name}</div>

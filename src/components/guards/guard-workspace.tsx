@@ -193,13 +193,44 @@ export function GuardWorkspace({
     invitationId?: string | null,
     visitorEntryId?: string | null,
   ) {
+    const eventStatus =
+      accessEventType === "validation_success"
+        ? "validated"
+        : accessEventType === "validation_failed"
+          ? "rejected"
+          : accessEventType === "exit_registered"
+            ? "exited"
+            : "entered";
+    const eventDirection =
+      accessEventType === "validation_success" || accessEventType === "validation_failed"
+        ? "validation"
+        : accessEventType === "exit_registered"
+          ? "exit"
+          : "entry";
+    const eventSource =
+      accessEventType === "vehicle_registered"
+        ? "vehicle_manual"
+        : accessEventType === "unannounced_registered"
+          ? "unannounced"
+          : accessEventType === "entry_registered"
+            ? "invitation"
+            : "validation";
     const event: AccessEventRecord = {
       id: crypto.randomUUID(),
       community_id: "local",
       invitation_id: invitationId ?? null,
       visitor_entry_id: visitorEntryId ?? null,
+      resident_id: null,
+      unit_id: null,
+      visitor_name: typeof details.visitorName === "string" ? details.visitorName : null,
+      access_type: null,
       access_event_type: accessEventType,
+      event_status: eventStatus,
+      event_direction: eventDirection,
+      event_source: eventSource,
       event_label: eventLabel,
+      validated_by_email: "Sesion actual",
+      notes: null,
       details,
       created_by_email: "Sesion actual",
       created_at: new Date().toISOString(),
@@ -385,10 +416,10 @@ export function GuardWorkspace({
           ["Movimientos", String(recentActivity.length)],
           ["Modo", "Garita"],
         ].map(([label, value]) => (
-          <Card key={label} className="border-white/70 bg-white/92">
+          <Card key={label}>
             <CardContent className="p-5">
               <div className="text-sm text-muted-foreground">{label}</div>
-              <div className="mt-2 text-3xl font-semibold text-slate-950">{value}</div>
+              <div className="mt-2 font-display text-3xl font-semibold text-foreground">{value}</div>
             </CardContent>
           </Card>
         ))}
@@ -408,13 +439,13 @@ export function GuardWorkspace({
           return (
             <button
               key={action.id}
-              className={active ? "rounded-[26px] border border-primary bg-primary px-5 py-5 text-left text-primary-foreground" : "rounded-[26px] border border-white/70 bg-white/92 px-5 py-5 text-left"}
+              className={active ? "rounded-[26px] border border-primary/30 bg-primary/12 px-5 py-5 text-left text-primary" : "rounded-[26px] border border-border bg-surface px-5 py-5 text-left"}
               type="button"
               onClick={() => setActiveAction(action.id)}
             >
               <Icon className="h-6 w-6" />
               <div className="mt-4 text-lg font-semibold">{action.label}</div>
-              <div className={active ? "mt-2 text-sm text-primary-foreground/80" : "mt-2 text-sm text-muted-foreground"}>{action.description}</div>
+              <div className={active ? "mt-2 text-sm text-primary" : "mt-2 text-sm text-muted-foreground"}>{action.description}</div>
             </button>
           );
         })}
@@ -422,7 +453,7 @@ export function GuardWorkspace({
 
       <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
         <div className="space-y-4">
-          <Card className="border-white/70 bg-white/92">
+          <Card>
             <CardHeader>
               <CardTitle>{actionLabels[activeAction]}</CardTitle>
               <CardDescription>
@@ -450,17 +481,17 @@ export function GuardWorkspace({
                     {activeAction === "pin" ? "Validar PIN" : "Validar QR"}
                   </Button>
                   {validationMatch ? (
-                    <div className="space-y-4 rounded-[28px] border border-border bg-secondary/20 p-4">
+                    <div className="space-y-4 rounded-[28px] border border-border bg-secondary/90 p-4">
                       <div className="flex items-start justify-between gap-3">
                         <div>
-                          <div className="text-xl font-semibold text-slate-950">{validationMatch.invitation.visitor_name || "Acceso rapido sin nombre"}</div>
+                          <div className="font-display text-xl font-semibold text-foreground">{validationMatch.invitation.visitor_name || "Acceso rapido sin nombre"}</div>
                           <div className="mt-1 text-sm text-muted-foreground">{validationMatch.invitation.residents?.full_name || "Sin residente"} | {formatUnit(validationMatch.invitation.units)}</div>
                         </div>
                         <Badge variant={getInvitationStatusVariant(validationMatch.invitation.effective_status)} className="px-4 py-1.5 text-sm">{getInvitationStatusLabel(validationMatch.invitation.effective_status)}</Badge>
                       </div>
                       <div className="grid gap-3 sm:grid-cols-2">
-                        <div className="rounded-2xl border border-border bg-white p-4 text-sm">{validationMatch.invitation.visit_date} | {validationMatch.invitation.window_start} - {validationMatch.invitation.window_end}</div>
-                        <div className="rounded-2xl border border-border bg-white p-4 text-sm">{getInvitationAccessTypeLabel(validationMatch.invitation.access_type)}</div>
+                        <div className="rounded-2xl border border-border bg-surface p-4 text-sm">{validationMatch.invitation.visit_date} | {validationMatch.invitation.window_start} - {validationMatch.invitation.window_end}</div>
+                        <div className="rounded-2xl border border-border bg-surface p-4 text-sm">{getInvitationAccessTypeLabel(validationMatch.invitation.access_type)}</div>
                       </div>
                       <div className="flex flex-col gap-3 sm:flex-row">
                         {validationMatch.invitation.effective_status === "active" ? <Button className="h-14 flex-1 text-base" type="button" onClick={() => void registerEntry(validationMatch.invitation.id)}>Registrar entrada</Button> : null}
@@ -544,7 +575,7 @@ export function GuardWorkspace({
             </CardContent>
           </Card>
 
-          <Card className="border-white/70 bg-white/92">
+          <Card>
             <CardHeader>
               <CardTitle>Busqueda rapida</CardTitle>
               <CardDescription>Busca invitaciones recientes por visitante, residente o nota.</CardDescription>
@@ -561,7 +592,7 @@ export function GuardWorkspace({
                 {searchResults.map((invitation) => {
                   const status = invitation.effective_status ?? invitation.status;
                   return (
-                    <div key={invitation.id} className="rounded-2xl border border-border bg-white p-4">
+                    <div key={invitation.id} className="rounded-2xl border border-border bg-surface p-4">
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <div className="font-semibold text-foreground">{invitation.visitor_name || "Acceso rapido sin nombre"}</div>
@@ -586,7 +617,7 @@ export function GuardWorkspace({
         </div>
 
         <div className="space-y-4">
-          <Card className="border-white/70 bg-white/92">
+          <Card>
             <CardHeader>
               <CardTitle>Personas dentro</CardTitle>
               <CardDescription>Marca la salida apenas salga cada visita o vehiculo.</CardDescription>
@@ -610,14 +641,14 @@ export function GuardWorkspace({
             </CardContent>
           </Card>
 
-          <Card className="border-white/70 bg-white/92">
+          <Card>
             <CardHeader>
               <CardTitle>Actividad reciente</CardTitle>
               <CardDescription>Lectura rapida del turno actual.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3">
               {recentActivity.length > 0 ? recentActivity.map((event) => (
-                <div key={event.id} className="rounded-2xl border border-border bg-white p-4">
+                <div key={event.id} className="rounded-2xl border border-border bg-surface p-4">
                   <div className="flex items-center justify-between gap-3">
                     <div className="font-semibold text-foreground">{event.event_label}</div>
                     <div className="font-mono text-xs text-muted-foreground">{new Date(event.created_at).toLocaleTimeString("es-VE", { hour: "2-digit", minute: "2-digit" })}</div>

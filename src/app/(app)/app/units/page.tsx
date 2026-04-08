@@ -27,7 +27,7 @@ export default async function UnitsPage() {
       description="Administra apartamentos, casas o unidades operativas de la comunidad. Mantener esta base limpia simplifica residentes, invitaciones y futuras bitacoras."
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <Card className="border-white/70 bg-white/90 sm:flex-1">
+        <Card className="sm:flex-1">
           <CardContent className="flex flex-col gap-1 p-5">
             <div className="text-sm font-medium text-primary">Estructura actual</div>
             <div className="text-sm text-muted-foreground">
@@ -42,7 +42,7 @@ export default async function UnitsPage() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         {units.map((unit) => (
-          <Card key={unit.id} className="border-white/70 bg-white/90">
+          <Card key={unit.id}>
             <CardHeader>
               <div className="flex items-start justify-between gap-3">
                 <div>

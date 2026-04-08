@@ -26,7 +26,7 @@ export default async function OnboardingPage() {
       description="Este onboarding crea la base operativa: perfil de la comunidad, unidades iniciales, contacto administrativo y reglas basicas para empezar a trabajar."
     >
       <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-        <Card className="border-white/70 bg-white/90">
+        <Card>
           <CardHeader>
             <CardTitle>Onboarding de comunidad</CardTitle>
             <CardDescription>
@@ -40,7 +40,7 @@ export default async function OnboardingPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-white/70 bg-white/90">
+        <Card>
           <CardHeader>
             <CardTitle>Que ocurrira al guardar</CardTitle>
             <CardDescription>
@@ -54,7 +54,7 @@ export default async function OnboardingPage() {
               "Se generan unidades base numeradas para que luego las ajustes.",
               "Queda lista la estructura de roles para admins y guardias.",
             ].map((item) => (
-              <div key={item} className="rounded-2xl border border-border bg-secondary/35 p-4 text-sm leading-6">
+              <div key={item} className="rounded-2xl border border-border bg-secondary/85 p-4 text-sm leading-6">
                 {item}
               </div>
             ))}

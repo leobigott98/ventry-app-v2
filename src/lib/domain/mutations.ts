@@ -32,10 +32,29 @@ function buildDefaultUnits(count: number, communityId: string) {
   }));
 }
 
+function getEventSourceFromRegistrationSource(
+  registrationSource: "invitation" | "unannounced" | "vehicle_manual" | null | undefined,
+) {
+  switch (registrationSource) {
+    case "invitation":
+      return "invitation" as const;
+    case "unannounced":
+      return "unannounced" as const;
+    case "vehicle_manual":
+      return "vehicle_manual" as const;
+    default:
+      return "validation" as const;
+  }
+}
+
 async function logAccessEvent(args: {
   communityId: string;
   invitationId?: string | null;
   visitorEntryId?: string | null;
+  residentId?: string | null;
+  unitId?: string | null;
+  visitorName?: string | null;
+  accessType?: "visitor" | "delivery" | "service_provider" | "frequent_visitor" | null;
   accessEventType:
     | "validation_success"
     | "validation_failed"
@@ -43,7 +62,12 @@ async function logAccessEvent(args: {
     | "exit_registered"
     | "unannounced_registered"
     | "vehicle_registered";
+  eventStatus: "validated" | "rejected" | "entered" | "exited" | "logged";
+  eventDirection: "validation" | "entry" | "exit";
+  eventSource: "invitation" | "validation" | "unannounced" | "vehicle_manual";
   eventLabel: string;
+  validatedByEmail?: string | null;
+  notes?: string | null;
   details: Record<string, unknown>;
   createdByEmail: string;
 }) {
@@ -52,8 +76,17 @@ async function logAccessEvent(args: {
     community_id: args.communityId,
     invitation_id: args.invitationId ?? null,
     visitor_entry_id: args.visitorEntryId ?? null,
+    resident_id: args.residentId ?? null,
+    unit_id: args.unitId ?? null,
+    visitor_name: args.visitorName ?? null,
+    access_type: args.accessType ?? null,
     access_event_type: args.accessEventType,
+    event_status: args.eventStatus,
+    event_direction: args.eventDirection,
+    event_source: args.eventSource,
     event_label: args.eventLabel,
+    validated_by_email: args.validatedByEmail ?? args.createdByEmail,
+    notes: args.notes ?? null,
     details: args.details,
     created_by_email: args.createdByEmail,
   });
@@ -382,6 +415,10 @@ export async function logInvitationShare(invitationId: string, channel: "whatsap
 export async function logCredentialValidationAttempt(args: {
   communityId: string;
   invitationId?: string | null;
+  residentId?: string | null;
+  unitId?: string | null;
+  visitorName?: string | null;
+  accessType?: "visitor" | "delivery" | "service_provider" | "frequent_visitor" | null;
   credentialType: "pin" | "qr";
   credentialValue: string;
   matched: boolean;
@@ -391,8 +428,16 @@ export async function logCredentialValidationAttempt(args: {
   await logAccessEvent({
     communityId: args.communityId,
     invitationId: args.invitationId ?? null,
+    residentId: args.residentId ?? null,
+    unitId: args.unitId ?? null,
+    visitorName: args.visitorName ?? null,
+    accessType: args.accessType ?? null,
     accessEventType: args.matched ? "validation_success" : "validation_failed",
+    eventStatus: args.matched ? "validated" : "rejected",
+    eventDirection: "validation",
+    eventSource: args.invitationId ? "invitation" : "validation",
     eventLabel: args.matched ? "Validacion correcta" : "Validacion fallida",
+    notes: args.status ? `Estado de la invitacion: ${args.status}` : null,
     details: {
       credentialType: args.credentialType,
       credentialValue: args.credentialValue,
@@ -466,8 +511,16 @@ export async function registerInvitationEntry(args: {
     communityId: args.communityId,
     invitationId: invitation.id,
     visitorEntryId: entry.id,
+    residentId: invitation.resident_id,
+    unitId: invitation.unit_id,
+    visitorName: entry.visitor_name,
+    accessType: invitation.access_type,
     accessEventType: "entry_registered",
+    eventStatus: "entered",
+    eventDirection: "entry",
+    eventSource: "invitation",
     eventLabel: "Entrada registrada",
+    notes: invitation.notes,
     details: {
       source: "invitation",
       visitorName: entry.visitor_name,
@@ -504,8 +557,16 @@ export async function registerEntryExit(args: {
     communityId: args.communityId,
     invitationId: entry.invitation_id,
     visitorEntryId: entry.id,
+    residentId: entry.resident_id,
+    unitId: entry.unit_id,
+    visitorName: entry.visitor_name,
+    accessType: entry.access_type,
     accessEventType: "exit_registered",
+    eventStatus: "exited",
+    eventDirection: "exit",
+    eventSource: getEventSourceFromRegistrationSource(entry.registration_source),
     eventLabel: "Salida registrada",
+    notes: entry.notes,
     details: {
       visitorName: entry.visitor_name,
       vehiclePlate: entry.vehicle_plate,
@@ -556,8 +617,16 @@ export async function registerUnannouncedVisitor(args: {
   await logAccessEvent({
     communityId: args.communityId,
     visitorEntryId: entry.id,
+    residentId: entry.resident_id,
+    unitId: entry.unit_id,
+    visitorName: entry.visitor_name,
+    accessType: entry.access_type,
     accessEventType: "unannounced_registered",
+    eventStatus: "entered",
+    eventDirection: "entry",
+    eventSource: "unannounced",
     eventLabel: "Visitante no anunciado registrado",
+    notes: entry.notes,
     details: {
       visitorName: entry.visitor_name,
       residentId: args.input.residentId,
@@ -610,8 +679,16 @@ export async function registerManualVehicleEntry(args: {
   await logAccessEvent({
     communityId: args.communityId,
     visitorEntryId: entry.id,
+    residentId: entry.resident_id,
+    unitId: entry.unit_id,
+    visitorName: entry.visitor_name,
+    accessType: entry.access_type,
     accessEventType: "vehicle_registered",
+    eventStatus: "entered",
+    eventDirection: "entry",
+    eventSource: "vehicle_manual",
     eventLabel: "Vehiculo registrado manualmente",
+    notes: entry.notes,
     details: {
       vehiclePlate: entry.vehicle_plate,
       driverName: args.input.driverName,

@@ -30,7 +30,7 @@ export default async function NewInvitationPage() {
       description="Completa lo minimo necesario y comparte el acceso enseguida. Ventry prioriza rapidez y claridad en la garita."
     >
       {availableResidents.length > 0 ? (
-        <Card className="border-white/70 bg-white/90">
+        <Card>
           <CardHeader>
             <CardTitle>Crear acceso</CardTitle>
             <CardDescription>
@@ -42,7 +42,7 @@ export default async function NewInvitationPage() {
           </CardContent>
         </Card>
       ) : (
-        <Card className="border-white/70 bg-white/90">
+        <Card>
           <CardHeader>
             <CardTitle>
               {sessionUser.role === "resident"

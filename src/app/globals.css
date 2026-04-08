@@ -4,27 +4,27 @@
 
 @layer base {
   :root {
-    --background: 210 20% 98%;
-    --foreground: 222 47% 11%;
-    --surface: 0 0% 100%;
-    --surface-foreground: 222 47% 11%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
-    --border: 214 32% 91%;
-    --primary: 158 84% 25%;
+    --background: 223 45% 7%;
+    --foreground: 212 62% 95%;
+    --surface: 223 33% 16%;
+    --surface-foreground: 212 62% 95%;
+    --muted: 222 34% 12%;
+    --muted-foreground: 216 24% 61%;
+    --border: 219 39% 20%;
+    --primary: 190 100% 50%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 152 20% 94%;
-    --secondary-foreground: 158 38% 18%;
-    --accent: 177 76% 30%;
-    --accent-foreground: 0 0% 100%;
-    --success: 151 55% 37%;
-    --success-foreground: 0 0% 100%;
-    --warning: 28 91% 54%;
-    --warning-foreground: 24 100% 14%;
-    --danger: 0 72% 51%;
+    --secondary: 220 30% 13%;
+    --secondary-foreground: 212 62% 95%;
+    --accent: 146 100% 45%;
+    --accent-foreground: 223 45% 7%;
+    --success: 146 100% 45%;
+    --success-foreground: 223 45% 7%;
+    --warning: 51 100% 50%;
+    --warning-foreground: 223 45% 7%;
+    --danger: 339 100% 62%;
     --danger-foreground: 0 0% 100%;
-    --radius-lg: 1.5rem;
-    --radius-md: 1rem;
+    --radius-lg: 1rem;
+    --radius-md: 0.875rem;
     --radius-sm: 0.75rem;
   }
 
@@ -40,13 +40,59 @@
     @apply bg-background text-foreground antialiased;
     font-family: var(--font-sans), sans-serif;
     background-image:
-      radial-gradient(circle at top left, rgba(21, 128, 61, 0.08), transparent 24%),
-      linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+      radial-gradient(circle at top left, rgba(0, 212, 255, 0.14), transparent 24%),
+      linear-gradient(180deg, #111827 0%, #0a0e1a 100%);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-display), sans-serif;
+    letter-spacing: -0.03em;
+  }
+
+  ::selection {
+    background: rgba(0, 212, 255, 0.24);
+    color: #e8f0fe;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: rgba(10, 14, 26, 0.75);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: rgba(30, 45, 69, 0.9);
+    border-radius: 999px;
+    border: 2px solid rgba(10, 14, 26, 0.75);
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 212, 255, 0.4);
   }
 }
 
 @layer components {
   .screen-shell {
     @apply mx-auto w-full max-w-7xl px-4 md:px-6 lg:px-8;
+  }
+
+  .app-surface {
+    @apply border border-border bg-surface/95 shadow-panel backdrop-blur;
+  }
+
+  .eyebrow {
+    @apply font-display text-[11px] font-bold uppercase tracking-[0.22em] text-muted-foreground;
+  }
+
+  .status-pill {
+    @apply inline-flex items-center rounded-full border px-3 py-1 text-[11px] font-semibold;
   }
 }

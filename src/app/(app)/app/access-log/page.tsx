@@ -1,140 +1,217 @@
-import { SectionShell } from "@/components/layout/section-shell";
+import Link from "next/link";
+
+import { AccessEventCard } from "@/components/access-log/access-event-card";
+import { AccessLogFilters } from "@/components/access-log/access-log-filters";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { getOpenEntriesForCommunity, getRecentAccessEvents } from "@/lib/domain/guards";
+import { getUnitsForCommunity, getResidentsForCommunity } from "@/lib/domain/community";
+import {
+  formatUnitLabel,
+  getAccessLogEvents,
+  getAccessEventDirectionLabel,
+  getAccessEventStatusLabel,
+} from "@/lib/domain/access-log";
+import { getOpenEntriesForCommunity } from "@/lib/domain/guards";
 import { getCommunityContextOrRedirect } from "@/lib/domain/session-context";
+import type { AccessEventDirection, AccessEventStatus, InvitationAccessType } from "@/lib/domain/types";
 
-function formatUnit(unit: { identifier: string; building: string | null } | null) {
-  return unit ? `${unit.building ? `${unit.building} - ` : ""}${unit.identifier}` : "Sin unidad";
+function getSingleValue(value: string | string[] | undefined) {
+  if (Array.isArray(value)) {
+    return value[0] ?? "";
+  }
+
+  return value ?? "";
 }
 
-export default async function AccessLogPage() {
+function formatTime(value: string) {
+  return new Date(value).toLocaleString("es-VE", {
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    month: "short",
+  });
+}
+
+export default async function AccessLogPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const { context } = await getCommunityContextOrRedirect({ allowedRoles: ["admin", "guard"] });
-  const [openEntries, recentEvents] = await Promise.all([
+  const params = await searchParams;
+
+  const values = {
+    query: getSingleValue(params.q),
+    residentId: getSingleValue(params.residentId),
+    unitId: getSingleValue(params.unitId),
+    accessType: getSingleValue(params.accessType),
+    status: getSingleValue(params.status),
+    direction: getSingleValue(params.direction),
+    dateFrom: getSingleValue(params.dateFrom),
+    dateTo: getSingleValue(params.dateTo),
+  };
+
+  const [residents, units, events, openEntries] = await Promise.all([
+    getResidentsForCommunity(context.community.id),
+    getUnitsForCommunity(context.community.id),
+    getAccessLogEvents(context.community.id, {
+      query: values.query || undefined,
+      residentId: values.residentId || undefined,
+      unitId: values.unitId || undefined,
+      accessType: (values.accessType || undefined) as InvitationAccessType | undefined,
+      status: (values.status || undefined) as AccessEventStatus | undefined,
+      direction: (values.direction || undefined) as AccessEventDirection | undefined,
+      dateFrom: values.dateFrom || undefined,
+      dateTo: values.dateTo || undefined,
+    }),
     getOpenEntriesForCommunity(context.community.id),
-    getRecentAccessEvents(context.community.id),
   ]);
 
-  const validationFailures = recentEvents.filter(
-    (event) => event.access_event_type === "validation_failed",
-  ).length;
+  const entriesCount = events.filter((event) => event.event_direction === "entry").length;
+  const exitsCount = events.filter((event) => event.event_direction === "exit").length;
+  const rejectedCount = events.filter((event) => event.event_status === "rejected").length;
 
   return (
-    <SectionShell
-      eyebrow="Bitacora operativa"
-      title="Bitacora"
-      description="Revision rapida del turno: quien entro, quien salio y que validaciones fallaron. Pensada para consulta operativa y trazabilidad, no para backoffice."
+    <div className="space-y-4">
+      <Card>
+        <CardHeader className="gap-3">
+          <Badge variant="outline" className="w-fit">
+            Bitacora auditable
+          </Badge>
+          <div className="space-y-2">
+            <CardTitle>Accesos y eventos</CardTitle>
+            <CardDescription className="max-w-3xl">
+              Consulta entradas, salidas, validaciones y registros manuales con filtros claros,
+              referencias confiables y hora exacta. Pensado para responder rapido que paso en
+              garita y dejar evidencia operativa util.
+            </CardDescription>
+          </div>
+        </CardHeader>
+      </Card>
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <Card>
+          <CardContent className="p-5">
+            <div className="text-sm text-muted-foreground">Eventos mostrados</div>
+            <div className="mt-2 font-display text-3xl font-semibold text-foreground">{events.length}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-5">
+            <div className="text-sm text-muted-foreground">Entradas</div>
+            <div className="mt-2 font-display text-3xl font-semibold text-foreground">{entriesCount}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-5">
+            <div className="text-sm text-muted-foreground">Salidas</div>
+            <div className="mt-2 font-display text-3xl font-semibold text-foreground">{exitsCount}</div>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-5">
+            <div className="text-sm text-muted-foreground">Validaciones rechazadas</div>
+            <div className="mt-2 font-display text-3xl font-semibold text-foreground">{rejectedCount}</div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <AccessLogFilters residents={residents} units={units} values={values} />
+
+      <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+        <Card>
+          <CardHeader>
+            <CardTitle>Eventos</CardTitle>
+            <CardDescription>
+              Lista ordenada por hora. Cada tarjeta resume visitante, residente, unidad, estado y
+              operador.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {events.length > 0 ? (
+              events.map((event) => <AccessEventCard key={event.id} event={event} />)
+            ) : (
+              <div className="rounded-[28px] border border-dashed border-border bg-secondary/20 p-6 text-sm text-muted-foreground">
+                No encontramos eventos con esos filtros. Ajusta fechas, estado o busqueda para ver
+                resultados.
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <div className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle>Dentro ahora</CardTitle>
+              <CardDescription>
+                Control rapido de quienes siguen dentro y todavia necesitan salida.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {openEntries.length > 0 ? (
+                openEntries.map((entry) => (
+                  <div key={entry.id} className="rounded-[24px] border border-border bg-secondary/90 p-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <div className="font-semibold text-foreground">{entry.visitor_name}</div>
+                        <div className="mt-1 text-sm text-muted-foreground">
+                          {entry.residents?.full_name || "Sin residente"} | {formatUnitLabel(entry.units)}
+                        </div>
+                      </div>
+                      <Badge variant="warning">Dentro</Badge>
+                    </div>
+                    <div className="mt-3 text-sm text-muted-foreground">
+                      {entry.vehicle_plate ? `Placa ${entry.vehicle_plate} | ` : ""}
+                      {formatTime(entry.entered_at)}
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="rounded-[24px] border border-dashed border-border bg-secondary/20 p-5 text-sm text-muted-foreground">
+                  No hay visitas ni vehiculos pendientes de salida.
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Lectura rapida</CardTitle>
+              <CardDescription>Estados y movimientos para interpretar la bitacora sin ambiguedad.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 text-sm text-muted-foreground">
+              <div className="rounded-[24px] border border-border bg-secondary p-4">
+                <div className="font-semibold text-foreground">{getAccessEventStatusLabel("validated")}</div>
+                <div className="mt-1">Codigo confirmado o validacion exitosa.</div>
+              </div>
+              <div className="rounded-[24px] border border-border bg-secondary p-4">
+                <div className="font-semibold text-foreground">{getAccessEventStatusLabel("rejected")}</div>
+                <div className="mt-1">PIN o QR no valido, vencido o fuera de ventana.</div>
+              </div>
+              <div className="rounded-[24px] border border-border bg-secondary p-4">
+                <div className="font-semibold text-foreground">{getAccessEventDirectionLabel("entry")}</div>
+                <div className="mt-1">Movimiento de ingreso registrado en garita.</div>
+              </div>
+              <div className="rounded-[24px] border border-border bg-secondary p-4">
+                <div className="font-semibold text-foreground">{getAccessEventDirectionLabel("exit")}</div>
+                <div className="mt-1">Salida confirmada para cerrar el ciclo del acceso.</div>
+              </div>
+              <ButtonLink />
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ButtonLink() {
+  return (
+    <Link
+      className="inline-flex h-11 items-center justify-center rounded-[14px] border border-primary/30 bg-primary/10 px-4 text-sm font-semibold text-primary transition hover:bg-primary/15"
+      href="/app/guards"
     >
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Card className="border-white/70 bg-white/90">
-          <CardHeader className="gap-2">
-            <CardDescription>Entradas pendientes</CardDescription>
-            <CardTitle className="text-3xl">{openEntries.length}</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0 text-sm text-muted-foreground">
-            Personas o vehiculos aun dentro.
-          </CardContent>
-        </Card>
-        <Card className="border-white/70 bg-white/90">
-          <CardHeader className="gap-2">
-            <CardDescription>Eventos recientes</CardDescription>
-            <CardTitle className="text-3xl">{recentEvents.length}</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0 text-sm text-muted-foreground">
-            Ultimos movimientos registrados en garita.
-          </CardContent>
-        </Card>
-        <Card className="border-white/70 bg-white/90">
-          <CardHeader className="gap-2">
-            <CardDescription>Validaciones fallidas</CardDescription>
-            <CardTitle className="text-3xl">{validationFailures}</CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0 text-sm text-muted-foreground">
-            Codigos rechazados dentro del historial reciente.
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-        <Card className="border-white/70 bg-white/90">
-          <CardHeader>
-            <CardTitle>Linea de tiempo</CardTitle>
-            <CardDescription>Ordenada para responder rapido que acaba de pasar.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {recentEvents.length > 0 ? (
-              recentEvents.map((event) => (
-                <div key={event.id} className="rounded-2xl border border-border bg-white p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="font-semibold text-foreground">{event.event_label}</div>
-                      <div className="mt-1 text-sm text-muted-foreground">
-                        {new Date(event.created_at).toLocaleString("es-VE", {
-                          day: "2-digit",
-                          hour: "2-digit",
-                          minute: "2-digit",
-                          month: "short",
-                        })}
-                      </div>
-                    </div>
-                    <Badge
-                      variant={
-                        event.access_event_type === "validation_failed" ? "danger" : "outline"
-                      }
-                    >
-                      {event.access_event_type === "validation_failed"
-                        ? "Fallida"
-                        : "Registrado"}
-                    </Badge>
-                  </div>
-                  <div className="mt-3 text-sm text-muted-foreground">
-                    Operado por {event.created_by_email}
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="rounded-2xl border border-dashed border-border bg-secondary/20 p-6 text-sm text-muted-foreground">
-                Aun no hay eventos en bitacora.
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card className="border-white/70 bg-white/90">
-          <CardHeader>
-            <CardTitle>Dentro ahora</CardTitle>
-            <CardDescription>Lista corta para controlar pendientes de salida.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-3">
-            {openEntries.length > 0 ? (
-              openEntries.map((entry) => (
-                <div key={entry.id} className="rounded-2xl border border-border bg-secondary/35 p-4">
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="font-semibold text-foreground">{entry.visitor_name}</div>
-                      <div className="mt-1 text-sm text-muted-foreground">
-                        {entry.residents?.full_name || "Sin residente"} | {formatUnit(entry.units)}
-                      </div>
-                    </div>
-                    <Badge variant="warning">Dentro</Badge>
-                  </div>
-                  <div className="mt-3 text-sm text-muted-foreground">
-                    {entry.vehicle_plate ? `Placa: ${entry.vehicle_plate} | ` : ""}
-                    {new Date(entry.entered_at).toLocaleTimeString("es-VE", {
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="rounded-2xl border border-dashed border-border bg-secondary/20 p-6 text-sm text-muted-foreground">
-                No hay ingresos pendientes de salida en este momento.
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-    </SectionShell>
+      Volver a garita
+    </Link>
   );
 }

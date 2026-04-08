@@ -33,7 +33,7 @@ export default function LandingPage() {
   return (
     <main className="pb-16">
       <section className="screen-shell pt-4 md:pt-6">
-        <div className="rounded-[32px] border border-white/60 bg-hero-grid p-5 shadow-panel md:p-8 lg:p-10">
+        <div className="rounded-[32px] border border-border bg-hero-grid p-5 shadow-panel md:p-8 lg:p-10">
           <header className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
             <Logo />
             <div className="flex items-center gap-3">
@@ -52,10 +52,10 @@ export default function LandingPage() {
                 Control de acceso residencial, sin ERP innecesario
               </Badge>
               <div className="space-y-5">
-                <h1 className="max-w-3xl text-4xl font-bold tracking-tight text-slate-950 md:text-6xl">
-                  El sistema operativo moderno para porterias residenciales.
+                <h1 className="max-w-3xl font-display text-4xl font-bold tracking-tight text-foreground md:text-6xl">
+                  El sistema operativo moderno para comunidades con garita.
                 </h1>
-                <p className="max-w-2xl text-base leading-7 text-slate-600 md:text-lg">
+                <p className="max-w-2xl text-base leading-7 text-muted-foreground md:text-lg">
                   Ventry reemplaza cuadernos, llamadas y aprobaciones improvisadas con una
                   operacion digital simple: invitaciones, validacion rapida, trazabilidad
                   y menos friccion en la entrada.
@@ -78,15 +78,15 @@ export default function LandingPage() {
                   ["Menos colas", "QR/PIN y flujo mas rapido en garita."],
                   ["Mas control", "Historial y estados visibles para toda la operacion."],
                 ].map(([title, copy]) => (
-                  <div key={title} className="rounded-2xl border border-white/60 bg-white/75 p-4 backdrop-blur">
-                    <div className="font-semibold text-slate-950">{title}</div>
-                    <p className="mt-2 text-sm leading-6 text-slate-600">{copy}</p>
+                  <div key={title} className="rounded-2xl border border-border bg-[#1A2235]/78 p-4 backdrop-blur">
+                    <div className="font-semibold text-foreground">{title}</div>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">{copy}</p>
                   </div>
                 ))}
               </div>
             </div>
 
-            <Card className="border-white/60 bg-white/88 backdrop-blur">
+            <Card className="bg-[#111827]/92">
               <CardHeader>
                 <Badge variant="outline" className="w-fit">
                   Vista Sprint 0
@@ -104,7 +104,7 @@ export default function LandingPage() {
                   "Formularios base de login, registro y recuperacion usando React Hook Form + Zod.",
                   "Capa inicial preparada para conectar Supabase sin rehacer la estructura.",
                 ].map((item) => (
-                  <div key={item} className="rounded-2xl border border-border bg-secondary/40 p-4 text-sm leading-6">
+                  <div key={item} className="rounded-2xl border border-border bg-secondary/85 p-4 text-sm leading-6">
                     {item}
                   </div>
                 ))}
@@ -118,9 +118,9 @@ export default function LandingPage() {
         {highlights.map((item) => {
           const Icon = item.icon;
           return (
-            <Card key={item.title} className="border-white/70 bg-white/90">
+            <Card key={item.title}>
               <CardHeader>
-                <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary">
                   <Icon className="h-5 w-5" />
                 </div>
                 <CardTitle className="mt-3 text-base">{item.title}</CardTitle>

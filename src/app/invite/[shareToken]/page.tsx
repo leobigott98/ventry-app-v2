@@ -39,7 +39,7 @@ export default async function SharedInvitationPage({
   return (
     <main className="mx-auto min-h-[100dvh] max-w-3xl px-4 py-8 md:px-6">
       <div className="space-y-4">
-        <Card className="border-white/70 bg-white/92">
+        <Card>
           <CardHeader>
             <div className="flex items-start justify-between gap-3">
               <div>

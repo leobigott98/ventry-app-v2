@@ -26,7 +26,7 @@ export default async function ResidentsPage() {
       description="Gestiona la base inicial de residentes de la comunidad. Esta informacion sera la base para invitaciones, historial y futuras notificaciones."
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <Card className="border-white/70 bg-white/90 sm:flex-1">
+        <Card className="sm:flex-1">
           <CardContent className="flex flex-col gap-1 p-5">
             <div className="text-sm font-medium text-primary">Cobertura actual</div>
             <div className="text-sm text-muted-foreground">
@@ -42,7 +42,7 @@ export default async function ResidentsPage() {
       <div className="grid gap-4 lg:grid-cols-2">
         {residents.length > 0 ? (
           residents.map((resident) => (
-            <Card key={resident.id} className="border-white/70 bg-white/90">
+            <Card key={resident.id}>
               <CardHeader>
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -67,7 +67,7 @@ export default async function ResidentsPage() {
                   <div className="text-sm text-muted-foreground">Correo: {resident.email}</div>
                 ) : null}
                 {resident.notes ? (
-                  <div className="rounded-2xl border border-border bg-secondary/35 p-3 text-sm text-muted-foreground">
+                  <div className="rounded-2xl border border-border bg-secondary/85 p-3 text-sm text-muted-foreground">
                     {resident.notes}
                   </div>
                 ) : null}
@@ -91,7 +91,7 @@ export default async function ResidentsPage() {
             </Card>
           ))
         ) : (
-          <Card className="border-white/70 bg-white/90 lg:col-span-2">
+          <Card className="lg:col-span-2">
             <CardHeader>
               <CardTitle>Empieza con el primer residente</CardTitle>
               <CardDescription>

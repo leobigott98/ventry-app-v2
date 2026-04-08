@@ -25,7 +25,7 @@ export default async function EditUnitPage({
       title="Editar unidad"
       description="Actualiza el nombre visible de la unidad y su estado operativo."
     >
-      <Card className="border-white/70 bg-white/90">
+      <Card>
         <CardHeader>
           <CardTitle>{unit.building ? `${unit.building} - ` : ""}{unit.identifier}</CardTitle>
           <CardDescription>

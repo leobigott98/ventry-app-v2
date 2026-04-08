@@ -106,6 +106,15 @@ middleware.ts
 - Scope de invitaciones para que cada residente solo vea y gestione las suyas
 - Ruta `/reset-password` para cerrar el flujo de recuperacion
 
+## Lo que agrega Sprint 5
+
+- Bitacora de accesos redisenada para auditoria y consulta operativa
+- Filtros por residente, unidad, tipo, movimiento, fecha, estado y busqueda libre
+- Pagina de detalle para cada evento de acceso
+- Enriquecimiento de `access_events` con columnas explicitamente filtrables
+- Historial de movimientos de garita dentro del detalle de cada invitacion
+- Mejor trazabilidad de entradas, salidas, validaciones y registros manuales
+
 ## Modelo base de dominio
 
 - `communities`: perfil y reglas basicas de operacion
@@ -123,13 +132,14 @@ middleware.ts
 La migracion inicial esta en `supabase/migrations/202603280001_sprint1_foundation.sql`.
 La migracion de garita esta en `supabase/migrations/202603280002_guard_workflow.sql`.
 La migracion de auth/accesos esta en `supabase/migrations/202603280003_auth_access_foundation.sql`.
+La migracion de auditoria y filtros esta en `supabase/migrations/202603290001_sprint5_access_audit.sql`.
 
-## Continuidad recomendada para Sprint 5
+## Continuidad recomendada para Sprint 6
 
 1. Reemplazar contrasenas temporales por invitaciones de activacion y cambio inicial de clave.
 2. Conectar escaneo QR con camara y fallback offline.
 3. Afinar permisos por accion, no solo por modulo.
-4. Extender la bitacora con filtros por placa, unidad, fecha y estado.
+4. Extender la bitacora con filtros por placa y exportacion operativa.
 5. Resolver sincronizacion y tolerancia offline para validacion y registros de garita.
 
 ## Variables de entorno

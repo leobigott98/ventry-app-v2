@@ -46,6 +46,7 @@ const config: Config = {
       },
       fontFamily: {
         sans: ["var(--font-sans)", "sans-serif"],
+        display: ["var(--font-display)", "sans-serif"],
         mono: ["var(--font-mono)", "monospace"],
       },
       borderRadius: {
@@ -54,11 +55,12 @@ const config: Config = {
         sm: "var(--radius-sm)",
       },
       boxShadow: {
-        panel: "0 18px 45px rgba(15, 23, 42, 0.10)",
+        panel: "0 24px 64px rgba(2, 6, 23, 0.42)",
+        glow: "0 0 0 1px rgba(0, 212, 255, 0.18), 0 18px 42px rgba(0, 0, 0, 0.26)",
       },
       backgroundImage: {
         "hero-grid":
-          "radial-gradient(circle at 20% 20%, rgba(21, 128, 61, 0.15), transparent 30%), radial-gradient(circle at 80% 0%, rgba(15, 118, 110, 0.18), transparent 28%), linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(255, 255, 255, 0.94))",
+          "radial-gradient(circle at top left, rgba(0, 212, 255, 0.16), transparent 24%), radial-gradient(circle at top right, rgba(0, 230, 118, 0.12), transparent 18%), linear-gradient(180deg, rgba(17, 24, 39, 0.96), rgba(10, 14, 26, 0.98))",
       },
     },
   },

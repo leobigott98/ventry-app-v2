@@ -18,7 +18,7 @@ export function ModulePlaceholder({
 }: ModulePlaceholderProps) {
   return (
     <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-      <Card className="border-white/70 bg-white/90">
+      <Card>
         <CardHeader>
           <Badge variant="warning" className="w-fit">
             Scaffold Sprint 0
@@ -39,7 +39,7 @@ export function ModulePlaceholder({
         </CardContent>
       </Card>
 
-      <Card className="border-white/70 bg-white/90">
+      <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2 text-base">
             <Clock3 className="h-4 w-4 text-primary" />
@@ -51,7 +51,7 @@ export function ModulePlaceholder({
           {nextSprintFocus.map((item, index) => (
             <div
               key={item}
-              className="rounded-2xl border border-border bg-white p-4 text-sm leading-6 text-muted-foreground"
+              className="rounded-2xl border border-border bg-secondary p-4 text-sm leading-6 text-muted-foreground"
             >
               <span className="mr-2 font-semibold text-foreground">0{index + 1}.</span>
               {item}

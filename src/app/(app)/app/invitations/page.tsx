@@ -42,7 +42,7 @@ export default async function InvitationsPage() {
       }
     >
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <Card className="border-white/70 bg-white/90 sm:flex-1">
+        <Card className="sm:flex-1">
           <CardContent className="flex flex-col gap-1 p-5">
             <div className="text-sm font-medium text-primary">Vista rapida</div>
             <div className="text-sm text-muted-foreground">
@@ -58,7 +58,7 @@ export default async function InvitationsPage() {
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
-        <Card className="border-white/70 bg-white/90">
+        <Card>
           <CardHeader>
             <CardTitle>Activas</CardTitle>
             <CardDescription>
@@ -72,7 +72,7 @@ export default async function InvitationsPage() {
                 return (
                   <Link
                     key={invitation.id}
-                    className="block rounded-2xl border border-border bg-secondary/30 p-4 transition hover:border-primary/30 hover:bg-secondary/40"
+                    className="block rounded-2xl border border-border bg-secondary/85 p-4 transition hover:border-primary/30 hover:bg-secondary"
                     href={`/app/invitations/${invitation.id}`}
                   >
                     <div className="flex items-start justify-between gap-3">
@@ -104,7 +104,7 @@ export default async function InvitationsPage() {
           </CardContent>
         </Card>
 
-        <Card className="border-white/70 bg-white/90">
+        <Card>
           <CardHeader>
             <CardTitle>Historial</CardTitle>
             <CardDescription>
@@ -118,7 +118,7 @@ export default async function InvitationsPage() {
                 return (
                   <Link
                     key={invitation.id}
-                    className="block rounded-2xl border border-border bg-white p-4 transition hover:border-primary/30"
+                    className="block rounded-2xl border border-border bg-secondary p-4 transition hover:border-primary/30 hover:bg-secondary/85"
                     href={`/app/invitations/${invitation.id}`}
                   >
                     <div className="flex items-start justify-between gap-3">

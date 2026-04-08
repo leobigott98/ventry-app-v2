@@ -13,7 +13,7 @@ type SectionShellProps = {
 export function SectionShell({ title, description, eyebrow, children }: SectionShellProps) {
   return (
     <div className="space-y-4">
-      <Card className="border-white/70 bg-white/90">
+      <Card className="bg-[#111827]/92">
         <CardHeader className="gap-3">
           {eyebrow ? (
             <Badge variant="outline" className="w-fit">
@@ -21,7 +21,7 @@ export function SectionShell({ title, description, eyebrow, children }: SectionS
             </Badge>
           ) : null}
           <div className="space-y-2">
-            <CardTitle>{title}</CardTitle>
+            <CardTitle className="text-xl sm:text-2xl">{title}</CardTitle>
             <CardDescription className="max-w-2xl">{description}</CardDescription>
           </div>
         </CardHeader>
@@ -30,4 +30,3 @@ export function SectionShell({ title, description, eyebrow, children }: SectionS
     </div>
   );
 }
-

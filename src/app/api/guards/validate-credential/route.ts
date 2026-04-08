@@ -29,6 +29,10 @@ export async function POST(request: NextRequest) {
     await logCredentialValidationAttempt({
       communityId: auth.context.community.id,
       invitationId: result?.invitation.id ?? null,
+      residentId: result?.invitation.resident_id ?? null,
+      unitId: result?.invitation.unit_id ?? null,
+      visitorName: result?.invitation.visitor_name ?? null,
+      accessType: result?.invitation.access_type ?? null,
       credentialType: parsed.data.credentialType,
       credentialValue: parsed.data.credentialValue,
       matched: Boolean(result),

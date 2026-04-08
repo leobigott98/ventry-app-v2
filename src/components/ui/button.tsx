@@ -7,24 +7,24 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-lg text-sm font-semibold transition-all disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[14px] font-medium transition-all duration-200 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background active:translate-y-px",
   {
     variants: {
       variant: {
         default:
-          "bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 active:scale-[0.99]",
+          "bg-gradient-to-r from-primary to-cyan-400 text-[#0A0E1A] shadow-[0_10px_24px_rgba(0,212,255,0.22)] hover:brightness-105",
         secondary:
-          "bg-secondary text-secondary-foreground hover:bg-secondary/80 active:scale-[0.99]",
+          "border border-border bg-secondary text-secondary-foreground hover:border-primary/35 hover:text-foreground",
         outline:
-          "border border-border bg-white/80 text-foreground hover:border-primary/30 hover:bg-white",
+          "border border-primary/40 bg-primary/10 text-primary hover:bg-primary/16",
         ghost:
           "text-muted-foreground hover:bg-secondary hover:text-foreground",
       },
       size: {
-        default: "h-11 px-4 py-2",
-        sm: "h-9 rounded-md px-3 text-sm",
-        lg: "h-12 rounded-xl px-5 text-sm",
-        icon: "h-11 w-11 rounded-full",
+        default: "h-11 px-4 py-2 text-sm",
+        sm: "h-9 rounded-xl px-3 text-sm",
+        lg: "h-12 rounded-[16px] px-5 text-sm",
+        icon: "h-11 w-11 rounded-[14px]",
       },
     },
     defaultVariants: {
@@ -55,4 +55,3 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 Button.displayName = "Button";
 
 export { Button, buttonVariants };
-

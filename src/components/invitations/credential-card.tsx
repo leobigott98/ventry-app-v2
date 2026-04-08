@@ -13,7 +13,7 @@ export function CredentialCard({ credential, qrImageDataUrl }: CredentialCardPro
 
   if (credential.credential_type === "pin") {
     return (
-      <Card className="border-white/70 bg-white/90">
+      <Card>
         <CardHeader>
           <CardTitle>PIN de acceso</CardTitle>
           <CardDescription>
@@ -21,11 +21,11 @@ export function CredentialCard({ credential, qrImageDataUrl }: CredentialCardPro
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="rounded-[28px] border border-primary/20 bg-primary/10 px-6 py-8 text-center">
+          <div className="rounded-[28px] border border-primary/20 bg-primary/10 px-6 py-8 text-center shadow-[0_0_0_1px_rgba(0,212,255,0.08)]">
             <div className="text-xs font-semibold uppercase tracking-[0.25em] text-primary">
               PIN unico
             </div>
-            <div className="mt-3 font-mono text-5xl font-semibold tracking-[0.35em] text-slate-950">
+            <div className="mt-3 font-mono text-5xl font-semibold tracking-[0.35em] text-foreground">
               {credential.credential_value}
             </div>
           </div>
@@ -35,7 +35,7 @@ export function CredentialCard({ credential, qrImageDataUrl }: CredentialCardPro
   }
 
   return (
-    <Card className="border-white/70 bg-white/90">
+    <Card>
       <CardHeader>
         <CardTitle>QR de acceso</CardTitle>
         <CardDescription>
@@ -56,7 +56,7 @@ export function CredentialCard({ credential, qrImageDataUrl }: CredentialCardPro
             </div>
           )}
         </div>
-        <div className="rounded-2xl border border-border bg-secondary/25 p-4 text-sm text-muted-foreground">
+        <div className="rounded-2xl border border-border bg-secondary p-4 text-sm text-muted-foreground">
           Codigo interno: <span className="font-mono text-foreground">{credential.credential_value}</span>
         </div>
       </CardContent>

@@ -33,7 +33,7 @@ export default async function ResidentAccessPage({
       description="Habilita el login del residente con un correo y una clave temporal. Mantiene el censo operativo separado del acceso digital."
     >
       <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
-        <Card className="border-white/70 bg-white/90">
+        <Card>
           <CardHeader>
             <CardTitle>{accessMembership ? "Actualizar acceso" : "Habilitar acceso"}</CardTitle>
             <CardDescription>
@@ -45,7 +45,7 @@ export default async function ResidentAccessPage({
           </CardContent>
         </Card>
 
-        <Card className="border-white/70 bg-white/90">
+        <Card>
           <CardHeader>
             <Badge variant={accessMembership ? "success" : "outline"} className="w-fit">
               {accessMembership ? "Acceso activo" : "Sin acceso"}

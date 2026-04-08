@@ -4,12 +4,12 @@ import type {
   ResidentRecord,
   UnitRecord,
   VisitorEntryRecord,
-  AccessEventRecord,
 } from "@/lib/domain/types";
 import {
   getInvitationEffectiveStatus,
   getInvitationStatusLabel,
 } from "@/lib/domain/invitations";
+import { getRecentAccessEvents as getRecentAccessLogEvents } from "@/lib/domain/access-log";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 type InvitationLookupRecord = InvitationRecord & {
@@ -207,17 +207,5 @@ export async function getOpenEntriesForCommunity(communityId: string) {
 }
 
 export async function getRecentAccessEvents(communityId: string) {
-  const supabase = createServerSupabaseClient();
-  const { data, error } = await supabase
-    .from("access_events")
-    .select("*")
-    .eq("community_id", communityId)
-    .order("created_at", { ascending: false })
-    .limit(12);
-
-  if (error) {
-    throw new Error(error.message);
-  }
-
-  return (data ?? []) as AccessEventRecord[];
+  return getRecentAccessLogEvents(communityId);
 }

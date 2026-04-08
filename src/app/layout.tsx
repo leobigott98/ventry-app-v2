@@ -1,14 +1,20 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { IBM_Plex_Mono, Manrope } from "next/font/google";
+import { DM_Sans, IBM_Plex_Mono, Syne } from "next/font/google";
 
 import "@/app/globals.css";
 
 import { cn } from "@/lib/utils";
 
-const manrope = Manrope({
+const dmSans = DM_Sans({
   subsets: ["latin"],
   variable: "--font-sans",
+});
+
+const syne = Syne({
+  subsets: ["latin"],
+  variable: "--font-display",
+  weight: ["400", "600", "700", "800"],
 });
 
 const plexMono = IBM_Plex_Mono({
@@ -31,8 +37,9 @@ export default function RootLayout({
     <html lang="es">
       <body
         className={cn(
-          "min-h-screen font-sans text-foreground",
-          manrope.variable,
+          "min-h-screen bg-background font-sans text-foreground",
+          dmSans.variable,
+          syne.variable,
           plexMono.variable,
         )}
       >

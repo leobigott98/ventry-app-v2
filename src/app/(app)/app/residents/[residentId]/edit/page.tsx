@@ -28,7 +28,7 @@ export default async function EditResidentPage({
       title="Editar residente"
       description="Actualiza datos clave del residente sin convertir este flujo en una ficha administrativa pesada."
     >
-      <Card className="border-white/70 bg-white/90">
+      <Card>
         <CardHeader>
           <CardTitle>{resident.full_name}</CardTitle>
           <CardDescription>
