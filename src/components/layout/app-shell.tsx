@@ -22,6 +22,12 @@ export function AppShell({ children, currentUser }: AppShellProps) {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const navigation = getNavigationForRole(currentUser.role);
+  const userInitials = currentUser.fullName
+    .split(" ")
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((chunk) => chunk[0]?.toUpperCase() ?? "")
+    .join("");
 
   const activeItem =
     appNavigation.find((item) => pathname.startsWith(item.href)) ?? navigation[0] ?? appNavigation[0];
@@ -89,6 +95,19 @@ export function AppShell({ children, currentUser }: AppShellProps) {
                 <h1 className="mt-1 font-display text-2xl font-semibold tracking-tight text-foreground">
                   {activeItem.label}
                 </h1>
+                <div className="mt-2 flex items-center gap-2 md:hidden">
+                  <div className="flex h-8 w-8 items-center justify-center rounded-full border border-primary/25 bg-primary/10 text-[11px] font-semibold text-primary">
+                    {userInitials}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="truncate text-sm font-semibold text-foreground">
+                      {currentUser.fullName}
+                    </div>
+                    <div className="truncate text-xs text-muted-foreground capitalize">
+                      {currentUser.role}
+                    </div>
+                  </div>
+                </div>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
                   {activeItem.description}
                 </p>
