@@ -18,6 +18,7 @@ type AppShellProps = {
   currentUser: SessionUser;
 };
 
+
 export function AppShell({ children, currentUser }: AppShellProps) {
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -88,8 +89,8 @@ export function AppShell({ children, currentUser }: AppShellProps) {
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col gap-4">
-          <header className="sticky top-4 z-20 rounded-[24px] border border-border bg-[#111827]/90 p-4 shadow-panel backdrop-blur md:p-5">
-            <div className="flex items-start justify-between gap-4">
+          <header className="top-4 z-20 rounded-[24px] border border-border bg-[#111827]/90 p-4 shadow-panel backdrop-blur md:p-5">
+            <div className="flex items-start md:justify-start justify-around gap-4">
               <div>
                 <div className="eyebrow">Operacion del acceso</div>
                 <h1 className="mt-1 font-display text-2xl font-semibold tracking-tight text-foreground">
@@ -103,22 +104,28 @@ export function AppShell({ children, currentUser }: AppShellProps) {
                     <div className="truncate text-sm font-semibold text-foreground">
                       {currentUser.fullName}
                     </div>
-                    <div className="truncate text-xs text-muted-foreground capitalize">
-                      {currentUser.role}
+                    <div className="md:hidden truncate text-xs text-muted-foreground">
+                      {currentUser.email}
                     </div>
                   </div>
                 </div>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
                   {activeItem.description}
                 </p>
+                <div className="md:hidden flex justify-center items-center">
+                  <Badge variant="outline" className="mt-3 w-full justify-center capitalize">
+                    Rol: {currentUser.role}
+                </Badge>
+                </div>
+                
               </div>
-              <div className="flex items-center gap-2 md:hidden">
-                <LogoutButton
+              <div className="absolute right-4 top-4 md:hidden">
+                {/* <LogoutButton
                   className="h-10 rounded-xl px-3"
                   label="Salir"
                   size="sm"
                   variant="outline"
-                />
+                /> */}
                 <Button
                   variant="outline"
                   size="icon"
@@ -131,13 +138,13 @@ export function AppShell({ children, currentUser }: AppShellProps) {
             </div>
             {mobileMenuOpen ? (
               <div className="mt-4 space-y-3 md:hidden">
-                <div className="rounded-2xl border border-border bg-secondary/85 p-4">
+                {/* <div className="rounded-2xl border border-border bg-secondary/85 p-4">
                   <div className="font-semibold text-foreground">{currentUser.fullName}</div>
                   <div className="mt-1 text-sm text-muted-foreground">{currentUser.email}</div>
                   <Badge variant="outline" className="mt-3 w-fit capitalize">
                     Rol: {currentUser.role}
                   </Badge>
-                </div>
+                </div> */}
                 <nav className="grid gap-2">
                   {navigation.map((item) => {
                     const Icon = item.icon;
@@ -174,7 +181,7 @@ export function AppShell({ children, currentUser }: AppShellProps) {
       </div>
 
       <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-[#111827]/96 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 shadow-[0_-16px_36px_rgba(0,0,0,0.32)] backdrop-blur md:hidden">
-        <div className="mx-auto grid max-w-xl grid-cols-5 gap-1">
+        <div className="mx-auto grid max-w-xl grid-cols-[repeat(auto-fit,_minmax(0,1fr))] gap-1">
           {navigation.slice(0, 5).map((item) => {
             const Icon = item.icon;
             const isActive = pathname.startsWith(item.href);

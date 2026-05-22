@@ -1,30 +1,46 @@
 import Link from "next/link";
-import { ArrowRight, QrCode, Shield, Smartphone, TimerReset } from "lucide-react";
+import {
+  ArrowRight,
+  QrCode,
+  Shield,
+  Smartphone,
+  TimerReset,
+} from "lucide-react";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Logo } from "@/components/ui/logo";
 
 const highlights = [
   {
     title: "Invitaciones en segundos",
-    description: "Crea accesos por QR o PIN y compartelos por WhatsApp sin llamadas al porton.",
+    description:
+      "Crea accesos por QR o PIN y compártelos por WhatsApp sin llamadas al portón.",
     icon: QrCode,
   },
   {
-    title: "Operacion clara para guardias",
-    description: "Validaciones simples, estados visibles y menos margen para errores en la entrada.",
+    title: "Operación clara para guardias",
+    description:
+      "Validaciones simples, estados visibles y menos margen para errores en la entrada.",
     icon: Shield,
   },
   {
-    title: "Bitacora lista para auditar",
-    description: "Entradas, salidas, revocaciones y validaciones con fecha y hora precisas.",
+    title: "Bitácora lista para auditar",
+    description:
+      "Entradas, salidas, revocaciones y validaciones con fecha y hora precisas.",
     icon: TimerReset,
   },
   {
-    title: "Disenado para el telefono",
-    description: "Experiencia movil primero para residentes, guardias y administradores de comunidad.",
+    title: "Diseñado para el teléfono",
+    description:
+      "Experiencia móvil para residentes, guardias y administradores de comunidad.",
     icon: Smartphone,
   },
 ];
@@ -36,7 +52,7 @@ export default function LandingPage() {
         <div className="rounded-[32px] border border-border bg-hero-grid p-5 shadow-panel md:p-8 lg:p-10">
           <header className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
             <Logo />
-            <div className="flex items-center gap-3">
+            <div className="flex md:items-center gap-3 justify-around">
               <Button variant="ghost" asChild>
                 <Link href="/login">Entrar</Link>
               </Button>
@@ -46,19 +62,22 @@ export default function LandingPage() {
             </div>
           </header>
 
-          <div className="mt-12 grid gap-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
+          <div className="md:mt-12 mt-0 grid gap-10 lg:grid-cols-[1.1fr_0.9fr] lg:items-center">
             <div className="space-y-6">
-              <Badge variant="success" className="w-fit">
-                Control de acceso residencial, sin ERP innecesario
-              </Badge>
+              <div className="hidden md:flex justify-center md:justify-start">
+                <Badge variant="success" className="w-fit">
+                  Control de acceso residencial
+                </Badge>
+              </div>
               <div className="space-y-5">
                 <h1 className="max-w-3xl font-display text-4xl font-bold tracking-tight text-foreground md:text-6xl">
                   El sistema operativo moderno para comunidades con garita.
                 </h1>
                 <p className="max-w-2xl text-base leading-7 text-muted-foreground md:text-lg">
-                  Ventry reemplaza cuadernos, llamadas y aprobaciones improvisadas con una
-                  operacion digital simple: invitaciones, validacion rapida, trazabilidad
-                  y menos friccion en la entrada.
+                  Ventry reemplaza cuadernos, llamadas y aprobaciones
+                  improvisadas con una operacion digital simple: invitaciones,
+                  validacion rapida, trazabilidad y menos friccion en la
+                  entrada.
                 </p>
               </div>
               <div className="flex flex-col gap-3 sm:flex-row">
@@ -69,32 +88,42 @@ export default function LandingPage() {
                   </Link>
                 </Button>
                 <Button asChild size="lg" variant="outline">
-                  <Link href="/login">Ver app base</Link>
+                  <Link href="/login">Iniciar sesión</Link>
                 </Button>
               </div>
               <div className="grid gap-3 sm:grid-cols-3">
                 {[
-                  ["Menos llamadas", "Aprobaciones digitales y validacion directa."],
-                  ["Menos colas", "QR/PIN y flujo mas rapido en garita."],
-                  ["Mas control", "Historial y estados visibles para toda la operacion."],
+                  [
+                    "Menos llamadas",
+                    "Aprobaciones digitales y validación directa.",
+                  ],
+                  ["Menos colas", "QR/PIN y flujo más rápido en garita."],
+                  [
+                    "Más control",
+                    "Historial y estados visibles para toda la operación.",
+                  ],
                 ].map(([title, copy]) => (
-                  <div key={title} className="rounded-2xl border border-border bg-[#1A2235]/78 p-4 backdrop-blur">
+                  <div
+                    key={title}
+                    className="rounded-2xl border border-border bg-[#1A2235]/78 p-4 backdrop-blur"
+                  >
                     <div className="font-semibold text-foreground">{title}</div>
-                    <p className="mt-2 text-sm leading-6 text-muted-foreground">{copy}</p>
+                    <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                      {copy}
+                    </p>
                   </div>
                 ))}
               </div>
             </div>
-
-            <Card className="bg-[#111827]/92">
+           {/*  <Card className="bg-[#111827]/92">
               <CardHeader>
                 <Badge variant="outline" className="w-fit">
                   Vista Sprint 0
                 </Badge>
                 <CardTitle>Base pensada para Sprint 1</CardTitle>
                 <CardDescription>
-                  Auth, shell protegida, navegacion movil, estructura de modulos y
-                  bases visuales para iniciar invitaciones y bitacora.
+                  Auth, shell protegida, navegacion movil, estructura de modulos
+                  y bases visuales para iniciar invitaciones y bitacora.
                 </CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
@@ -104,12 +133,15 @@ export default function LandingPage() {
                   "Formularios base de login, registro y recuperacion usando React Hook Form + Zod.",
                   "Capa inicial preparada para conectar Supabase sin rehacer la estructura.",
                 ].map((item) => (
-                  <div key={item} className="rounded-2xl border border-border bg-secondary/85 p-4 text-sm leading-6">
+                  <div
+                    key={item}
+                    className="rounded-2xl border border-border bg-secondary/85 p-4 text-sm leading-6"
+                  >
                     {item}
                   </div>
                 ))}
               </CardContent>
-            </Card>
+            </Card> */}
           </div>
         </div>
       </section>

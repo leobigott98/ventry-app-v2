@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { DM_Sans, IBM_Plex_Mono, Syne } from "next/font/google";
+import { Viewport } from 'next'
 
 import "@/app/globals.css";
 
@@ -27,6 +28,11 @@ export const metadata: Metadata = {
   title: "Ventry",
   description: "Plataforma moderna de control de acceso para residencias con porteria.",
 };
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+}
 
 export default function RootLayout({
   children,

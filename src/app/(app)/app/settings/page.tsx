@@ -49,7 +49,7 @@ export default async function SettingsPage() {
             </CardContent>
           </Card>
 
-          <Card>
+          {/* <Card>
             <CardHeader>
               <CardTitle>Notas de producto</CardTitle>
               <CardDescription>
@@ -61,7 +61,7 @@ export default async function SettingsPage() {
               <div>La politica de acceso y la operacion de garita quedan listas para enlazar invitaciones.</div>
               <div>El logo puede subirse directo para mantener una configuracion simple.</div>
             </CardContent>
-          </Card>
+          </Card> */}
         </div>
       </div>
 
@@ -70,7 +70,7 @@ export default async function SettingsPage() {
           <CardHeader>
             <CardTitle>Accesos del equipo</CardTitle>
             <CardDescription>
-              Crea accesos para guardias y admins sin abrir el registro publico.
+              Crea accesos para guardias y administradores.
             </CardDescription>
           </CardHeader>
           <CardContent>

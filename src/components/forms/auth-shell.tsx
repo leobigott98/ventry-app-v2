@@ -17,7 +17,7 @@ export function AuthShell({ title, description, children, eyebrow }: AuthShellPr
       <section className="flex flex-col justify-between rounded-[32px] border border-border bg-hero-grid p-6 shadow-panel md:p-10">
         <div className="space-y-10">
           <Logo />
-          <div className="space-y-6">
+          <div className="hidden md:grid space-y-6">
             <Badge variant="success" className="w-fit">
               {eyebrow}
             </Badge>
@@ -33,7 +33,7 @@ export function AuthShell({ title, description, children, eyebrow }: AuthShellPr
             </div>
           </div>
         </div>
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="hidden md:grid gap-4 sm:grid-cols-3">
           {[
             ["Invitaciones", "QR o PIN listos para compartir por WhatsApp."],
             ["Bitacora", "Entradas y salidas con hora, estado y trazabilidad."],

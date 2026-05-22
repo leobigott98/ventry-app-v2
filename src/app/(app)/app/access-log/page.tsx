@@ -73,7 +73,7 @@ export default async function AccessLogPage({
 
   return (
     <div className="space-y-4">
-      <Card>
+      <Card className="hidden md:block">
         <CardHeader className="gap-3">
           <Badge variant="outline" className="w-fit">
             Bitacora auditable
