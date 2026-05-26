@@ -1,8 +1,19 @@
 "use client";
 
 import Link from "next/link";
-import { AlertCircle, CarFront, LoaderCircle, QrCode, Search, ShieldCheck, UserPlus } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import {
+  AlertCircle,
+  Camera,
+  CameraOff,
+  CarFront,
+  LoaderCircle,
+  QrCode,
+  Search,
+  ShieldCheck,
+  UserPlus,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { LogoutButton } from "@/components/auth/logout-button";
 import { InvitationStatusBadge } from "@/components/invitations/invitation-status-badge";
@@ -26,6 +37,18 @@ import type {
   UnitRecord,
   VisitorEntryRecord,
 } from "@/lib/domain/types";
+
+type BarcodeDetectorShape = {
+  detect(source: HTMLVideoElement): Promise<Array<{ rawValue: string; format?: string }>>;
+};
+
+type BarcodeDetectorConstructor = new (options?: { formats?: string[] }) => BarcodeDetectorShape;
+
+declare global {
+  interface Window {
+    BarcodeDetector?: BarcodeDetectorConstructor;
+  }
+}
 
 type ResidentOption = ResidentRecord & {
   units: Pick<UnitRecord, "identifier" | "building"> | null;
@@ -62,8 +85,26 @@ type GuardWorkspaceProps = {
   recentEvents: AccessEventRecord[];
 };
 
+type ScannerStatus = "idle" | "starting" | "active" | "detected" | "unsupported" | "error";
+
 function formatUnit(unit: { identifier: string; building: string | null } | null) {
   return unit ? `${unit.building ? `${unit.building} - ` : ""}${unit.identifier}` : "Sin unidad";
+}
+
+function getQrCredentialFromScan(value: string) {
+  const trimmed = value.trim();
+
+  try {
+    const url = new URL(trimmed);
+    return (
+      url.searchParams.get("qr") ||
+      url.searchParams.get("credential") ||
+      url.searchParams.get("code") ||
+      trimmed
+    ).trim();
+  } catch {
+    return trimmed;
+  }
 }
 
 const actionLabels = {
@@ -111,6 +152,7 @@ export function GuardWorkspace({
   openEntries: initialOpenEntries,
   recentEvents,
 }: GuardWorkspaceProps) {
+  const searchParams = useSearchParams();
   const [activeAction, setActiveAction] = useState<keyof typeof actionLabels>("pin");
   const [flash, setFlash] = useState<{ variant: "success" | "error"; message: string } | null>(null);
   const [invitationFeed, setInvitationFeed] = useState(recentInvitations);
@@ -121,6 +163,14 @@ export function GuardWorkspace({
   const [validationMatch, setValidationMatch] = useState<ValidationMatch | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isValidating, setIsValidating] = useState(false);
+  const [scannerStatus, setScannerStatus] = useState<ScannerStatus>("idle");
+  const [scannerMessage, setScannerMessage] = useState("Listo para escanear desde la camara trasera.");
+  const [lastScannedValue, setLastScannedValue] = useState<string | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const scanFrameRef = useRef<number | null>(null);
+  const scannerActiveRef = useRef(false);
+  const validationInFlightRef = useRef(false);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<GuardInvitation[]>(recentInvitations);
@@ -154,6 +204,51 @@ export function GuardWorkspace({
     setRecentActivity(recentEvents);
   }, [recentEvents]);
 
+  const stopQrScanner = useCallback((nextStatus: ScannerStatus = "idle", message?: string) => {
+    scannerActiveRef.current = false;
+
+    if (scanFrameRef.current !== null) {
+      window.cancelAnimationFrame(scanFrameRef.current);
+      scanFrameRef.current = null;
+    }
+
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
+    }
+
+    setScannerStatus(nextStatus);
+    if (message) {
+      setScannerMessage(message);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeAction !== "qr") {
+      stopQrScanner("idle", "Listo para escanear desde la camara trasera.");
+    }
+  }, [activeAction, stopQrScanner]);
+
+  useEffect(() => {
+    return () => {
+      scannerActiveRef.current = false;
+
+      if (scanFrameRef.current !== null) {
+        window.cancelAnimationFrame(scanFrameRef.current);
+        scanFrameRef.current = null;
+      }
+
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
+    };
+  }, []);
+
   useEffect(() => {
     const trimmed = searchQuery.trim();
     if (!trimmed) {
@@ -185,6 +280,26 @@ export function GuardWorkspace({
     () => invitationFeed.filter((item) => (item.effective_status ?? item.status) === "active").length,
     [invitationFeed],
   );
+
+  useEffect(() => {
+    const scannedQr = searchParams.get("qr") || searchParams.get("credential") || searchParams.get("code");
+
+    if (!scannedQr || validationInFlightRef.current) {
+      return;
+    }
+
+    const credential = getQrCredentialFromScan(scannedQr);
+    validationInFlightRef.current = true;
+    setActiveAction("qr");
+    setCredentialValue(credential);
+    setLastScannedValue(credential);
+    setScannerStatus("detected");
+    setScannerMessage("QR abierto desde la camara del telefono. Validando invitacion...");
+
+    void validateCredential("qr", credential).finally(() => {
+      validationInFlightRef.current = false;
+    });
+  }, [searchParams]);
 
   function prependActivity(
     accessEventType: AccessEventRecord["access_event_type"],
@@ -257,41 +372,60 @@ export function GuardWorkspace({
     setOpenEntries((current) => [entry, ...current.filter((item) => item.id !== entry.id)].slice(0, 12));
   }
 
-  async function validateCredential(type: "pin" | "qr") {
+  async function validateCredential(type: "pin" | "qr", valueOverride?: string) {
     setFlash(null);
     setValidationError(null);
     setValidationMatch(null);
 
-    if (!credentialValue.trim()) {
+    const valueToValidate =
+      type === "qr"
+        ? getQrCredentialFromScan(valueOverride ?? credentialValue)
+        : (valueOverride ?? credentialValue).trim();
+
+    if (!valueToValidate) {
       setValidationError("Ingresa un codigo para validar.");
-      return;
+      return false;
     }
 
     setIsValidating(true);
-    const response = await fetch("/api/guards/validate-credential", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ credentialType: type, credentialValue }),
-    });
-    const payload = (await response.json()) as {
+    let response: Response;
+    let payload: {
       error?: string;
       message?: string;
       match?: ValidationMatch | null;
     };
+
+    try {
+      response = await fetch("/api/guards/validate-credential", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ credentialType: type, credentialValue: valueToValidate }),
+      });
+      payload = (await response.json()) as {
+        error?: string;
+        message?: string;
+        match?: ValidationMatch | null;
+      };
+    } catch {
+      setIsValidating(false);
+      setValidationError("No fue posible conectar con validacion.");
+      return false;
+    }
+
     setIsValidating(false);
 
     if (!response.ok) {
       setValidationError(payload.error ?? "No fue posible validar.");
-      return;
+      return false;
     }
 
     if (!payload.match) {
       prependActivity("validation_failed", "Validacion fallida", {
         credentialType: type,
-        credentialValue,
+        credentialValue: valueToValidate,
       });
       setValidationError(payload.message ?? "No encontramos ese codigo.");
-      return;
+      return false;
     }
 
     prependActivity(
@@ -305,6 +439,94 @@ export function GuardWorkspace({
       payload.match.openEntry?.id ?? null,
     );
     setValidationMatch(payload.match);
+    return true;
+  }
+
+  async function startQrScanner() {
+    setFlash(null);
+    setValidationError(null);
+    setValidationMatch(null);
+    setLastScannedValue(null);
+
+    if (!("mediaDevices" in navigator) || !navigator.mediaDevices.getUserMedia) {
+      setScannerStatus("unsupported");
+      setScannerMessage("Este navegador no permite abrir la camara aqui. Puedes pegar el codigo QR abajo.");
+      return;
+    }
+
+    if (!window.BarcodeDetector) {
+      setScannerStatus("unsupported");
+      setScannerMessage("Este navegador no soporta lectura QR nativa. Puedes pegar el codigo QR abajo.");
+      return;
+    }
+
+    stopQrScanner("starting", "Abriendo camara...");
+
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+        },
+      });
+      const video = videoRef.current;
+      if (!video) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+
+      streamRef.current = stream;
+      video.srcObject = stream;
+      await video.play();
+
+      const detector = new window.BarcodeDetector({ formats: ["qr_code"] });
+      scannerActiveRef.current = true;
+      setScannerStatus("active");
+      setScannerMessage("Apunta la camara al QR de la invitacion.");
+
+      const scan = async () => {
+        if (!scannerActiveRef.current || validationInFlightRef.current) {
+          return;
+        }
+
+        try {
+          if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
+            const barcodes = await detector.detect(video);
+            const rawValue = barcodes.find((barcode) => !barcode.format || barcode.format === "qr_code")?.rawValue;
+
+            if (rawValue) {
+              const cleanedValue = getQrCredentialFromScan(rawValue);
+              validationInFlightRef.current = true;
+              setCredentialValue(cleanedValue);
+              setLastScannedValue(cleanedValue);
+              stopQrScanner("detected", "QR detectado. Validando invitacion...");
+              try {
+                const matched = await validateCredential("qr", cleanedValue);
+                setScannerMessage(matched ? "Invitacion encontrada." : "QR leido sin coincidencia.");
+              } finally {
+                validationInFlightRef.current = false;
+              }
+              return;
+            }
+          }
+        } catch {
+          setScannerMessage("No pudimos leer ese cuadro. Ajusta la distancia o la luz.");
+        }
+
+        scanFrameRef.current = window.requestAnimationFrame(scan);
+      };
+
+      scanFrameRef.current = window.requestAnimationFrame(scan);
+    } catch (error) {
+      stopQrScanner(
+        "error",
+        error instanceof DOMException && error.name === "NotAllowedError"
+          ? "Permiso de camara denegado. Puedes pegar el codigo QR abajo."
+          : "No fue posible abrir la camara. Puedes pegar el codigo QR abajo.",
+      );
+    }
   }
 
   async function registerEntry(invitationId: string) {
@@ -409,7 +631,7 @@ export function GuardWorkspace({
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
         {[
           ["Invitaciones activas", String(activeInvitationCount)],
           ["Entradas dentro", String(openEntries.length)],
@@ -432,7 +654,7 @@ export function GuardWorkspace({
         </div>
       ) : null}
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         {actionCards.map((action) => {
           const Icon = action.icon;
           const active = activeAction === action.id;
@@ -458,7 +680,7 @@ export function GuardWorkspace({
               <CardTitle>{actionLabels[activeAction]}</CardTitle>
               <CardDescription>
                 {activeAction === "pin" && "Ingresa el PIN y registra la entrada o salida en pocos toques."}
-                {activeAction === "qr" && "El escaneo con camara viene despues. Ya puedes pegar el contenido del QR para validarlo."}
+                {activeAction === "qr" && "Escanea el QR con la camara o pega el codigo para validarlo."}
                 {activeAction === "unannounced" && "Registro rapido para visitas que llegan sin invitacion."}
                 {activeAction === "vehicle" && "Registro manual de vehiculos con placa y referencia minima."}
               </CardDescription>
@@ -467,13 +689,73 @@ export function GuardWorkspace({
               {(activeAction === "pin" || activeAction === "qr") ? (
                 <>
                   {activeAction === "qr" ? (
-                    <div className="rounded-2xl border border-dashed border-border bg-secondary/20 p-4 text-sm text-muted-foreground">
-                      Escanear con camara: proximo paso. Usa este espacio para pegar el codigo QR si ya lo recibiste.
+                    <div className="space-y-3">
+                      <div className="overflow-hidden rounded-[28px] border border-border bg-foreground">
+                        <div className="relative aspect-[4/5] min-h-72 sm:aspect-video">
+                          <video
+                            ref={videoRef}
+                            aria-label="Camara para escanear QR"
+                            autoPlay
+                            className="h-full w-full object-cover"
+                            muted
+                            playsInline
+                          />
+                          {scannerStatus !== "active" ? (
+                            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-foreground px-6 text-center text-background">
+                              {scannerStatus === "starting" || scannerStatus === "detected" ? (
+                                <LoaderCircle className="h-8 w-8 animate-spin" />
+                              ) : scannerStatus === "unsupported" || scannerStatus === "error" ? (
+                                <CameraOff className="h-8 w-8" />
+                              ) : (
+                                <Camera className="h-8 w-8" />
+                              )}
+                              <div className="text-sm font-medium">{scannerMessage}</div>
+                            </div>
+                          ) : null}
+                          {scannerStatus === "active" ? (
+                            <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-8">
+                              <div className="h-full max-h-72 w-full max-w-72 rounded-[24px] border-2 border-background/90 shadow-[0_0_0_999px_rgba(0,0,0,0.32)]" />
+                            </div>
+                          ) : null}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <Button
+                          className="h-14 text-base"
+                          disabled={scannerStatus === "starting" || isValidating}
+                          type="button"
+                          onClick={() => void startQrScanner()}
+                        >
+                          {scannerStatus === "starting" ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <Camera className="h-5 w-5" />}
+                          {scannerStatus === "active" ? "Reiniciar" : "Escanear"}
+                        </Button>
+                        <Button
+                          className="h-14 text-base"
+                          disabled={scannerStatus !== "active" && scannerStatus !== "starting"}
+                          type="button"
+                          variant="outline"
+                          onClick={() => stopQrScanner("idle", "Listo para escanear desde la camara trasera.")}
+                        >
+                          <CameraOff className="h-5 w-5" />
+                          Detener
+                        </Button>
+                      </div>
+                      {lastScannedValue ? (
+                        <div className="rounded-2xl border border-success/20 bg-success/10 p-4 text-sm text-success">
+                          QR leido y enviado a validacion.
+                        </div>
+                      ) : null}
                     </div>
                   ) : null}
                   <div className="space-y-2">
-                    <Label htmlFor="guardCredential">{activeAction === "pin" ? "PIN" : "Codigo QR"}</Label>
-                    <Input id="guardCredential" className="h-14 text-lg" value={credentialValue} onChange={(e) => setCredentialValue(e.target.value)} placeholder={activeAction === "pin" ? "482193" : "Pega el codigo"} />
+                    <Label htmlFor="guardCredential">{activeAction === "pin" ? "PIN" : "Codigo QR alternativo"}</Label>
+                    <Input
+                      id="guardCredential"
+                      className="h-14 text-lg"
+                      value={credentialValue}
+                      onChange={(e) => setCredentialValue(e.target.value)}
+                      placeholder={activeAction === "pin" ? "482193" : "Pega el codigo QR"}
+                    />
                   </div>
                   {validationError ? <div className="rounded-2xl border border-danger/20 bg-danger/10 p-4 text-sm text-danger">{validationError}</div> : null}
                   <Button className="h-14 w-full text-base" disabled={isValidating} type="button" onClick={() => void validateCredential(activeAction === "pin" ? "pin" : "qr")}>

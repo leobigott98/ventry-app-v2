@@ -1,4 +1,5 @@
 import QRCode from "qrcode";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 
 import { CredentialCard } from "@/components/invitations/credential-card";
@@ -9,6 +10,16 @@ import {
   getInvitationByShareToken,
   getInvitationEffectiveStatus,
 } from "@/lib/domain/invitations";
+
+function getBaseUrl(requestHeaders: Headers) {
+  const host = requestHeaders.get("x-forwarded-host") || requestHeaders.get("host");
+  const proto = requestHeaders.get("x-forwarded-proto") || "http";
+  return host ? `${proto}://${host}` : "";
+}
+
+function getGuardScanUrl(baseUrl: string, qrPayload: string) {
+  return baseUrl ? `${baseUrl}/app/guards?qr=${encodeURIComponent(qrPayload)}` : qrPayload;
+}
 
 export default async function SharedInvitationPage({
   params,
@@ -24,9 +35,11 @@ export default async function SharedInvitationPage({
 
   const status = getInvitationEffectiveStatus(invitation);
   const credential = invitation.access_credentials;
+  const requestHeaders = await headers();
+  const baseUrl = getBaseUrl(requestHeaders);
   const qrImageDataUrl =
     credential?.credential_type === "qr" && credential.qr_payload
-      ? await QRCode.toDataURL(credential.qr_payload, {
+      ? await QRCode.toDataURL(getGuardScanUrl(baseUrl, credential.qr_payload), {
           margin: 1,
           width: 320,
           color: {

@@ -26,6 +26,10 @@ function getBaseUrl(requestHeaders: Headers) {
   return host ? `${proto}://${host}` : "";
 }
 
+function getGuardScanUrl(baseUrl: string, qrPayload: string) {
+  return baseUrl ? `${baseUrl}/app/guards?qr=${encodeURIComponent(qrPayload)}` : qrPayload;
+}
+
 function getInvitationEventSummary(event: { payload: Record<string, unknown> }) {
   if (typeof event.payload.channel === "string") {
     return `Canal: ${event.payload.channel}`;
@@ -72,9 +76,11 @@ export default async function InvitationDetailPage({
 
   const status = getInvitationEffectiveStatus(invitation);
   const credential = invitation.access_credentials;
+  const requestHeaders = await headers();
+  const baseUrl = getBaseUrl(requestHeaders);
   const qrImageDataUrl =
     credential?.credential_type === "qr" && credential.qr_payload
-      ? await QRCode.toDataURL(credential.qr_payload, {
+      ? await QRCode.toDataURL(getGuardScanUrl(baseUrl, credential.qr_payload), {
           margin: 1,
           width: 320,
           color: {
@@ -84,8 +90,7 @@ export default async function InvitationDetailPage({
         })
       : null;
 
-  const requestHeaders = await headers();
-  const shareUrl = `${getBaseUrl(requestHeaders)}/invite/${invitation.share_token}`;
+  const shareUrl = `${baseUrl}/invite/${invitation.share_token}`;
   const shareText = buildInvitationShareText(invitation, shareUrl);
 
   return (

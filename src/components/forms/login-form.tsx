@@ -17,7 +17,8 @@ export function LoginForm() {
   const searchParams = useSearchParams();
   const [serverError, setServerError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const redirectTo = searchParams.get("redirectTo") ?? "/app";
+  const requestedRedirectTo = searchParams.get("redirectTo");
+  const redirectTo = requestedRedirectTo?.startsWith("/app") ? requestedRedirectTo : "/app";
 
   const {
     register,
@@ -49,7 +50,7 @@ export function LoginForm() {
       return;
     }
 
-    router.push(payload.redirectTo ?? redirectTo);
+    router.push(redirectTo === "/app" ? (payload.redirectTo ?? redirectTo) : redirectTo);
     router.refresh();
   });
 
