@@ -37,18 +37,7 @@ import type {
   UnitRecord,
   VisitorEntryRecord,
 } from "@/lib/domain/types";
-
-type BarcodeDetectorShape = {
-  detect(source: HTMLVideoElement): Promise<Array<{ rawValue: string; format?: string }>>;
-};
-
-type BarcodeDetectorConstructor = new (options?: { formats?: string[] }) => BarcodeDetectorShape;
-
-declare global {
-  interface Window {
-    BarcodeDetector?: BarcodeDetectorConstructor;
-  }
-}
+import type { IScannerControls } from "@zxing/browser";
 
 type ResidentOption = ResidentRecord & {
   units: Pick<UnitRecord, "identifier" | "building"> | null;
@@ -164,11 +153,12 @@ export function GuardWorkspace({
   const [validationError, setValidationError] = useState<string | null>(null);
   const [isValidating, setIsValidating] = useState(false);
   const [scannerStatus, setScannerStatus] = useState<ScannerStatus>("idle");
-  const [scannerMessage, setScannerMessage] = useState("Listo para escanear desde la camara trasera.");
+  const [scannerMessage, setScannerMessage] = useState(
+    "Listo para escanear desde la camara trasera. En iPhone, abre Ventry por HTTPS.",
+  );
   const [lastScannedValue, setLastScannedValue] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const scanFrameRef = useRef<number | null>(null);
+  const scannerControlsRef = useRef<IScannerControls | null>(null);
   const scannerActiveRef = useRef(false);
   const validationInFlightRef = useRef(false);
 
@@ -206,16 +196,13 @@ export function GuardWorkspace({
 
   const stopQrScanner = useCallback((nextStatus: ScannerStatus = "idle", message?: string) => {
     scannerActiveRef.current = false;
-
-    if (scanFrameRef.current !== null) {
-      window.cancelAnimationFrame(scanFrameRef.current);
-      scanFrameRef.current = null;
-    }
-
-    streamRef.current?.getTracks().forEach((track) => track.stop());
-    streamRef.current = null;
+    scannerControlsRef.current?.stop();
+    scannerControlsRef.current = null;
 
     if (videoRef.current) {
+      if (videoRef.current.srcObject instanceof MediaStream) {
+        videoRef.current.srcObject.getTracks().forEach((track) => track.stop());
+      }
       videoRef.current.srcObject = null;
     }
 
@@ -227,23 +214,20 @@ export function GuardWorkspace({
 
   useEffect(() => {
     if (activeAction !== "qr") {
-      stopQrScanner("idle", "Listo para escanear desde la camara trasera.");
+      stopQrScanner("idle", "Listo para escanear desde la camara trasera. En iPhone, abre Ventry por HTTPS.");
     }
   }, [activeAction, stopQrScanner]);
 
   useEffect(() => {
     return () => {
       scannerActiveRef.current = false;
-
-      if (scanFrameRef.current !== null) {
-        window.cancelAnimationFrame(scanFrameRef.current);
-        scanFrameRef.current = null;
-      }
-
-      streamRef.current?.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
+      scannerControlsRef.current?.stop();
+      scannerControlsRef.current = null;
 
       if (videoRef.current) {
+        if (videoRef.current.srcObject instanceof MediaStream) {
+          videoRef.current.srcObject.getTracks().forEach((track) => track.stop());
+        }
         videoRef.current.srcObject = null;
       }
     };
@@ -450,80 +434,66 @@ export function GuardWorkspace({
 
     if (!("mediaDevices" in navigator) || !navigator.mediaDevices.getUserMedia) {
       setScannerStatus("unsupported");
-      setScannerMessage("Este navegador no permite abrir la camara aqui. Puedes pegar el codigo QR abajo.");
-      return;
-    }
-
-    if (!window.BarcodeDetector) {
-      setScannerStatus("unsupported");
-      setScannerMessage("Este navegador no soporta lectura QR nativa. Puedes pegar el codigo QR abajo.");
+      setScannerMessage(
+        window.isSecureContext
+          ? "Safari no entrego acceso a camara en esta vista. Revisa el permiso de camara del sitio o pega el codigo abajo."
+          : "Safari solo muestra el permiso de camara en sitios HTTPS. Abre Ventry por HTTPS o pega el codigo abajo.",
+      );
       return;
     }
 
     stopQrScanner("starting", "Abriendo camara...");
 
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
+      const video = videoRef.current;
+      if (!video) {
+        setScannerStatus("error");
+        setScannerMessage("No fue posible preparar la camara. Puedes pegar el codigo QR abajo.");
+        return;
+      }
+
+      const { BrowserQRCodeReader } = await import("@zxing/browser");
+      const codeReader = new BrowserQRCodeReader(undefined, {
+        delayBetweenScanAttempts: 180,
+        delayBetweenScanSuccess: 500,
+        tryPlayVideoTimeout: 8000,
+      });
+      const controls = await codeReader.decodeFromConstraints({
         audio: false,
         video: {
           facingMode: { ideal: "environment" },
           width: { ideal: 1280 },
           height: { ideal: 720 },
         },
-      });
-      const video = videoRef.current;
-      if (!video) {
-        stream.getTracks().forEach((track) => track.stop());
-        return;
-      }
-
-      streamRef.current = stream;
-      video.srcObject = stream;
-      await video.play();
-
-      const detector = new window.BarcodeDetector({ formats: ["qr_code"] });
-      scannerActiveRef.current = true;
-      setScannerStatus("active");
-      setScannerMessage("Apunta la camara al QR de la invitacion.");
-
-      const scan = async () => {
-        if (!scannerActiveRef.current || validationInFlightRef.current) {
+      }, video, (result) => {
+        if (!result || !scannerActiveRef.current || validationInFlightRef.current) {
           return;
         }
 
-        try {
-          if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) {
-            const barcodes = await detector.detect(video);
-            const rawValue = barcodes.find((barcode) => !barcode.format || barcode.format === "qr_code")?.rawValue;
+        const cleanedValue = getQrCredentialFromScan(result.getText());
+        validationInFlightRef.current = true;
+        setCredentialValue(cleanedValue);
+        setLastScannedValue(cleanedValue);
+        stopQrScanner("detected", "QR detectado. Validando invitacion...");
 
-            if (rawValue) {
-              const cleanedValue = getQrCredentialFromScan(rawValue);
-              validationInFlightRef.current = true;
-              setCredentialValue(cleanedValue);
-              setLastScannedValue(cleanedValue);
-              stopQrScanner("detected", "QR detectado. Validando invitacion...");
-              try {
-                const matched = await validateCredential("qr", cleanedValue);
-                setScannerMessage(matched ? "Invitacion encontrada." : "QR leido sin coincidencia.");
-              } finally {
-                validationInFlightRef.current = false;
-              }
-              return;
-            }
-          }
-        } catch {
-          setScannerMessage("No pudimos leer ese cuadro. Ajusta la distancia o la luz.");
-        }
+        void validateCredential("qr", cleanedValue)
+          .then((matched) => {
+            setScannerMessage(matched ? "Invitacion encontrada." : "QR leido sin coincidencia.");
+          })
+          .finally(() => {
+            validationInFlightRef.current = false;
+          });
+      });
 
-        scanFrameRef.current = window.requestAnimationFrame(scan);
-      };
-
-      scanFrameRef.current = window.requestAnimationFrame(scan);
+      scannerControlsRef.current = controls;
+      scannerActiveRef.current = true;
+      setScannerStatus("active");
+      setScannerMessage("Apunta la camara al QR de la invitacion.");
     } catch (error) {
       stopQrScanner(
         "error",
         error instanceof DOMException && error.name === "NotAllowedError"
-          ? "Permiso de camara denegado. Puedes pegar el codigo QR abajo."
+          ? "Permiso de camara denegado. Revisa el permiso de Safari para este sitio o pega el codigo abajo."
           : "No fue posible abrir la camara. Puedes pegar el codigo QR abajo.",
       );
     }
@@ -734,7 +704,12 @@ export function GuardWorkspace({
                           disabled={scannerStatus !== "active" && scannerStatus !== "starting"}
                           type="button"
                           variant="outline"
-                          onClick={() => stopQrScanner("idle", "Listo para escanear desde la camara trasera.")}
+                          onClick={() =>
+                            stopQrScanner(
+                              "idle",
+                              "Listo para escanear desde la camara trasera. En iPhone, abre Ventry por HTTPS.",
+                            )
+                          }
                         >
                           <CameraOff className="h-5 w-5" />
                           Detener
