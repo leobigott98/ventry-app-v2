@@ -14,6 +14,42 @@ const invitationTime = z
   .string()
   .regex(/^\d{2}:\d{2}$/, "Selecciona una hora valida.");
 
+function validateWindow(
+  input: {
+    visitDate: string;
+    windowStart: string;
+    windowEndDate?: string;
+    windowEnd?: string;
+    noTimeLimit: boolean;
+  },
+  ctx: z.RefinementCtx,
+) {
+  if (input.noTimeLimit) {
+    return;
+  }
+
+  if (!input.windowEnd) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["windowEnd"],
+      message: "Selecciona la hora final.",
+    });
+    return;
+  }
+
+  const endDate = input.windowEndDate ?? input.visitDate;
+  const start = new Date(`${input.visitDate}T${input.windowStart}:00`);
+  const end = new Date(`${endDate}T${input.windowEnd}:00`);
+
+  if (Number.isNaN(start.valueOf()) || Number.isNaN(end.valueOf()) || end <= start) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["windowEnd"],
+      message: "La fecha y hora final deben ser posteriores al inicio.",
+    });
+  }
+}
+
 export const createInvitationSchema = z
   .object({
     residentId: z.string().uuid("Selecciona un residente."),
@@ -26,7 +62,9 @@ export const createInvitationSchema = z
     ),
     visitDate: invitationDate,
     windowStart: invitationTime,
-    windowEnd: invitationTime,
+    windowEndDate: invitationDate.optional(),
+    windowEnd: invitationTime.optional(),
+    noTimeLimit: z.boolean().default(false),
     notes: nullableOptionalText,
   })
   .superRefine((input, ctx) => {
@@ -38,13 +76,18 @@ export const createInvitationSchema = z
       });
     }
 
-    if (input.windowEnd <= input.windowStart) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["windowEnd"],
-        message: "La hora final debe ser posterior a la hora inicial.",
-      });
-    }
+    validateWindow(input, ctx);
   });
 
+export const updateInvitationWindowSchema = z
+  .object({
+    visitDate: invitationDate,
+    windowStart: invitationTime,
+    windowEndDate: invitationDate.optional(),
+    windowEnd: invitationTime.optional(),
+    noTimeLimit: z.boolean().default(false),
+  })
+  .superRefine(validateWindow);
+
 export type CreateInvitationInput = z.infer<typeof createInvitationSchema>;
+export type UpdateInvitationWindowInput = z.infer<typeof updateInvitationWindowSchema>;

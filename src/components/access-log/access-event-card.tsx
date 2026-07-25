@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { AccessLogEvent } from "@/lib/domain/access-log";
+import { formatAppDateTime } from "@/lib/formatting";
 import {
   formatUnitLabel,
   getAccessEventDirectionLabel,

@@ -43,6 +43,10 @@ export async function getCommunityContextOrRedirect(options?: {
     redirect("/login");
   }
 
+  if (!context.membership.is_active) {
+    redirect("/login");
+  }
+
   const currentUser = mergeSessionWithMembership(sessionUser, context.membership);
 
   if (!hasRequiredRole(currentUser.role, options?.allowedRoles)) {

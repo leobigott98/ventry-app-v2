@@ -13,14 +13,14 @@ import {
   getAccessEventTypeLabel,
 } from "@/lib/domain/access-log";
 import { getCommunityContextOrRedirect } from "@/lib/domain/session-context";
+import { formatAppDateTime } from "@/lib/formatting";
 
 function formatTimestamp(value: string) {
-  return new Date(value).toLocaleString("es-VE", {
+  return formatAppDateTime(value, {
     dateStyle: "full",
     timeStyle: "short",
   });
 }
-
 function getEntrySourceLabel(value: "invitation" | "unannounced" | "vehicle_manual") {
   switch (value) {
     case "invitation":

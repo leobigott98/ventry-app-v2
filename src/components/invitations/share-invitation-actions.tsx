@@ -1,11 +1,11 @@
 "use client";
 
-import { Share2 } from "lucide-react";
+import { Copy, Share2 } from "lucide-react";
 import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 
-type ShareInvitationActionsProps = {
+ type ShareInvitationActionsProps = {
   invitationId: string;
   shareText: string;
 };
@@ -15,6 +15,7 @@ export function ShareInvitationActions({
   shareText,
 }: ShareInvitationActionsProps) {
   const [isSharing, setIsSharing] = useState(false);
+  const [copyMessage, setCopyMessage] = useState<string | null>(null);
 
   async function logShare(channel: "whatsapp" | "native") {
     await fetch(`/api/invitations/${invitationId}/share`, {
@@ -50,17 +51,35 @@ export function ShareInvitationActions({
     setIsSharing(false);
   }
 
+  async function handleCopyShare() {
+    setCopyMessage(null);
+    try {
+      await navigator.clipboard.writeText(shareText);
+      setCopyMessage("Enlace copiado.");
+    } catch {
+      setCopyMessage("No fue posible copiar automaticamente.");
+    }
+  }
+
   return (
-    <div className="flex flex-col gap-3 sm:flex-row">
-      <Button disabled={isSharing} type="button" onClick={handleWhatsAppShare}>
-        <Share2 className="h-4 w-4" />
-        Compartir por WhatsApp
-      </Button>
-      {typeof navigator !== "undefined" && "share" in navigator ? (
-        <Button disabled={isSharing} type="button" variant="outline" onClick={handleNativeShare}>
-          Compartir
+    <div className="space-y-2">
+      <div className="flex flex-col gap-3 sm:flex-row">
+        <Button disabled={isSharing} type="button" onClick={handleWhatsAppShare}>
+          <Share2 className="h-4 w-4" />
+          WhatsApp
         </Button>
-      ) : null}
+        {typeof navigator !== "undefined" && "share" in navigator ? (
+          <Button disabled={isSharing} type="button" variant="outline" onClick={handleNativeShare}>
+            <Share2 className="h-4 w-4" />
+            Compartir
+          </Button>
+        ) : null}
+        <Button disabled={isSharing} type="button" variant="ghost" onClick={handleCopyShare}>
+          <Copy className="h-4 w-4" />
+          Copiar
+        </Button>
+      </div>
+      {copyMessage ? <div className="text-sm text-muted-foreground">{copyMessage}</div> : null}
     </div>
   );
 }

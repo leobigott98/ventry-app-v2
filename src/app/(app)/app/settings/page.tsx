@@ -1,4 +1,5 @@
 import { TeamMemberAccessForm } from "@/components/forms/team-member-access-form";
+import { TeamMemberActions } from "@/components/forms/team-member-actions";
 import { CommunityProfileForm } from "@/components/forms/community-profile-form";
 import { SectionShell } from "@/components/layout/section-shell";
 import { Badge } from "@/components/ui/badge";
@@ -14,7 +15,7 @@ export default async function SettingsPage() {
     <SectionShell
       eyebrow="Perfil de comunidad"
       title="Configuracion"
-      description="Ajusta los datos centrales de la comunidad sin caer en una pantalla cargada de parametros. Solo lo necesario para operar bien."
+      description="Ajusta los datos centrales de la comunidad y administra quienes pueden operar el sistema."
     >
       <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
         <Card>
@@ -48,20 +49,6 @@ export default async function SettingsPage() {
               ) : null}
             </CardContent>
           </Card>
-
-          {/* <Card>
-            <CardHeader>
-              <CardTitle>Notas de producto</CardTitle>
-              <CardDescription>
-                Esta pantalla mantiene el foco en operacion, no en administracion pesada.
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-3 text-sm text-muted-foreground">
-              <div>No se agregaron configuraciones contables ni procesos de condominio.</div>
-              <div>La politica de acceso y la operacion de garita quedan listas para enlazar invitaciones.</div>
-              <div>El logo puede subirse directo para mantener una configuracion simple.</div>
-            </CardContent>
-          </Card> */}
         </div>
       </div>
 
@@ -70,7 +57,7 @@ export default async function SettingsPage() {
           <CardHeader>
             <CardTitle>Accesos del equipo</CardTitle>
             <CardDescription>
-              Crea accesos para guardias y administradores.
+              Crea accesos para guardias y administradores. Luego puedes activarlos, desactivarlos o eliminarlos desde la lista.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -82,26 +69,44 @@ export default async function SettingsPage() {
           <CardHeader>
             <CardTitle>Equipo con acceso</CardTitle>
             <CardDescription>
-              Lista simple para saber quien puede entrar al sistema.
+              Los botones de gestion aparecen debajo de cada guardia o administrador no protegido.
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
-            {teamMembers.map((member) => (
-              <div key={member.id} className="rounded-2xl border border-border bg-secondary/85 p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="font-semibold text-foreground">{member.full_name}</div>
-                    <div className="mt-1 text-sm text-muted-foreground">{member.email}</div>
+            {teamMembers.length > 0 ? (
+              teamMembers.map((member) => (
+                <div key={member.id} className="rounded-2xl border border-border bg-secondary/85 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="font-semibold text-foreground">{member.full_name}</div>
+                      <div className="mt-1 text-sm text-muted-foreground">{member.email}</div>
+                    </div>
+                    <div className="flex flex-wrap justify-end gap-2">
+                      <Badge variant={member.role === "admin" ? "success" : "outline"}>
+                        {member.role === "admin" ? "Admin" : "Guardia"}
+                      </Badge>
+                      <Badge variant={member.is_active ? "success" : "danger"}>
+                        {member.is_active ? "Activo" : "Inactivo"}
+                      </Badge>
+                    </div>
                   </div>
-                  <Badge variant={member.role === "admin" ? "success" : "outline"}>
-                    {member.role === "admin" ? "Admin" : "Guardia"}
-                  </Badge>
+                  {member.phone ? (
+                    <div className="mt-3 text-sm text-muted-foreground">{member.phone}</div>
+                  ) : null}
+                  {member.is_primary ? (
+                    <div className="mt-4 rounded-2xl border border-border bg-surface p-3 text-sm text-muted-foreground">
+                      Administrador principal protegido.
+                    </div>
+                  ) : (
+                    <TeamMemberActions memberId={member.id} isActive={member.is_active} />
+                  )}
                 </div>
-                {member.phone ? (
-                  <div className="mt-3 text-sm text-muted-foreground">{member.phone}</div>
-                ) : null}
+              ))
+            ) : (
+              <div className="rounded-2xl border border-dashed border-border bg-secondary/20 p-6 text-sm text-muted-foreground">
+                Aun no hay accesos de equipo registrados.
               </div>
-            ))}
+            )}
           </CardContent>
         </Card>
       </div>

@@ -46,6 +46,13 @@ export async function POST(request: Request) {
   let sessionUser;
 
   if (context) {
+    if (!context.membership.is_active) {
+      return NextResponse.json(
+        { error: "Tu acceso esta inactivo. Contacta a la administracion." },
+        { status: 403 },
+      );
+    }
+
     sessionUser = buildSessionUser({
       email: context.membership.email,
       fullName: context.membership.full_name,

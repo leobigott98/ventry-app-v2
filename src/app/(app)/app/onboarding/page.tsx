@@ -35,7 +35,7 @@ export default async function OnboardingPage() {
           </CardHeader>
           <CardContent>
             <OnboardingForm
-              sessionUser={{ fullName: sessionUser.fullName, email: sessionUser.email }}
+              sessionUser={{ fullName: sessionUser.fullName, email: sessionUser.email, pendingCommunityName: sessionUser.pendingCommunityName }}
             />
           </CardContent>
         </Card>

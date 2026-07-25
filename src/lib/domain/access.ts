@@ -247,6 +247,119 @@ export async function provisionResidentAccess(args: {
   return data as unknown as MembershipRecord;
 }
 
+async function getTeamMemberForMutation(communityId: string, memberId: string) {
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("community_memberships")
+    .select(membershipSelect())
+    .eq("community_id", communityId)
+    .eq("id", memberId)
+    .in("role", ["admin", "guard"])
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return (data ?? null) as unknown as MembershipRecord | null;
+}
+
+async function assertTeamMemberCanBeModified(args: {
+  communityId: string;
+  member: MembershipRecord;
+  currentUserEmail: string;
+  deactivateOrDelete: boolean;
+}) {
+  if (args.member.is_primary) {
+    throw new Error("No puedes modificar el administrador principal.");
+  }
+
+  if (normalizeEmail(args.member.email) === normalizeEmail(args.currentUserEmail)) {
+    throw new Error("No puedes modificar tu propio acceso desde esta accion.");
+  }
+
+  if (args.deactivateOrDelete && args.member.role === "admin") {
+    const supabase = createServerSupabaseClient();
+    const { count, error } = await supabase
+      .from("community_memberships")
+      .select("*", { count: "exact", head: true })
+      .eq("community_id", args.communityId)
+      .eq("role", "admin")
+      .eq("is_active", true)
+      .neq("id", args.member.id);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    if ((count ?? 0) < 1) {
+      throw new Error("Debe quedar al menos un administrador activo.");
+    }
+  }
+}
+
+export async function updateTeamMemberStatus(args: {
+  communityId: string;
+  memberId: string;
+  isActive: boolean;
+  currentUserEmail: string;
+}) {
+  const member = await getTeamMemberForMutation(args.communityId, args.memberId);
+  if (!member) {
+    throw new Error("No fue posible encontrar el acceso del equipo.");
+  }
+
+  await assertTeamMemberCanBeModified({
+    communityId: args.communityId,
+    member,
+    currentUserEmail: args.currentUserEmail,
+    deactivateOrDelete: !args.isActive,
+  });
+
+  const supabase = createServerSupabaseClient();
+  const { data, error } = await supabase
+    .from("community_memberships")
+    .update({ is_active: args.isActive })
+    .eq("community_id", args.communityId)
+    .eq("id", args.memberId)
+    .select(membershipSelect())
+    .single();
+
+  if (error || !data) {
+    throw new Error(error?.message || "No fue posible actualizar el acceso.");
+  }
+
+  return data as unknown as MembershipRecord;
+}
+
+export async function deleteTeamMemberAccess(args: {
+  communityId: string;
+  memberId: string;
+  currentUserEmail: string;
+}) {
+  const member = await getTeamMemberForMutation(args.communityId, args.memberId);
+  if (!member) {
+    throw new Error("No fue posible encontrar el acceso del equipo.");
+  }
+
+  await assertTeamMemberCanBeModified({
+    communityId: args.communityId,
+    member,
+    currentUserEmail: args.currentUserEmail,
+    deactivateOrDelete: true,
+  });
+
+  const supabase = createServerSupabaseClient();
+  const { error } = await supabase
+    .from("community_memberships")
+    .delete()
+    .eq("community_id", args.communityId)
+    .eq("id", args.memberId);
+
+  if (error) {
+    throw new Error(error.message);
+  }
+}
 export async function getMembershipsByRole(
   communityId: string,
   roles: MembershipRecord["role"][],

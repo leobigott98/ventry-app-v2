@@ -24,6 +24,12 @@ export async function requireApiCommunityContext(
     };
   }
 
+  if (!context.membership.is_active) {
+    return {
+      response: NextResponse.json({ error: "Tu acceso esta inactivo." }, { status: 403 }),
+    };
+  }
+
   const currentUser = mergeSessionWithMembership(sessionUser, context.membership);
   if (allowedRoles && !allowedRoles.includes(currentUser.role)) {
     return {

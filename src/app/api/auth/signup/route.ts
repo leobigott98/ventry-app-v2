@@ -53,6 +53,7 @@ export async function POST(request: Request) {
         role: "admin",
         authUserId: data.user.id,
         residentId: null,
+        pendingCommunityName: parsed.data.communityName,
       }),
     ),
     getSessionCookieOptions(),

@@ -7,6 +7,7 @@ import { AccessEventCard } from "@/components/access-log/access-event-card";
 import { CredentialCard } from "@/components/invitations/credential-card";
 import { InvitationStatusBadge } from "@/components/invitations/invitation-status-badge";
 import { RevokeInvitationButton } from "@/components/invitations/revoke-invitation-button";
+import { InvitationWindowForm } from "@/components/invitations/invitation-window-form";
 import { ShareInvitationActions } from "@/components/invitations/share-invitation-actions";
 import { SectionShell } from "@/components/layout/section-shell";
 import { Button } from "@/components/ui/button";
@@ -16,9 +17,11 @@ import {
   getInvitationAccessTypeLabel,
   getInvitationById,
   getInvitationEffectiveStatus,
+  getInvitationWindowLabel,
 } from "@/lib/domain/invitations";
 import { getInvitationAccessEvents } from "@/lib/domain/access-log";
 import { getCommunityContextOrRedirect } from "@/lib/domain/session-context";
+import { formatAppDateTime } from "@/lib/formatting";
 
 function getBaseUrl(requestHeaders: Headers) {
   const host = requestHeaders.get("x-forwarded-host") || requestHeaders.get("host");
@@ -39,17 +42,27 @@ function getInvitationEventSummary(event: { payload: Record<string, unknown> }) 
     return `Estado: ${event.payload.status}`;
   }
 
+  const payload =
+    event.payload.next && typeof event.payload.next === "object"
+      ? (event.payload.next as Record<string, unknown>)
+      : event.payload;
+
+  if (payload.noTimeLimit === true) {
+    return `Desde ${payload.visitDate} ${payload.windowStart}, sin limite`;
+  }
+
   if (
-    typeof event.payload.visitDate === "string" &&
-    typeof event.payload.windowStart === "string" &&
-    typeof event.payload.windowEnd === "string"
+    typeof payload.visitDate === "string" &&
+    typeof payload.windowStart === "string" &&
+    typeof payload.windowEnd === "string"
   ) {
-    return `${event.payload.visitDate} | ${event.payload.windowStart} - ${event.payload.windowEnd}`;
+    const endDate = typeof payload.windowEndDate === "string" ? payload.windowEndDate : payload.visitDate;
+    const endLabel = endDate === payload.visitDate ? payload.windowEnd : `${endDate} ${payload.windowEnd}`;
+    return `${payload.visitDate} ${payload.windowStart} - ${endLabel}`;
   }
 
   return null;
 }
-
 export default async function InvitationDetailPage({
   params,
 }: {
@@ -131,7 +144,7 @@ export default async function InvitationDetailPage({
                     Ventana
                   </div>
                   <div className="mt-2 text-sm text-foreground">
-                    {invitation.window_start} - {invitation.window_end}
+                    {getInvitationWindowLabel(invitation)}
                   </div>
                 </div>
               </div>
@@ -160,6 +173,20 @@ export default async function InvitationDetailPage({
           </Card>
 
           <CredentialCard credential={credential} qrImageDataUrl={qrImageDataUrl} />
+
+          {sessionUser.role !== "guard" && status === "active" ? (
+            <Card>
+              <CardHeader>
+                <CardTitle>Modificar ventana</CardTitle>
+                <CardDescription>
+                  Ajusta o extiende el horario mientras la invitacion siga activa.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <InvitationWindowForm invitation={invitation} />
+              </CardContent>
+            </Card>
+          ) : null}
         </div>
 
           <Card>
@@ -176,7 +203,7 @@ export default async function InvitationDetailPage({
                   <div className="flex items-center justify-between gap-3">
                     <div className="font-semibold text-foreground">{event.event_label}</div>
                     <div className="font-mono text-xs text-muted-foreground">
-                      {new Date(event.created_at).toLocaleString("es-VE")}
+                      {formatAppDateTime(event.created_at, { dateStyle: "medium", timeStyle: "short" })}
                     </div>
                   </div>
                   {getInvitationEventSummary(event) ? (

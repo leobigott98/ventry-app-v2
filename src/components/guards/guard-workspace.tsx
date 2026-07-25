@@ -28,6 +28,7 @@ import {
   getInvitationAccessTypeLabel,
   getInvitationStatusLabel,
   getInvitationStatusVariant,
+  getInvitationWindowLabel,
 } from "@/lib/domain/invitations";
 import type {
   AccessEventRecord,
@@ -37,6 +38,7 @@ import type {
   UnitRecord,
   VisitorEntryRecord,
 } from "@/lib/domain/types";
+import { formatAppTime } from "@/lib/formatting";
 import type { IScannerControls } from "@zxing/browser";
 
 type ResidentOption = ResidentRecord & {
@@ -50,6 +52,8 @@ type GuardInvitation = {
   visit_date: string;
   window_start: string;
   window_end: string;
+  window_end_date: string | null;
+  no_time_limit: boolean;
   status: "active" | "used" | "revoked";
   residents: { full_name: string } | null;
   units: { identifier: string; building: string | null } | null;
@@ -161,6 +165,7 @@ export function GuardWorkspace({
   const scannerControlsRef = useRef<IScannerControls | null>(null);
   const scannerActiveRef = useRef(false);
   const validationInFlightRef = useRef(false);
+  const credentialRequestInFlightRef = useRef(false);
 
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<GuardInvitation[]>(recentInvitations);
@@ -357,6 +362,10 @@ export function GuardWorkspace({
   }
 
   async function validateCredential(type: "pin" | "qr", valueOverride?: string) {
+    if (credentialRequestInFlightRef.current) {
+      return false;
+    }
+
     setFlash(null);
     setValidationError(null);
     setValidationMatch(null);
@@ -371,6 +380,7 @@ export function GuardWorkspace({
       return false;
     }
 
+    credentialRequestInFlightRef.current = true;
     setIsValidating(true);
     let response: Response;
     let payload: {
@@ -391,11 +401,13 @@ export function GuardWorkspace({
         match?: ValidationMatch | null;
       };
     } catch {
+      credentialRequestInFlightRef.current = false;
       setIsValidating(false);
       setValidationError("No fue posible conectar con validacion.");
       return false;
     }
 
+    credentialRequestInFlightRef.current = false;
     setIsValidating(false);
 
     if (!response.ok) {
@@ -425,7 +437,6 @@ export function GuardWorkspace({
     setValidationMatch(payload.match);
     return true;
   }
-
   async function startQrScanner() {
     setFlash(null);
     setValidationError(null);
@@ -601,12 +612,11 @@ export function GuardWorkspace({
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 xl:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
         {[
           ["Invitaciones activas", String(activeInvitationCount)],
-          ["Entradas dentro", String(openEntries.length)],
+          ["Accesos", String(openEntries.length)],
           ["Movimientos", String(recentActivity.length)],
-          ["Modo", "Garita"],
         ].map(([label, value]) => (
           <Card key={label}>
             <CardContent className="p-5">
@@ -747,7 +757,7 @@ export function GuardWorkspace({
                         <Badge variant={getInvitationStatusVariant(validationMatch.invitation.effective_status)} className="px-4 py-1.5 text-sm">{getInvitationStatusLabel(validationMatch.invitation.effective_status)}</Badge>
                       </div>
                       <div className="grid gap-3 sm:grid-cols-2">
-                        <div className="rounded-2xl border border-border bg-surface p-4 text-sm">{validationMatch.invitation.visit_date} | {validationMatch.invitation.window_start} - {validationMatch.invitation.window_end}</div>
+                        <div className="rounded-2xl border border-border bg-surface p-4 text-sm">{getInvitationWindowLabel(validationMatch.invitation)}</div>
                         <div className="rounded-2xl border border-border bg-surface p-4 text-sm">{getInvitationAccessTypeLabel(validationMatch.invitation.access_type)}</div>
                       </div>
                       <div className="flex flex-col gap-3 sm:flex-row">
@@ -890,7 +900,7 @@ export function GuardWorkspace({
                     <Badge variant="warning">Dentro</Badge>
                   </div>
                   <div className="mt-3 text-sm text-muted-foreground">
-                    {entry.vehicle_plate ? `Placa: ${entry.vehicle_plate}` : "Sin vehiculo"} | {new Date(entry.entered_at).toLocaleTimeString("es-VE", { hour: "2-digit", minute: "2-digit" })}
+                    {entry.vehicle_plate ? `Placa: ${entry.vehicle_plate}` : "Sin vehiculo"} | {formatAppTime(entry.entered_at)}
                   </div>
                   <Button className="mt-4 h-12 w-full text-base" type="button" onClick={() => void registerExit(entry.id)}>Registrar salida</Button>
                 </div>
@@ -908,7 +918,7 @@ export function GuardWorkspace({
                 <div key={event.id} className="rounded-2xl border border-border bg-surface p-4">
                   <div className="flex items-center justify-between gap-3">
                     <div className="font-semibold text-foreground">{event.event_label}</div>
-                    <div className="font-mono text-xs text-muted-foreground">{new Date(event.created_at).toLocaleTimeString("es-VE", { hour: "2-digit", minute: "2-digit" })}</div>
+                    <div className="font-mono text-xs text-muted-foreground">{formatAppTime(event.created_at)}</div>
                   </div>
                   <div className="mt-2 text-sm text-muted-foreground">
                     {event.access_event_type === "validation_failed" ? <span className="inline-flex items-center gap-2"><AlertCircle className="h-4 w-4" /> Codigo no valido</span> : "Operacion registrada"}

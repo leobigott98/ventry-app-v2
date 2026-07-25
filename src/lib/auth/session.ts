@@ -10,6 +10,7 @@ export type SessionUser = {
   role: "resident" | "guard" | "admin";
   authUserId: string | null;
   residentId: string | null;
+  pendingCommunityName?: string | null;
 };
 
 export function encodeSession(user: SessionUser) {
@@ -34,6 +35,7 @@ export function decodeSession(value?: string | null): SessionUser | null {
       role: parsed.role,
       authUserId: parsed.authUserId ?? null,
       residentId: parsed.residentId ?? null,
+      pendingCommunityName: parsed.pendingCommunityName ?? null,
     };
   } catch {
     return null;

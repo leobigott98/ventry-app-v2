@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { Eye, EyeOff } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -17,6 +18,7 @@ export function LoginForm() {
   const searchParams = useSearchParams();
   const [serverError, setServerError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const requestedRedirectTo = searchParams.get("redirectTo");
   const redirectTo = requestedRedirectTo?.startsWith("/app") ? requestedRedirectTo : "/app";
 
@@ -57,7 +59,7 @@ export function LoginForm() {
   return (
     <form className="space-y-5" onSubmit={onSubmit}>
       <div className="space-y-2">
-        <Label htmlFor="email">Correo electronico</Label>
+        <Label htmlFor="email">Correo electrónico</Label>
         <Input
           id="email"
           type="email"
@@ -69,7 +71,7 @@ export function LoginForm() {
       </div>
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-4">
-          <Label htmlFor="password">Contrasena</Label>
+          <Label htmlFor="password">Contraseña</Label>
           <Link
             href="/forgot-password"
             className="text-sm font-medium text-primary transition hover:text-primary/80"
@@ -77,13 +79,24 @@ export function LoginForm() {
             Olvidaste tu clave?
           </Link>
         </div>
-        <Input
-          id="password"
-          type="password"
-          placeholder="••••••••"
-          autoComplete="current-password"
-          {...register("password")}
-        />
+        <div className="relative">
+          <Input
+            id="password"
+            type={showPassword ? "text" : "password"}
+            placeholder="••••••••"
+            autoComplete="current-password"
+            className="pr-12"
+            {...register("password")}
+          />
+          <button
+            type="button"
+            aria-label={showPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition hover:text-foreground"
+            onClick={() => setShowPassword((prev) => !prev)}
+          >
+            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
+        </div>
         <p className="text-sm text-danger">{errors.password?.message}</p>
       </div>
       <FormMessage message={serverError} variant="error" />

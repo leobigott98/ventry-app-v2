@@ -45,6 +45,7 @@ function getDefaultWindow() {
   return {
     date: toDateValue(now),
     start: toTimeValue(start),
+    endDate: toDateValue(end),
     end: toTimeValue(end),
   };
 }
@@ -69,12 +70,15 @@ export function InvitationForm({ residents }: { residents: ResidentOption[] }) {
       credentialType: "pin",
       visitDate: defaults.date,
       windowStart: defaults.start,
+      windowEndDate: defaults.endDate,
       windowEnd: defaults.end,
+      noTimeLimit: false,
       notes: "",
     },
   });
 
   const accessType = watch("accessType");
+  const noTimeLimit = watch("noTimeLimit");
   const selectedResidentId = watch("residentId");
   const selectedResident = residents.find((resident) => resident.id === selectedResidentId);
   const isSingleResident = residents.length === 1;
@@ -190,10 +194,26 @@ export function InvitationForm({ residents }: { residents: ResidentOption[] }) {
         </div>
 
         <div className="space-y-2">
+          <Label htmlFor="windowEndDate">Fecha de salida</Label>
+          <Input id="windowEndDate" type="date" disabled={noTimeLimit} {...register("windowEndDate")} />
+          <p className="text-sm text-danger">{errors.windowEndDate?.message}</p>
+        </div>
+
+        <div className="space-y-2">
           <Label htmlFor="windowEnd">Hasta</Label>
-          <Input id="windowEnd" type="time" {...register("windowEnd")} />
+          <Input id="windowEnd" type="time" disabled={noTimeLimit} {...register("windowEnd")} />
           <p className="text-sm text-danger">{errors.windowEnd?.message}</p>
         </div>
+
+        <label className="flex items-start gap-3 rounded-2xl border border-border bg-secondary/30 p-4 text-sm lg:col-span-2">
+          <input className="mt-1 h-4 w-4" type="checkbox" {...register("noTimeLimit")} />
+          <span>
+            <span className="block font-semibold text-foreground">Sin limite de tiempo</span>
+            <span className="mt-1 block text-muted-foreground">
+              El acceso queda activo desde la fecha y hora inicial hasta que sea usado o revocado.
+            </span>
+          </span>
+        </label>
 
         <div className="space-y-2 lg:col-span-2">
           <Label htmlFor="notes">Notas</Label>

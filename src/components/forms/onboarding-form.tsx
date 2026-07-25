@@ -22,6 +22,7 @@ type OnboardingFormProps = {
   sessionUser: {
     fullName: string;
     email: string;
+    pendingCommunityName?: string | null;
   };
 };
 
@@ -39,7 +40,7 @@ export function OnboardingForm({ sessionUser }: OnboardingFormProps) {
   } = useForm<OnboardingInput>({
     resolver: zodResolver(onboardingSchema),
     defaultValues: {
-      name: "",
+      name: sessionUser.pendingCommunityName ?? "",
       address: "",
       locationLabel: "",
       plannedUnitCount: 20,

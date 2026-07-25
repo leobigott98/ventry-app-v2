@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import {
   getInvitationAccessTypeLabel,
   getInvitationEffectiveStatus,
+  getInvitationWindowLabel,
   getInvitationsForCommunity,
 } from "@/lib/domain/invitations";
 import { getCommunityContextOrRedirect } from "@/lib/domain/session-context";
@@ -88,7 +89,7 @@ export default async function InvitationsPage() {
                     </div>
                     <div className="mt-3 flex flex-wrap gap-3 text-sm text-muted-foreground">
                       <span>{getInvitationAccessTypeLabel(invitation.access_type)}</span>
-                      <span>{invitation.window_start} - {invitation.window_end}</span>
+                      <span>{getInvitationWindowLabel(invitation)}</span>
                       <span>
                         {invitation.access_credentials?.credential_type === "pin" ? "PIN" : "QR"}
                       </span>

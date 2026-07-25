@@ -11,10 +11,15 @@ export const teamMemberAccessSchema = z.object({
   notes: nullableOptionalText,
 });
 
+export const teamMemberStatusSchema = z.object({
+  isActive: z.boolean(),
+});
+
 export const residentAccessSchema = z.object({
   email: z.string().trim().email("Ingresa un correo valido."),
   password: z.string().min(8, "La contrasena debe tener al menos 8 caracteres."),
 });
 
 export type TeamMemberAccessInput = z.infer<typeof teamMemberAccessSchema>;
+export type TeamMemberStatusInput = z.infer<typeof teamMemberStatusSchema>;
 export type ResidentAccessInput = z.infer<typeof residentAccessSchema>;

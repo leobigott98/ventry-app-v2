@@ -9,6 +9,7 @@ import {
   getInvitationAccessTypeLabel,
   getInvitationByShareToken,
   getInvitationEffectiveStatus,
+  getInvitationWindowLabel,
 } from "@/lib/domain/invitations";
 
 function getBaseUrl(requestHeaders: Headers) {
@@ -58,7 +59,7 @@ export default async function SharedInvitationPage({
               <div>
                 <CardTitle>{invitation.visitor_name || "Acceso Ventry"}</CardTitle>
                 <CardDescription>
-                  {invitation.visit_date} | {invitation.window_start} - {invitation.window_end}
+                  {getInvitationWindowLabel(invitation)}
                 </CardDescription>
               </div>
               <InvitationStatusBadge status={status} />

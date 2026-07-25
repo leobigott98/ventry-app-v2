@@ -198,6 +198,8 @@ export type InvitationRecord = {
   visit_date: string;
   window_start: string;
   window_end: string;
+  window_end_date: string | null;
+  no_time_limit: boolean;
   status: Exclude<InvitationStatus, "expired">;
   notes: string | null;
   share_token: string;
@@ -218,7 +220,7 @@ export type AccessCredentialRecord = {
 export type InvitationEventRecord = {
   id: string;
   invitation_id: string;
-  event_type: "created" | "shared" | "revoked" | "status_changed";
+  event_type: "created" | "shared" | "revoked" | "status_changed" | "window_updated";
   event_label: string;
   payload: Record<string, unknown>;
   created_at: string;

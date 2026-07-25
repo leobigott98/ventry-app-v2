@@ -7,6 +7,7 @@ export function buildSessionUser(args: {
   role: CommunityRole;
   authUserId?: string | null;
   residentId?: string | null;
+  pendingCommunityName?: string | null;
 }) {
   return {
     email: args.email,
@@ -14,6 +15,7 @@ export function buildSessionUser(args: {
     role: args.role,
     authUserId: args.authUserId ?? null,
     residentId: args.residentId ?? null,
+    pendingCommunityName: args.pendingCommunityName ?? null,
   } satisfies SessionUser;
 }
 

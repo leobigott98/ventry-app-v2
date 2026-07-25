@@ -9,7 +9,7 @@ import type {
   UnitInput,
   CommunityProfileInput,
 } from "@/lib/schemas/community";
-import type { CreateInvitationInput } from "@/lib/schemas/invitations";
+import type { CreateInvitationInput, UpdateInvitationWindowInput } from "@/lib/schemas/invitations";
 import type {
   ManualVehicleEntryInput,
   UnannouncedVisitorInput,
@@ -293,10 +293,11 @@ export async function createInvitation(communityId: string, input: CreateInvitat
     .select("id, unit_id")
     .eq("community_id", communityId)
     .eq("id", input.residentId)
+    .eq("is_active", true)
     .maybeSingle();
 
   if (residentError || !resident) {
-    throw new Error(residentError?.message || "No fue posible encontrar el residente.");
+    throw new Error(residentError?.message || "No fue posible encontrar un residente activo.");
   }
 
   const shareToken = createShareToken();
@@ -304,6 +305,8 @@ export async function createInvitation(communityId: string, input: CreateInvitat
     input.credentialType === "pin"
       ? createOneTimePin()
       : crypto.randomUUID().replace(/-/g, "").slice(0, 24).toUpperCase();
+  const windowEnd = input.noTimeLimit ? "23:59" : input.windowEnd;
+  const windowEndDate = input.noTimeLimit ? null : input.windowEndDate ?? input.visitDate;
 
   const { data: invitation, error: invitationError } = await supabase
     .from("invitations")
@@ -315,7 +318,9 @@ export async function createInvitation(communityId: string, input: CreateInvitat
       access_type: input.accessType,
       visit_date: input.visitDate,
       window_start: input.windowStart,
-      window_end: input.windowEnd,
+      window_end: windowEnd,
+      window_end_date: windowEndDate,
+      no_time_limit: input.noTimeLimit,
       status: "active",
       notes: input.notes,
       share_token: shareToken,
@@ -353,7 +358,9 @@ export async function createInvitation(communityId: string, input: CreateInvitat
       credentialType: input.credentialType,
       visitDate: input.visitDate,
       windowStart: input.windowStart,
-      windowEnd: input.windowEnd,
+      windowEndDate,
+      windowEnd: input.noTimeLimit ? null : windowEnd,
+      noTimeLimit: input.noTimeLimit,
     },
   });
 
@@ -363,7 +370,6 @@ export async function createInvitation(communityId: string, input: CreateInvitat
 
   return invitation;
 }
-
 export async function revokeInvitation(communityId: string, invitationId: string) {
   const supabase = createServerSupabaseClient();
 
@@ -397,6 +403,73 @@ export async function revokeInvitation(communityId: string, invitationId: string
   return invitation;
 }
 
+export async function updateInvitationWindow(
+  communityId: string,
+  invitationId: string,
+  input: UpdateInvitationWindowInput,
+  residentId?: string | null,
+) {
+  const supabase = createServerSupabaseClient();
+  const invitation = await getInvitationById(communityId, invitationId, residentId);
+
+  if (!invitation) {
+    throw new Error("No fue posible encontrar la invitacion.");
+  }
+
+  if (getInvitationEffectiveStatus(invitation) !== "active") {
+    throw new Error("Solo puedes modificar invitaciones activas.");
+  }
+
+  const windowEnd = input.noTimeLimit ? "23:59" : input.windowEnd;
+  const windowEndDate = input.noTimeLimit ? null : input.windowEndDate ?? input.visitDate;
+
+  const { data, error } = await supabase
+    .from("invitations")
+    .update({
+      visit_date: input.visitDate,
+      window_start: input.windowStart,
+      window_end: windowEnd,
+      window_end_date: windowEndDate,
+      no_time_limit: input.noTimeLimit,
+    })
+    .eq("community_id", communityId)
+    .eq("id", invitationId)
+    .eq("status", "active")
+    .select("*")
+    .maybeSingle();
+
+  if (error || !data) {
+    throw new Error(error?.message || "No fue posible actualizar la ventana de la invitacion.");
+  }
+
+  const { error: eventError } = await supabase.from("invitation_events").insert({
+    invitation_id: invitationId,
+    event_type: "window_updated",
+    event_label: "Ventana de acceso actualizada",
+    payload: {
+      previous: {
+        visitDate: invitation.visit_date,
+        windowStart: invitation.window_start,
+        windowEndDate: invitation.window_end_date,
+        windowEnd: invitation.window_end,
+        noTimeLimit: invitation.no_time_limit,
+      },
+      next: {
+        visitDate: input.visitDate,
+        windowStart: input.windowStart,
+        windowEndDate,
+        windowEnd: input.noTimeLimit ? null : windowEnd,
+        noTimeLimit: input.noTimeLimit,
+      },
+    },
+  });
+
+  if (eventError) {
+    throw new Error(eventError.message);
+  }
+
+  return data;
+}
 export async function logInvitationShare(invitationId: string, channel: "whatsapp" | "native") {
   const supabase = createServerSupabaseClient();
 
@@ -425,6 +498,28 @@ export async function logCredentialValidationAttempt(args: {
   createdByEmail: string;
   status?: string;
 }) {
+  const supabase = createServerSupabaseClient();
+  const duplicateSince = new Date(Date.now() - 3000).toISOString();
+  const { data: duplicate, error: duplicateError } = await supabase
+    .from("access_events")
+    .select("id")
+    .eq("community_id", args.communityId)
+    .eq("created_by_email", args.createdByEmail)
+    .eq("access_event_type", args.matched ? "validation_success" : "validation_failed")
+    .eq("details->>credentialType", args.credentialType)
+    .eq("details->>credentialValue", args.credentialValue)
+    .gte("created_at", duplicateSince)
+    .limit(1)
+    .maybeSingle();
+
+  if (duplicateError) {
+    throw new Error(duplicateError.message);
+  }
+
+  if (duplicate) {
+    return;
+  }
+
   await logAccessEvent({
     communityId: args.communityId,
     invitationId: args.invitationId ?? null,
@@ -446,7 +541,6 @@ export async function logCredentialValidationAttempt(args: {
     createdByEmail: args.createdByEmail,
   });
 }
-
 export async function registerInvitationEntry(args: {
   communityId: string;
   invitationId: string;
