@@ -21,10 +21,12 @@ function formatTimestamp(value: string) {
     timeStyle: "short",
   });
 }
-function getEntrySourceLabel(value: "invitation" | "unannounced" | "vehicle_manual") {
+function getEntrySourceLabel(value: "invitation" | "event" | "unannounced" | "vehicle_manual") {
   switch (value) {
     case "invitation":
       return "Invitacion";
+    case "event":
+      return "Evento";
     case "unannounced":
       return "No anunciado";
     case "vehicle_manual":

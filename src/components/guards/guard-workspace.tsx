@@ -30,10 +30,13 @@ import {
   getInvitationStatusVariant,
   getInvitationWindowLabel,
 } from "@/lib/domain/invitations";
+import { getEventEffectiveStatus, getEventWindowLabel } from "@/lib/domain/events";
 import type {
   AccessEventRecord,
+  EventGuestRecord,
   InvitationAccessType,
   InvitationStatus,
+  ResidentEventRecord,
   ResidentRecord,
   UnitRecord,
   VisitorEntryRecord,
@@ -66,11 +69,22 @@ type OpenEntry = VisitorEntryRecord & {
   units: { identifier: string; building: string | null } | null;
 };
 
-type ValidationMatch = {
-  invitation: GuardInvitation & { effective_status: InvitationStatus; status_label: string };
-  openEntry: OpenEntry | null;
+type GuardEvent = ResidentEventRecord & {
+  residents: { full_name: string } | null;
+  units: { identifier: string; building: string | null } | null;
+  event_guests: EventGuestRecord[];
 };
 
+type ValidationMatch =
+  | {
+      kind: "invitation";
+      invitation: GuardInvitation & { effective_status: InvitationStatus; status_label: string };
+      openEntry: OpenEntry | null;
+    }
+  | {
+      kind: "event";
+      event: GuardEvent;
+    };
 type GuardWorkspaceProps = {
   residents: ResidentOption[];
   recentInvitations: GuardInvitation[];
@@ -155,6 +169,7 @@ export function GuardWorkspace({
   const [credentialValue, setCredentialValue] = useState("");
   const [validationMatch, setValidationMatch] = useState<ValidationMatch | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
+  const [eventGuestQuery, setEventGuestQuery] = useState("");
   const [isValidating, setIsValidating] = useState(false);
   const [scannerStatus, setScannerStatus] = useState<ScannerStatus>("idle");
   const [scannerMessage, setScannerMessage] = useState(
@@ -317,12 +332,14 @@ export function GuardWorkspace({
         : accessEventType === "unannounced_registered"
           ? "unannounced"
           : accessEventType === "entry_registered"
-            ? "invitation"
+            ? typeof details.eventId === "string" ? "event" : "invitation"
             : "validation";
     const event: AccessEventRecord = {
       id: crypto.randomUUID(),
       community_id: "local",
       invitation_id: invitationId ?? null,
+      event_id: typeof details.eventId === "string" ? details.eventId : null,
+      event_guest_id: null,
       visitor_entry_id: visitorEntryId ?? null,
       resident_id: null,
       unit_id: null,
@@ -362,19 +379,15 @@ export function GuardWorkspace({
   }
 
   async function validateCredential(type: "pin" | "qr", valueOverride?: string) {
-    if (credentialRequestInFlightRef.current) {
-      return false;
-    }
+    if (credentialRequestInFlightRef.current) return false;
 
     setFlash(null);
     setValidationError(null);
     setValidationMatch(null);
-
     const valueToValidate =
       type === "qr"
         ? getQrCredentialFromScan(valueOverride ?? credentialValue)
         : (valueOverride ?? credentialValue).trim();
-
     if (!valueToValidate) {
       setValidationError("Ingresa un codigo para validar.");
       return false;
@@ -383,12 +396,7 @@ export function GuardWorkspace({
     credentialRequestInFlightRef.current = true;
     setIsValidating(true);
     let response: Response;
-    let payload: {
-      error?: string;
-      message?: string;
-      match?: ValidationMatch | null;
-    };
-
+    let payload: { error?: string; message?: string; match?: ValidationMatch | null };
     try {
       response = await fetch("/api/guards/validate-credential", {
         method: "POST",
@@ -409,12 +417,10 @@ export function GuardWorkspace({
 
     credentialRequestInFlightRef.current = false;
     setIsValidating(false);
-
     if (!response.ok) {
       setValidationError(payload.error ?? "No fue posible validar.");
       return false;
     }
-
     if (!payload.match) {
       prependActivity("validation_failed", "Validacion fallida", {
         credentialType: type,
@@ -424,16 +430,22 @@ export function GuardWorkspace({
       return false;
     }
 
-    prependActivity(
-      "validation_success",
-      "Validacion correcta",
-      {
+    if (payload.match.kind === "invitation") {
+      prependActivity(
+        "validation_success",
+        "Validacion correcta",
+        { credentialType: type, visitorName: payload.match.invitation.visitor_name },
+        payload.match.invitation.id,
+        payload.match.openEntry?.id ?? null,
+      );
+    } else {
+      prependActivity("validation_success", "Codigo de evento validado", {
         credentialType: type,
-        visitorName: payload.match.invitation.visitor_name,
-      },
-      payload.match.invitation.id,
-      payload.match.openEntry?.id ?? null,
-    );
+        eventName: payload.match.event.name,
+        eventId: payload.match.event.id,
+      });
+      setEventGuestQuery("");
+    }
     setValidationMatch(payload.match);
     return true;
   }
@@ -510,6 +522,41 @@ export function GuardWorkspace({
     }
   }
 
+  async function registerEventGuest(eventId: string, eventGuestId: string) {
+    setFlash(null);
+    const response = await fetch("/api/guards/event-entries", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ eventId, eventGuestId }),
+    });
+    const payload = (await response.json()) as { error?: string; entry?: OpenEntry };
+    if (!response.ok || !payload.entry) {
+      setFlash({ variant: "error", message: payload.error ?? "No fue posible registrar la entrada." });
+      return;
+    }
+
+    upsertOpenEntry(payload.entry);
+    setValidationMatch((current) =>
+      current?.kind === "event"
+        ? {
+            ...current,
+            event: {
+              ...current.event,
+              event_guests: current.event.event_guests.map((guest) =>
+                guest.id === eventGuestId
+                  ? { ...guest, attendance_status: "inside", checked_in_at: new Date().toISOString() }
+                  : guest,
+              ),
+            },
+          }
+        : current,
+    );
+    prependActivity("entry_registered", "Entrada de evento registrada", {
+      visitorName: payload.entry.visitor_name,
+      eventId,
+    }, null, payload.entry.id);
+    setFlash({ variant: "success", message: `${payload.entry.visitor_name} fue registrado.` });
+  }
   async function registerEntry(invitationId: string) {
     setFlash(null);
     const response = await fetch("/api/guards/entries", {
@@ -526,7 +573,7 @@ export function GuardWorkspace({
     upsertOpenEntry(payload.entry);
     syncInvitationStatus(invitationId, "used");
     setValidationMatch((current) =>
-      current
+      current?.kind === "invitation"
         ? {
             ...current,
             invitation: { ...current.invitation, effective_status: "used", status_label: "Usada" },
@@ -554,7 +601,7 @@ export function GuardWorkspace({
     }
 
     setOpenEntries((current) => current.filter((entry) => entry.id !== entryId));
-    setValidationMatch((current) => (current?.openEntry?.id === entryId ? { ...current, openEntry: null } : current));
+    setValidationMatch((current) => (current?.kind === "invitation" && current.openEntry?.id === entryId ? { ...current, openEntry: null } : current));
     prependActivity(
       "exit_registered",
       "Salida registrada",
@@ -747,7 +794,57 @@ export function GuardWorkspace({
                     {isValidating ? <LoaderCircle className="h-5 w-5 animate-spin" /> : <ShieldCheck className="h-5 w-5" />}
                     {activeAction === "pin" ? "Validar PIN" : "Validar QR"}
                   </Button>
-                  {validationMatch ? (
+                  {validationMatch ? validationMatch.kind === "event" ? (
+                    <div className="space-y-4 rounded-[28px] border border-primary/30 bg-secondary/90 p-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-xs font-bold uppercase tracking-[0.2em] text-primary">Modo evento</div>
+                          <div className="mt-1 font-display text-xl font-semibold text-foreground">{validationMatch.event.name}</div>
+                          <div className="mt-1 text-sm text-muted-foreground">{validationMatch.event.residents?.full_name || "Sin residente"} | {formatUnit(validationMatch.event.units)}</div>
+                        </div>
+                        <Badge variant={getEventEffectiveStatus(validationMatch.event) === "active" ? "success" : "warning"}>
+                          {getEventEffectiveStatus(validationMatch.event) === "active" ? "Activo" : getEventEffectiveStatus(validationMatch.event) === "scheduled" ? "Aun no inicia" : "Finalizado"}
+                        </Badge>
+                      </div>
+                      <div className="rounded-2xl border border-border bg-surface p-4 text-sm">
+                        {getEventWindowLabel(validationMatch.event)}
+                      </div>
+                      <div className="relative">
+                        <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          className="h-14 pl-11 text-base"
+                          value={eventGuestQuery}
+                          onChange={(event) => setEventGuestQuery(event.target.value)}
+                          placeholder="Buscar nombre en la lista..."
+                        />
+                      </div>
+                      <div className="max-h-80 space-y-2 overflow-y-auto">
+                        {validationMatch.event.event_guests
+                          .filter((guest) => guest.full_name.toLocaleLowerCase().includes(eventGuestQuery.trim().toLocaleLowerCase()))
+                          .slice(0, 60)
+                          .map((guest) => (
+                            <div key={guest.id} className="flex items-center gap-3 rounded-2xl border border-border bg-surface p-3">
+                              <div className="min-w-0 flex-1">
+                                <div className="truncate font-semibold">{guest.full_name}</div>
+                                <div className="truncate text-xs text-muted-foreground">{guest.phone || guest.notes || "Invitado del evento"}</div>
+                              </div>
+                              {guest.attendance_status === "pending" && getEventEffectiveStatus(validationMatch.event) === "active" ? (
+                                <Button className="h-11 shrink-0" type="button" onClick={() => void registerEventGuest(validationMatch.event.id, guest.id)}>
+                                  Registrar
+                                </Button>
+                              ) : (
+                                <Badge variant={guest.attendance_status === "inside" ? "warning" : "success"}>
+                                  {guest.attendance_status === "inside" ? "Dentro" : "Salio"}
+                                </Badge>
+                              )}
+                            </div>
+                          ))}
+                      </div>
+                      <Button asChild className="h-12 w-full" type="button" variant="ghost">
+                        <Link href={`/app/events/${validationMatch.event.id}`}>Ver evento completo</Link>
+                      </Button>
+                    </div>
+                  ) : (
                     <div className="space-y-4 rounded-[28px] border border-border bg-secondary/90 p-4">
                       <div className="flex items-start justify-between gap-3">
                         <div>

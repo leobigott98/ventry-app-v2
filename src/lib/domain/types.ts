@@ -119,6 +119,7 @@ export const accessEventDirectionOptions = [
 
 export const accessEventSourceOptions = [
   { value: "invitation", label: "Invitacion" },
+  { value: "event", label: "Evento" },
   { value: "validation", label: "Validacion manual" },
   { value: "unannounced", label: "No anunciado" },
   { value: "vehicle_manual", label: "Vehiculo manual" },
@@ -127,6 +128,9 @@ export const accessEventSourceOptions = [
 export type AccessEventStatus = (typeof accessEventStatusOptions)[number]["value"];
 export type AccessEventDirection = (typeof accessEventDirectionOptions)[number]["value"];
 export type AccessEventSource = (typeof accessEventSourceOptions)[number]["value"];
+
+export type EventStatus = "scheduled" | "active" | "expired" | "revoked";
+export type EventAttendanceStatus = "pending" | "inside" | "exited";
 
 export type CommunityRecord = {
   id: string;
@@ -230,11 +234,13 @@ export type VisitorEntryRecord = {
   id: string;
   community_id: string;
   invitation_id: string | null;
+  event_id: string | null;
+  event_guest_id: string | null;
   resident_id: string | null;
   unit_id: string | null;
   visitor_name: string;
   access_type: InvitationAccessType;
-  registration_source: "invitation" | "unannounced" | "vehicle_manual";
+  registration_source: "invitation" | "event" | "unannounced" | "vehicle_manual";
   vehicle_plate: string | null;
   vehicle_description: string | null;
   notes: string | null;
@@ -250,6 +256,8 @@ export type AccessEventRecord = {
   id: string;
   community_id: string;
   invitation_id: string | null;
+  event_id: string | null;
+  event_guest_id: string | null;
   visitor_entry_id: string | null;
   resident_id: string | null;
   unit_id: string | null;
@@ -270,5 +278,53 @@ export type AccessEventRecord = {
   notes: string | null;
   details: Record<string, unknown>;
   created_by_email: string;
+  created_at: string;
+};
+export type ResidentEventRecord = {
+  id: string;
+  community_id: string;
+  resident_id: string;
+  unit_id: string | null;
+  name: string;
+  event_date: string;
+  window_start: string;
+  window_end_date: string;
+  window_end: string;
+  status: Exclude<EventStatus, "scheduled" | "expired">;
+  notes: string | null;
+  share_token: string;
+  revoked_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type EventGuestRecord = {
+  id: string;
+  event_id: string;
+  full_name: string;
+  phone: string | null;
+  notes: string | null;
+  attendance_status: EventAttendanceStatus;
+  checked_in_at: string | null;
+  checked_out_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type EventCredentialRecord = {
+  id: string;
+  event_id: string;
+  credential_type: CredentialType;
+  credential_value: string;
+  qr_payload: string | null;
+  created_at: string;
+};
+
+export type EventActivityRecord = {
+  id: string;
+  event_id: string;
+  activity_type: "created" | "shared" | "revoked" | "guest_checked_in" | "guest_checked_out";
+  activity_label: string;
+  payload: Record<string, unknown>;
   created_at: string;
 };

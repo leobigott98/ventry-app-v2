@@ -4,6 +4,7 @@ import {
   ClipboardList,
   Home,
   KeyRound,
+  PartyPopper,
   Settings,
   ShieldCheck,
   Users,
@@ -15,6 +16,7 @@ export type AppNavItem = {
   href:
     | "/app/dashboard"
     | "/app/invitations"
+    | "/app/events"
     | "/app/access-log"
     | "/app/guards"
     | "/app/residents"
@@ -42,6 +44,14 @@ export const appNavigation: AppNavItem[] = [
     shortLabel: "Invita",
     description: "Crea y administra accesos para visitantes y domicilios.",
     icon: KeyRound,
+    allowedRoles: ["admin", "guard", "resident"],
+  },
+  {
+    href: "/app/events",
+    label: "Eventos",
+    shortLabel: "Eventos",
+    description: "Listas de invitados con un solo QR o PIN compartido.",
+    icon: PartyPopper,
     allowedRoles: ["admin", "guard", "resident"],
   },
   {

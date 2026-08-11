@@ -149,6 +149,8 @@ export function getAccessEventSourceLabel(source: AccessEventSource) {
   switch (source) {
     case "invitation":
       return "Invitacion";
+    case "event":
+      return "Evento";
     case "validation":
       return "Validacion";
     case "unannounced":

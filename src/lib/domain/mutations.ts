@@ -33,11 +33,13 @@ function buildDefaultUnits(count: number, communityId: string) {
 }
 
 function getEventSourceFromRegistrationSource(
-  registrationSource: "invitation" | "unannounced" | "vehicle_manual" | null | undefined,
+  registrationSource: "invitation" | "event" | "unannounced" | "vehicle_manual" | null | undefined,
 ) {
   switch (registrationSource) {
     case "invitation":
       return "invitation" as const;
+    case "event":
+      return "event" as const;
     case "unannounced":
       return "unannounced" as const;
     case "vehicle_manual":
@@ -50,6 +52,8 @@ function getEventSourceFromRegistrationSource(
 async function logAccessEvent(args: {
   communityId: string;
   invitationId?: string | null;
+  eventId?: string | null;
+  eventGuestId?: string | null;
   visitorEntryId?: string | null;
   residentId?: string | null;
   unitId?: string | null;
@@ -64,7 +68,7 @@ async function logAccessEvent(args: {
     | "vehicle_registered";
   eventStatus: "validated" | "rejected" | "entered" | "exited" | "logged";
   eventDirection: "validation" | "entry" | "exit";
-  eventSource: "invitation" | "validation" | "unannounced" | "vehicle_manual";
+  eventSource: "invitation" | "event" | "validation" | "unannounced" | "vehicle_manual";
   eventLabel: string;
   validatedByEmail?: string | null;
   notes?: string | null;
@@ -75,6 +79,8 @@ async function logAccessEvent(args: {
   const { error } = await supabase.from("access_events").insert({
     community_id: args.communityId,
     invitation_id: args.invitationId ?? null,
+    event_id: args.eventId ?? null,
+    event_guest_id: args.eventGuestId ?? null,
     visitor_entry_id: args.visitorEntryId ?? null,
     resident_id: args.residentId ?? null,
     unit_id: args.unitId ?? null,
@@ -647,9 +653,28 @@ export async function registerEntryExit(args: {
     throw new Error(error?.message || "No fue posible registrar la salida.");
   }
 
+  if (entry.event_guest_id) {
+    const now = new Date().toISOString();
+    const { error: guestError } = await supabase
+      .from("event_guests")
+      .update({ attendance_status: "exited", checked_out_at: now })
+      .eq("id", entry.event_guest_id);
+    if (guestError) throw new Error(guestError.message);
+
+    if (entry.event_id) {
+      await supabase.from("event_activity").insert({
+        event_id: entry.event_id,
+        activity_type: "guest_checked_out",
+        activity_label: `${entry.visitor_name} salio`,
+        payload: { eventGuestId: entry.event_guest_id, visitorEntryId: entry.id },
+      });
+    }
+  }
   await logAccessEvent({
     communityId: args.communityId,
     invitationId: entry.invitation_id,
+    eventId: entry.event_id,
+    eventGuestId: entry.event_guest_id,
     visitorEntryId: entry.id,
     residentId: entry.resident_id,
     unitId: entry.unit_id,
