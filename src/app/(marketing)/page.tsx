@@ -50,15 +50,15 @@ const highlights = [
 const plans = [
   {
     name: "Starter",
-    price: "USD 49",
-    suffix: "/ mes",
+    price: "USD 3.49",
+    suffix: "/ por unidad x mes",
     description: "Para edificios pequeños que quieren reemplazar el cuaderno de visitas.",
-    features: ["1 comunidad", "Hasta 120 unidades", "PIN y QR", "Bitácora de accesos", "Soporte por email"],
+    features: ["1 comunidad", "Hasta 100 unidades", "PIN y QR", "Bitácora de accesos", "Soporte por email"],
   },
   {
     name: "Community",
-    price: "USD 99",
-    suffix: "/ mes",
+    price: "USD 2.99",
+    suffix: "/ por unidad x mes",
     description: "Para comunidades con guardias, residentes activos y operación diaria.",
     features: ["Hasta 500 unidades", "Guardias ilimitados", "Visitantes sin invitación", "Roles y estados", "Soporte prioritario"],
     featured: true,
