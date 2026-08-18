@@ -42,6 +42,7 @@ import type {
   VisitorEntryRecord,
 } from "@/lib/domain/types";
 import { formatAppTime } from "@/lib/formatting";
+import { normalizeQrCredential } from "@/lib/qr-credentials";
 import type { IScannerControls } from "@zxing/browser";
 
 type ResidentOption = ResidentRecord & {
@@ -96,22 +97,6 @@ type ScannerStatus = "idle" | "starting" | "active" | "detected" | "unsupported"
 
 function formatUnit(unit: { identifier: string; building: string | null } | null) {
   return unit ? `${unit.building ? `${unit.building} - ` : ""}${unit.identifier}` : "Sin unidad";
-}
-
-function getQrCredentialFromScan(value: string) {
-  const trimmed = value.trim();
-
-  try {
-    const url = new URL(trimmed);
-    return (
-      url.searchParams.get("qr") ||
-      url.searchParams.get("credential") ||
-      url.searchParams.get("code") ||
-      trimmed
-    ).trim();
-  } catch {
-    return trimmed;
-  }
 }
 
 const actionLabels = {
@@ -292,7 +277,7 @@ export function GuardWorkspace({
       return;
     }
 
-    const credential = getQrCredentialFromScan(scannedQr);
+    const credential = normalizeQrCredential(scannedQr);
     validationInFlightRef.current = true;
     setActiveAction("qr");
     setCredentialValue(credential);
@@ -386,7 +371,7 @@ export function GuardWorkspace({
     setValidationMatch(null);
     const valueToValidate =
       type === "qr"
-        ? getQrCredentialFromScan(valueOverride ?? credentialValue)
+        ? normalizeQrCredential(valueOverride ?? credentialValue)
         : (valueOverride ?? credentialValue).trim();
     if (!valueToValidate) {
       setValidationError("Ingresa un codigo para validar.");
@@ -493,7 +478,7 @@ export function GuardWorkspace({
           return;
         }
 
-        const cleanedValue = getQrCredentialFromScan(result.getText());
+        const cleanedValue = normalizeQrCredential(result.getText());
         validationInFlightRef.current = true;
         setCredentialValue(cleanedValue);
         setLastScannedValue(cleanedValue);
