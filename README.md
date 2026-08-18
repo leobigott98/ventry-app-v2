@@ -88,7 +88,7 @@ middleware.ts
 ## Lo que agrega Sprint 3
 
 - Pantalla operativa de guardia en `/app/guards`
-- Validacion manual de PIN y base lista para QR
+- Validacion manual de PIN y escaneo QR real con camara mediante `@zxing/browser`
 - Registro de visitantes no anunciados
 - Registro manual de vehiculos
 - Acciones de entrada y salida desde garita
@@ -133,14 +133,10 @@ La migracion inicial esta en `supabase/migrations/202603280001_sprint1_foundatio
 La migracion de garita esta en `supabase/migrations/202603280002_guard_workflow.sql`.
 La migracion de auth/accesos esta en `supabase/migrations/202603280003_auth_access_foundation.sql`.
 La migracion de auditoria y filtros esta en `supabase/migrations/202603290001_sprint5_access_audit.sql`.
+La migracion de ventanas extendidas esta en `supabase/migrations/202607250001_invitation_window_options.sql`.
+La migracion de Event Mode esta en `supabase/migrations/202607250002_resident_event_mode.sql`.
 
-## Continuidad recomendada para Sprint 6
-
-1. Reemplazar contrasenas temporales por invitaciones de activacion y cambio inicial de clave.
-2. Conectar escaneo QR con camara y fallback offline.
-3. Afinar permisos por accion, no solo por modulo.
-4. Extender la bitacora con filtros por placa y exportacion operativa.
-5. Resolver sincronizacion y tolerancia offline para validacion y registros de garita.
+El inventario verificado de funcionalidades, brechas y riesgos se mantiene en `docs/current-state.md`.
 
 ## Variables de entorno
 
@@ -152,4 +148,4 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=...
 SUPABASE_SERVICE_ROLE_KEY=...
 ```
 
-Para Sprint 1, el server-side CRUD funciona mejor con `SUPABASE_SERVICE_ROLE_KEY` disponible.
+`SUPABASE_SERVICE_ROLE_KEY` es necesaria para las operaciones administrativas de Supabase Auth y debe permanecer exclusivamente en el servidor; nunca uses un nombre `NEXT_PUBLIC_` para esta clave.
