@@ -1,4 +1,4 @@
-import { createClient } from "@supabase/supabase-js";
+import { createBrowserClient } from "@supabase/ssr";
 
 import { hasSupabaseEnv, supabaseAnonKey, supabaseUrl } from "@/lib/supabase/config";
 
@@ -7,6 +7,5 @@ export function createBrowserSupabaseClient() {
     return null;
   }
 
-  return createClient(supabaseUrl, supabaseAnonKey);
+  return createBrowserClient(supabaseUrl, supabaseAnonKey);
 }
-

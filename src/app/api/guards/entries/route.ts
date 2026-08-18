@@ -22,7 +22,6 @@ export async function POST(request: NextRequest) {
     const entry = await registerInvitationEntry({
       communityId: auth.context.community.id,
       invitationId: parsed.data.invitationId,
-      createdByEmail: auth.sessionUser.email,
     });
     return NextResponse.json({ ok: true, entry });
   } catch (error) {

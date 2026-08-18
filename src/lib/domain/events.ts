@@ -4,7 +4,6 @@ import type {
   EventActivityRecord,
   EventCredentialRecord,
   EventGuestRecord,
-  EventStatus,
   ResidentEventRecord,
   ResidentRecord,
   UnitRecord,
@@ -12,6 +11,16 @@ import type {
 } from "@/lib/domain/types";
 import type { CreateEventInput } from "@/lib/schemas/events";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import {
+  getEventEffectiveStatus,
+  getEventWindowLabel,
+} from "@/lib/domain/event-utils";
+
+export {
+  getEventEffectiveStatus,
+  getEventStatusLabel,
+  getEventWindowLabel,
+} from "@/lib/domain/event-utils";
 
 type ResidentSummary = Pick<
   ResidentRecord,
@@ -30,6 +39,25 @@ export type EventDetailRecord = EventListItem & {
   event_activity: EventActivityRecord[];
 };
 
+type GuardEventMatch = ResidentEventRecord & {
+  residents: Pick<ResidentRecord, "id" | "full_name"> | null;
+  units: UnitSummary | null;
+  event_guests: EventGuestRecord[];
+};
+
+export type PublicEventRecord = Pick<
+  ResidentEventRecord,
+  "name" | "event_date" | "window_start" | "window_end_date" | "window_end" | "status"
+> & {
+  residents: Pick<ResidentRecord, "full_name"> | null;
+  units: Pick<UnitRecord, "identifier"> | null;
+  event_credentials: Pick<
+    EventCredentialRecord,
+    "credential_type" | "credential_value" | "qr_payload"
+  > | null;
+  guest_count: number;
+};
+
 function normalizeOne<T>(value: T | T[] | null | undefined) {
   return Array.isArray(value) ? value[0] ?? null : value ?? null;
 }
@@ -40,43 +68,6 @@ function createPin() {
 
 function createToken() {
   return crypto.randomUUID().replace(/-/g, "");
-}
-
-export function getEventEffectiveStatus(
-  event: Pick<
-    ResidentEventRecord,
-    "status" | "event_date" | "window_start" | "window_end_date" | "window_end"
-  >,
-): EventStatus {
-  if (event.status === "revoked") {
-    return "revoked";
-  }
-
-  const start = new Date(`${event.event_date}T${event.window_start}:00`);
-  const end = new Date(`${event.window_end_date}T${event.window_end}:00`);
-  const now = Date.now();
-  if (!Number.isNaN(start.valueOf()) && start.getTime() > now) return "scheduled";
-  return !Number.isNaN(end.valueOf()) && end.getTime() < now ? "expired" : "active";
-}
-
-export function getEventStatusLabel(status: EventStatus) {
-  if (status === "active") return "Activo";
-  if (status === "scheduled") return "Programado";
-  if (status === "revoked") return "Revocado";
-  return "Finalizado";
-}
-
-export function getEventWindowLabel(
-  event: Pick<
-    ResidentEventRecord,
-    "event_date" | "window_start" | "window_end_date" | "window_end"
-  >,
-) {
-  const end =
-    event.window_end_date === event.event_date
-      ? event.window_end
-      : `${event.window_end_date} ${event.window_end}`;
-  return `${event.event_date} ${event.window_start} - ${end}`;
 }
 
 export function buildEventShareText(event: EventDetailRecord, shareUrl: string) {
@@ -116,7 +107,7 @@ function normalizeEvent(
 
 export const getEventsForCommunity = cache(
   async (communityId: string, residentId?: string | null) => {
-    const supabase = createServerSupabaseClient();
+    const supabase = await createServerSupabaseClient();
     let query = supabase
       .from("resident_events")
       .select(
@@ -139,7 +130,7 @@ export async function getEventById(
   eventId: string,
   residentId?: string | null,
 ) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   let query = supabase
     .from("resident_events")
     .select(
@@ -155,20 +146,51 @@ export async function getEventById(
 }
 
 export async function getEventByShareToken(shareToken: string) {
-  const supabase = createServerSupabaseClient();
-  const { data, error } = await supabase
-    .from("resident_events")
-    .select(
-      "*, residents(id, full_name, phone, whatsapp_phone, email), units(id, identifier, building), event_credentials(*), event_guests(*), event_activity(*)",
-    )
-    .eq("share_token", shareToken)
-    .maybeSingle();
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase.rpc("get_public_event", {
+    p_share_token: shareToken,
+  });
   if (error) throw new Error(error.message);
-  return data ? normalizeEvent(data as never) : null;
+  if (!data) return null;
+
+  const dto = data as {
+    name: string;
+    event_date: string;
+    window_start: string;
+    window_end_date: string;
+    window_end: string;
+    status: ResidentEventRecord["status"];
+    resident_name: string;
+    unit_identifier: string | null;
+    credential_type: EventCredentialRecord["credential_type"] | null;
+    credential_value: string | null;
+    qr_payload: string | null;
+    guest_count: number;
+  };
+
+  return {
+    name: dto.name,
+    event_date: dto.event_date,
+    window_start: dto.window_start,
+    window_end_date: dto.window_end_date,
+    window_end: dto.window_end,
+    status: dto.status,
+    residents: { full_name: dto.resident_name },
+    units: dto.unit_identifier ? { identifier: dto.unit_identifier } : null,
+    event_credentials:
+      dto.credential_type && dto.credential_value
+        ? {
+            credential_type: dto.credential_type,
+            credential_value: dto.credential_value,
+            qr_payload: dto.qr_payload,
+          }
+        : null,
+    guest_count: Number(dto.guest_count),
+  } satisfies PublicEventRecord;
 }
 
 export async function createResidentEvent(communityId: string, input: CreateEventInput) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data: resident, error: residentError } = await supabase
     .from("residents")
     .select("id, unit_id")
@@ -242,7 +264,7 @@ export async function createResidentEvent(communityId: string, input: CreateEven
 }
 
 export async function logEventShare(eventId: string, channel: "whatsapp" | "native" | "copy") {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { error } = await supabase.from("event_activity").insert({
     event_id: eventId,
     activity_type: "shared",
@@ -257,7 +279,7 @@ export async function revokeResidentEvent(
   eventId: string,
   residentId?: string | null,
 ) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   let query = supabase
     .from("resident_events")
     .update({ status: "revoked", revoked_at: new Date().toISOString() })
@@ -281,30 +303,38 @@ export async function findEventByCredential(
   credentialType: "pin" | "qr",
   credentialValue: string,
 ) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const value = credentialValue.trim();
-  const filter =
-    credentialType === "pin"
-      ? `credential_value.eq.${value}`
-      : `qr_payload.eq.${value},credential_value.eq.${value}`;
+  const { data: eventId, error: matchError } = await supabase.rpc("match_event_credential", {
+    p_community_id: communityId,
+    p_credential_type: credentialType,
+    p_credential_value: value,
+  });
+  if (matchError) throw new Error(matchError.message);
+  if (!eventId) return null;
+
   const { data, error } = await supabase
-    .from("event_credentials")
+    .from("resident_events")
     .select(
-      "*, resident_events!inner(*, residents(id, full_name, phone, whatsapp_phone, email), units(id, identifier, building), event_guests(*), event_activity(*))",
+      "*, residents(id, full_name), units(id, identifier, building), event_guests(*)",
     )
-    .eq("credential_type", credentialType)
-    .or(filter)
-    .eq("resident_events.community_id", communityId)
-    .limit(1)
+    .eq("community_id", communityId)
+    .eq("id", eventId)
     .maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) return null;
 
-  const residentEvent = data.resident_events as unknown as Record<string, unknown>;
-  const event = normalizeEvent({
-    ...residentEvent,
-    event_credentials: data as EventCredentialRecord,
-  } as never);
+  const raw = data as ResidentEventRecord & {
+    residents: GuardEventMatch["residents"] | GuardEventMatch["residents"][];
+    units: UnitSummary | UnitSummary[] | null;
+    event_guests: EventGuestRecord[] | null;
+  };
+  const event: GuardEventMatch = {
+    ...raw,
+    residents: normalizeOne(raw.residents),
+    units: normalizeOne(raw.units),
+    event_guests: [...(raw.event_guests ?? [])].sort((a, b) => a.full_name.localeCompare(b.full_name)),
+  };
   return { kind: "event" as const, event };
 }
 
@@ -314,7 +344,7 @@ export async function registerEventGuestEntry(args: {
   eventGuestId: string;
   createdByEmail: string;
 }) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const event = await getEventById(args.communityId, args.eventId);
   if (!event) throw new Error("No fue posible encontrar el evento.");
   if (getEventEffectiveStatus(event) !== "active") {

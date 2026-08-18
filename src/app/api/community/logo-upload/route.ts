@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getRequestSessionUser } from "@/lib/auth/request";
-import { getCommunityContextForEmail } from "@/lib/domain/community";
-import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { requireApiAuthenticatedUser } from "@/lib/auth/api";
+import {
+  getCommunityContextForUserId,
+  getMembershipForUserId,
+} from "@/lib/domain/community";
 
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const ALLOWED_TYPES = new Set([
@@ -18,13 +20,17 @@ function sanitizeFilename(filename: string) {
 }
 
 export async function POST(request: NextRequest) {
-  const sessionUser = getRequestSessionUser(request);
+  const auth = await requireApiAuthenticatedUser();
+  if ("response" in auth) return auth.response;
+  const membership = await getMembershipForUserId(auth.user.id);
+  const context = membership?.is_active
+    ? await getCommunityContextForUserId(auth.user.id)
+    : null;
+  const canUpload = context
+    ? context.membership.role === "admin"
+    : !membership && auth.user.app_metadata.can_create_community === true;
 
-  if (!sessionUser) {
-    return NextResponse.json({ error: "Sesion invalida." }, { status: 401 });
-  }
-
-  if (sessionUser.role !== "admin") {
+  if (!canUpload) {
     return NextResponse.json(
       { error: "Solo un admin puede subir el logo." },
       { status: 403 },
@@ -52,12 +58,11 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const supabase = createServerSupabaseClient();
-  const context = await getCommunityContextForEmail(sessionUser.email);
+  const supabase = auth.supabase;
   const arrayBuffer = await file.arrayBuffer();
   const pathPrefix = context
     ? `communities/${context.community.id}`
-    : `onboarding/${sessionUser.email.replace(/[^a-zA-Z0-9._-]/g, "-")}`;
+    : `onboarding/${auth.user.id}`;
   const path = `${pathPrefix}/${Date.now()}-${sanitizeFilename(file.name)}`;
 
   const { error } = await supabase.storage

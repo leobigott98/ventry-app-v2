@@ -2,8 +2,7 @@ import Link from "next/link";
 
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import type { AccessLogEvent } from "@/lib/domain/access-log";
-import { formatAppDateTime } from "@/lib/formatting";
+import type { AccessLogEvent } from "@/lib/domain/access-log-utils";
 import {
   formatUnitLabel,
   getAccessEventDirectionLabel,
@@ -11,23 +10,14 @@ import {
   getAccessEventStatusLabel,
   getAccessEventStatusVariant,
   getAccessEventTypeLabel,
-} from "@/lib/domain/access-log";
+} from "@/lib/domain/access-log-utils";
+import { formatAppDateTime } from "@/lib/formatting";
 
 type AccessEventCardProps = {
   event: AccessLogEvent;
   showEventLink?: boolean;
   showInvitationLink?: boolean;
 };
-
-function formatTimestamp(value: string) {
-  return new Date(value).toLocaleString("es-VE", {
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    month: "short",
-    year: "numeric",
-  });
-}
 
 export function AccessEventCard({
   event,
@@ -39,7 +29,15 @@ export function AccessEventCard({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
           <div className="text-base font-semibold text-foreground">{event.event_label}</div>
-          <div className="text-sm text-muted-foreground">{formatTimestamp(event.created_at)}</div>
+          <div className="text-sm text-muted-foreground">
+            {formatAppDateTime(event.created_at, {
+              day: "2-digit",
+              hour: "2-digit",
+              minute: "2-digit",
+              month: "short",
+              year: "numeric",
+            })}
+          </div>
         </div>
         <div className="flex flex-wrap gap-2">
           <Badge variant={getAccessEventStatusVariant(event.event_status)}>

@@ -1,25 +1,26 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
-import { AUTH_COOKIE_NAME } from "@/lib/auth/session";
+import {
+  copyResponseCookies,
+  refreshSupabaseSession,
+} from "@/lib/supabase/middleware";
 
-const authRoutes = ["/login", "/signup", "/forgot-password"];
-
-export function middleware(request: NextRequest) {
+export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  const hasSession = Boolean(request.cookies.get(AUTH_COOKIE_NAME)?.value);
+  const { response, user } = await refreshSupabaseSession(request);
+  response.cookies.set("ventry_session", "", {
+    path: "/",
+    maxAge: 0,
+  });
 
-  if (pathname.startsWith("/app") && !hasSession) {
+  if (pathname.startsWith("/app") && !user) {
     const loginUrl = new URL("/login", request.url);
     loginUrl.searchParams.set("redirectTo", `${pathname}${request.nextUrl.search}`);
-    return NextResponse.redirect(loginUrl);
+    return copyResponseCookies(response, NextResponse.redirect(loginUrl));
   }
 
-  if ([...authRoutes, "/reset-password"].includes(pathname) && hasSession) {
-    return NextResponse.redirect(new URL("/app", request.url));
-  }
-
-  return NextResponse.next();
+  return response;
 }
 
 export const config = {

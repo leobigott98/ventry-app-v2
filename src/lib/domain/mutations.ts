@@ -23,15 +23,6 @@ function createShareToken() {
   return crypto.randomUUID().replace(/-/g, "");
 }
 
-function buildDefaultUnits(count: number, communityId: string) {
-  return Array.from({ length: count }, (_, index) => ({
-    community_id: communityId,
-    identifier: String(index + 1).padStart(3, "0"),
-    building: null,
-    is_active: true,
-  }));
-}
-
 function getEventSourceFromRegistrationSource(
   registrationSource: "invitation" | "event" | "unannounced" | "vehicle_manual" | null | undefined,
 ) {
@@ -75,7 +66,7 @@ async function logAccessEvent(args: {
   details: Record<string, unknown>;
   createdByEmail: string;
 }) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { error } = await supabase.from("access_events").insert({
     community_id: args.communityId,
     invitation_id: args.invitationId ?? null,
@@ -104,70 +95,32 @@ async function logAccessEvent(args: {
 
 export async function createCommunityOnboarding(
   input: OnboardingInput,
-  sessionUser: {
-    email: string;
-    fullName: string;
-    authUserId: string | null;
-  },
 ) {
-  const supabase = createServerSupabaseClient();
-
-  const { data: community, error: communityError } = await supabase
-    .from("communities")
-    .insert({
-      name: input.name,
-      address: input.address,
-      location_label: input.locationLabel,
-      planned_unit_count: input.plannedUnitCount,
-      access_policy_mode: input.accessPolicyMode,
-      access_policy_notes: input.accessPolicyNotes,
-      gate_operation_mode: input.gateOperationMode,
-      gate_operation_notes: input.gateOperationNotes,
-      admin_contact_name: input.adminContactName,
-      admin_contact_phone: input.adminContactPhone,
-      admin_contact_email: input.adminContactEmail,
-      logo_url: input.logoUrl,
-      created_by_email: sessionUser.email,
-      onboarding_completed_at: new Date().toISOString(),
-    })
-    .select("*")
-    .single();
-
-  if (communityError || !community) {
-    throw new Error(communityError?.message || "No fue posible crear la comunidad.");
-  }
-
-  const { error: membershipError } = await supabase.from("community_memberships").insert({
-    community_id: community.id,
-    email: sessionUser.email,
-    full_name: sessionUser.fullName,
-    phone: input.adminContactPhone,
-    role: "admin",
-    auth_user_id: sessionUser.authUserId,
-    resident_id: null,
-    is_primary: true,
-    is_active: true,
-    notes: "Administrador principal creado desde onboarding.",
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase.rpc("create_community_onboarding", {
+    p_name: input.name,
+    p_address: input.address,
+    p_location_label: input.locationLabel,
+    p_planned_unit_count: input.plannedUnitCount,
+    p_access_policy_mode: input.accessPolicyMode,
+    p_access_policy_notes: input.accessPolicyNotes,
+    p_gate_operation_mode: input.gateOperationMode,
+    p_gate_operation_notes: input.gateOperationNotes,
+    p_admin_contact_name: input.adminContactName,
+    p_admin_contact_phone: input.adminContactPhone,
+    p_admin_contact_email: input.adminContactEmail,
+    p_logo_url: input.logoUrl,
   });
 
-  if (membershipError) {
-    await supabase.from("communities").delete().eq("id", community.id);
-    throw new Error(membershipError.message);
+  if (error || !data) {
+    throw new Error(error?.message || "No fue posible crear la comunidad.");
   }
 
-  const defaultUnits = buildDefaultUnits(input.plannedUnitCount, community.id);
-  const { error: unitsError } = await supabase.from("units").insert(defaultUnits);
-
-  if (unitsError) {
-    await supabase.from("communities").delete().eq("id", community.id);
-    throw new Error(unitsError.message);
-  }
-
-  return community;
+  return data;
 }
 
 export async function updateCommunityProfile(communityId: string, input: CommunityProfileInput) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   const payload = {
     name: input.name,
@@ -198,7 +151,7 @@ export async function updateCommunityProfile(communityId: string, input: Communi
 }
 
 export async function createUnit(communityId: string, input: UnitInput) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   const { data, error } = await supabase
     .from("units")
@@ -219,7 +172,7 @@ export async function createUnit(communityId: string, input: UnitInput) {
 }
 
 export async function updateUnit(communityId: string, unitId: string, input: UnitInput) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   const { data, error } = await supabase
     .from("units")
@@ -241,7 +194,7 @@ export async function updateUnit(communityId: string, unitId: string, input: Uni
 }
 
 export async function createResident(communityId: string, input: ResidentInput) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   const { data, error } = await supabase
     .from("residents")
@@ -266,7 +219,7 @@ export async function createResident(communityId: string, input: ResidentInput) 
 }
 
 export async function updateResident(communityId: string, residentId: string, input: ResidentInput) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   const { data, error } = await supabase
     .from("residents")
@@ -292,7 +245,7 @@ export async function updateResident(communityId: string, residentId: string, in
 }
 
 export async function createInvitation(communityId: string, input: CreateInvitationInput) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   const { data: resident, error: residentError } = await supabase
     .from("residents")
@@ -377,7 +330,7 @@ export async function createInvitation(communityId: string, input: CreateInvitat
   return invitation;
 }
 export async function revokeInvitation(communityId: string, invitationId: string) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   const { data: invitation, error } = await supabase
     .from("invitations")
@@ -415,7 +368,7 @@ export async function updateInvitationWindow(
   input: UpdateInvitationWindowInput,
   residentId?: string | null,
 ) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const invitation = await getInvitationById(communityId, invitationId, residentId);
 
   if (!invitation) {
@@ -477,7 +430,7 @@ export async function updateInvitationWindow(
   return data;
 }
 export async function logInvitationShare(invitationId: string, channel: "whatsapp" | "native") {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   const { error } = await supabase.from("invitation_events").insert({
     invitation_id: invitationId,
@@ -499,24 +452,24 @@ export async function logCredentialValidationAttempt(args: {
   visitorName?: string | null;
   accessType?: "visitor" | "delivery" | "service_provider" | "frequent_visitor" | null;
   credentialType: "pin" | "qr";
-  credentialValue: string;
   matched: boolean;
   createdByEmail: string;
   status?: string;
 }) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const duplicateSince = new Date(Date.now() - 3000).toISOString();
-  const { data: duplicate, error: duplicateError } = await supabase
+  let duplicateQuery = supabase
     .from("access_events")
     .select("id")
     .eq("community_id", args.communityId)
     .eq("created_by_email", args.createdByEmail)
     .eq("access_event_type", args.matched ? "validation_success" : "validation_failed")
     .eq("details->>credentialType", args.credentialType)
-    .eq("details->>credentialValue", args.credentialValue)
-    .gte("created_at", duplicateSince)
-    .limit(1)
-    .maybeSingle();
+    .gte("created_at", duplicateSince);
+  duplicateQuery = args.invitationId
+    ? duplicateQuery.eq("invitation_id", args.invitationId)
+    : duplicateQuery.is("invitation_id", null);
+  const { data: duplicate, error: duplicateError } = await duplicateQuery.limit(1).maybeSingle();
 
   if (duplicateError) {
     throw new Error(duplicateError.message);
@@ -541,7 +494,6 @@ export async function logCredentialValidationAttempt(args: {
     notes: args.status ? `Estado de la invitacion: ${args.status}` : null,
     details: {
       credentialType: args.credentialType,
-      credentialValue: args.credentialValue,
       status: args.status ?? null,
     },
     createdByEmail: args.createdByEmail,
@@ -550,9 +502,8 @@ export async function logCredentialValidationAttempt(args: {
 export async function registerInvitationEntry(args: {
   communityId: string;
   invitationId: string;
-  createdByEmail: string;
 }) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const invitation = await getInvitationById(args.communityId, args.invitationId);
 
   if (!invitation) {
@@ -564,71 +515,18 @@ export async function registerInvitationEntry(args: {
     throw new Error(`La invitacion esta ${effectiveStatus}.`);
   }
 
-  const { data: entry, error: entryError } = await supabase
-    .from("visitor_entries")
-    .insert({
-      community_id: args.communityId,
-      invitation_id: invitation.id,
-      resident_id: invitation.resident_id,
-      unit_id: invitation.unit_id,
-      visitor_name: invitation.visitor_name || "Visitante sin nombre",
-      access_type: invitation.access_type,
-      registration_source: "invitation",
-      notes: invitation.notes,
-      created_by_email: args.createdByEmail,
-    })
-    .select("*")
-    .single();
-
-  if (entryError || !entry) {
-    throw new Error(entryError?.message || "No fue posible registrar la entrada.");
-  }
-
-  const { error: invitationUpdateError } = await supabase
-    .from("invitations")
-    .update({ status: "used" })
-    .eq("id", invitation.id);
-
-  if (invitationUpdateError) {
-    throw new Error(invitationUpdateError.message);
-  }
-
-  const { error: invitationEventError } = await supabase.from("invitation_events").insert({
-    invitation_id: invitation.id,
-    event_type: "status_changed",
-    event_label: "Invitacion usada en garita",
-    payload: {
-      status: "used",
-      visitorEntryId: entry.id,
-    },
+  const { data: entryId, error } = await supabase.rpc("register_invitation_entry", {
+    p_community_id: args.communityId,
+    p_invitation_id: invitation.id,
   });
 
-  if (invitationEventError) {
-    throw new Error(invitationEventError.message);
+  if (error || !entryId) {
+    throw new Error(error?.message || "No fue posible registrar la entrada.");
   }
 
-  await logAccessEvent({
-    communityId: args.communityId,
-    invitationId: invitation.id,
-    visitorEntryId: entry.id,
-    residentId: invitation.resident_id,
-    unitId: invitation.unit_id,
-    visitorName: entry.visitor_name,
-    accessType: invitation.access_type,
-    accessEventType: "entry_registered",
-    eventStatus: "entered",
-    eventDirection: "entry",
-    eventSource: "invitation",
-    eventLabel: "Entrada registrada",
-    notes: invitation.notes,
-    details: {
-      source: "invitation",
-      visitorName: entry.visitor_name,
-    },
-    createdByEmail: args.createdByEmail,
-  });
-
-  return (await getVisitorEntryById(args.communityId, entry.id)) ?? entry;
+  const entry = await getVisitorEntryById(args.communityId, entryId);
+  if (!entry) throw new Error("La entrada se registro, pero no pudo recuperarse.");
+  return entry;
 }
 
 export async function registerEntryExit(args: {
@@ -636,7 +534,7 @@ export async function registerEntryExit(args: {
   entryId: string;
   createdByEmail: string;
 }) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data: entry, error } = await supabase
     .from("visitor_entries")
     .update({
@@ -701,7 +599,7 @@ export async function registerUnannouncedVisitor(args: {
   input: UnannouncedVisitorInput;
   createdByEmail: string;
 }) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   let unitId: string | null = null;
   if (args.input.residentId) {
@@ -761,7 +659,7 @@ export async function registerManualVehicleEntry(args: {
   input: ManualVehicleEntryInput;
   createdByEmail: string;
 }) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   let unitId: string | null = null;
   if (args.input.residentId) {

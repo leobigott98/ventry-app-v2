@@ -20,7 +20,6 @@ export async function findAccessByCredential(
 export async function logAccessCredentialAttempt(args: {
   communityId: string;
   credentialType: "pin" | "qr";
-  credentialValue: string;
   match: Awaited<ReturnType<typeof findAccessByCredential>>;
   createdByEmail: string;
 }) {
@@ -33,7 +32,6 @@ export async function logAccessCredentialAttempt(args: {
       visitorName: args.match?.invitation.visitor_name ?? null,
       accessType: args.match?.invitation.access_type ?? null,
       credentialType: args.credentialType,
-      credentialValue: args.credentialValue,
       matched: Boolean(args.match),
       createdByEmail: args.createdByEmail,
       status: args.match?.invitation.effective_status,
@@ -41,7 +39,7 @@ export async function logAccessCredentialAttempt(args: {
     return;
   }
 
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const status = getEventEffectiveStatus(args.match.event);
   const { error } = await supabase.from("access_events").insert({
     community_id: args.communityId,
@@ -59,7 +57,6 @@ export async function logAccessCredentialAttempt(args: {
     notes: `Estado del evento: ${status}`,
     details: {
       credentialType: args.credentialType,
-      credentialValue: args.credentialValue,
       eventName: args.match.event.name,
       status,
     },

@@ -2,7 +2,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import type { AccessCredentialRecord } from "@/lib/domain/types";
 
 type CredentialCardProps = {
-  credential: AccessCredentialRecord | null;
+  credential: Pick<
+    AccessCredentialRecord,
+    "credential_type" | "credential_value" | "qr_payload"
+  > | null;
   qrImageDataUrl?: string | null;
 };
 

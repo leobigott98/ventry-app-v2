@@ -1,13 +1,8 @@
 import { NextResponse } from "next/server";
 
-import { buildSessionUser } from "@/lib/auth/access";
-import {
-  AUTH_COOKIE_NAME,
-  encodeSession,
-  getSessionCookieOptions,
-} from "@/lib/auth/session";
 import { signupSchema } from "@/lib/schemas/auth";
-import { createSupabaseAdminClient } from "@/lib/supabase/auth";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export async function POST(request: Request) {
   const body = await request.json();
@@ -20,14 +15,18 @@ export async function POST(request: Request) {
     );
   }
 
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase.auth.admin.createUser({
-    email: parsed.data.email.trim().toLowerCase(),
+  const admin = createSupabaseAdminClient();
+  const email = parsed.data.email.trim().toLowerCase();
+  const { data, error } = await admin.auth.admin.createUser({
+    email,
     password: parsed.data.password,
     email_confirm: true,
     user_metadata: {
       full_name: parsed.data.fullName,
-      role: "admin",
+      pending_community_name: parsed.data.communityName,
+    },
+    app_metadata: {
+      can_create_community: true,
     },
   });
 
@@ -43,21 +42,19 @@ export async function POST(request: Request) {
     );
   }
 
-  const response = NextResponse.json({ ok: true, redirectTo: "/app/onboarding" });
-  response.cookies.set(
-    AUTH_COOKIE_NAME,
-    encodeSession(
-      buildSessionUser({
-        email: data.user.email ?? parsed.data.email,
-        fullName: parsed.data.fullName,
-        role: "admin",
-        authUserId: data.user.id,
-        residentId: null,
-        pendingCommunityName: parsed.data.communityName,
-      }),
-    ),
-    getSessionCookieOptions(),
-  );
+  const supabase = await createServerSupabaseClient();
+  const { error: signInError } = await supabase.auth.signInWithPassword({
+    email,
+    password: parsed.data.password,
+  });
 
-  return response;
+  if (signInError) {
+    await admin.auth.admin.deleteUser(data.user.id);
+    return NextResponse.json(
+      { error: "La cuenta no pudo iniciar una sesion segura." },
+      { status: 500 },
+    );
+  }
+
+  return NextResponse.json({ ok: true, redirectTo: "/app/onboarding" });
 }

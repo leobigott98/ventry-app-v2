@@ -1,5 +1,4 @@
 import type {
-  AccessCredentialRecord,
   InvitationRecord,
   ResidentRecord,
   UnitRecord,
@@ -15,7 +14,6 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 type InvitationLookupRecord = InvitationRecord & {
   residents: Pick<ResidentRecord, "id" | "full_name" | "phone" | "whatsapp_phone"> | null;
   units: Pick<UnitRecord, "id" | "identifier" | "building"> | null;
-  access_credentials: AccessCredentialRecord[] | AccessCredentialRecord | null;
 };
 
 type OpenEntryRecord = VisitorEntryRecord & {
@@ -23,23 +21,11 @@ type OpenEntryRecord = VisitorEntryRecord & {
   units: Pick<UnitRecord, "id" | "identifier" | "building"> | null;
 };
 
-function normalizeCredential(
-  value: AccessCredentialRecord[] | AccessCredentialRecord | null | undefined,
-) {
-  if (Array.isArray(value)) {
-    return value[0] ?? null;
-  }
-
-  return value ?? null;
-}
-
 export async function getRecentGuardInvitations(communityId: string) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("invitations")
-    .select(
-      "*, residents(id, full_name, phone, whatsapp_phone), units(id, identifier, building), access_credentials(*)",
-    )
+    .select("*, residents(id, full_name, phone, whatsapp_phone), units(id, identifier, building)")
     .eq("community_id", communityId)
     .order("created_at", { ascending: false })
     .limit(8);
@@ -48,14 +34,11 @@ export async function getRecentGuardInvitations(communityId: string) {
     throw new Error(error.message);
   }
 
-  return ((data ?? []) as InvitationLookupRecord[]).map((invitation) => ({
-    ...invitation,
-    access_credentials: normalizeCredential(invitation.access_credentials),
-  }));
+  return (data ?? []) as InvitationLookupRecord[];
 }
 
 export async function searchInvitationsForGuard(communityId: string, query: string) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const normalizedQuery = query.replace(/[(),]/g, " ").trim().replace(/\s+/g, " ");
 
   if (!normalizedQuery) {
@@ -84,9 +67,7 @@ export async function searchInvitationsForGuard(communityId: string, query: stri
 
   const { data, error } = await supabase
     .from("invitations")
-    .select(
-      "*, residents(id, full_name, phone, whatsapp_phone), units(id, identifier, building), access_credentials(*)",
-    )
+    .select("*, residents(id, full_name, phone, whatsapp_phone), units(id, identifier, building)")
     .eq("community_id", communityId)
     .or(filters.join(","))
     .order("visit_date", { ascending: false })
@@ -98,7 +79,6 @@ export async function searchInvitationsForGuard(communityId: string, query: stri
 
   return ((data ?? []) as InvitationLookupRecord[]).map((invitation) => ({
     ...invitation,
-    access_credentials: normalizeCredential(invitation.access_credentials),
     effective_status: getInvitationEffectiveStatus(invitation),
     status_label: getInvitationStatusLabel(getInvitationEffectiveStatus(invitation)),
   }));
@@ -109,44 +89,43 @@ export async function searchInvitationsByCredential(
   credentialType: "pin" | "qr",
   credentialValue: string,
 ) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const cleanedValue = credentialValue.trim();
 
-  const credentialFilter =
-    credentialType === "pin"
-      ? `credential_value.eq.${cleanedValue}`
-      : `qr_payload.eq.${cleanedValue},credential_value.eq.${cleanedValue}`;
+  const { data: invitationId, error: matchError } = await supabase.rpc(
+    "match_invitation_credential",
+    {
+      p_community_id: communityId,
+      p_credential_type: credentialType,
+      p_credential_value: cleanedValue,
+    },
+  );
 
-  const { data, error } = await supabase
-    .from("access_credentials")
-    .select(
-      "*, invitations!inner(*, residents(id, full_name, phone, whatsapp_phone), units(id, identifier, building))",
-    )
-    .eq("credential_type", credentialType)
-    .or(credentialFilter)
-    .eq("invitations.community_id", communityId)
-    .limit(1)
-    .maybeSingle();
-
-  if (error) {
-    throw new Error(error.message);
+  if (matchError) {
+    throw new Error(matchError.message);
   }
 
-  if (!data) {
+  if (!invitationId) {
     return null;
   }
 
-  const credentialRow = data as AccessCredentialRecord & {
-    invitations: InvitationLookupRecord;
-  };
-  const invitation = credentialRow.invitations;
+  const { data, error } = await supabase
+    .from("invitations")
+    .select("*, residents(id, full_name, phone, whatsapp_phone), units(id, identifier, building)")
+    .eq("community_id", communityId)
+    .eq("id", invitationId)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+
+  const invitation = data as InvitationLookupRecord;
 
   const openEntry = await getOpenEntryForInvitation(communityId, invitation.id);
 
   return {
     invitation: {
       ...invitation,
-      access_credentials: normalizeCredential(credentialRow),
       effective_status: getInvitationEffectiveStatus(invitation),
       status_label: getInvitationStatusLabel(getInvitationEffectiveStatus(invitation)),
     },
@@ -155,7 +134,7 @@ export async function searchInvitationsByCredential(
 }
 
 export async function getVisitorEntryById(communityId: string, entryId: string) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("visitor_entries")
     .select("*, residents(id, full_name, phone, whatsapp_phone), units(id, identifier, building)")
@@ -171,7 +150,7 @@ export async function getVisitorEntryById(communityId: string, entryId: string) 
 }
 
 export async function getOpenEntryForInvitation(communityId: string, invitationId: string) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("visitor_entries")
     .select("*, residents(id, full_name, phone, whatsapp_phone), units(id, identifier, building)")
@@ -190,7 +169,7 @@ export async function getOpenEntryForInvitation(communityId: string, invitationI
 }
 
 export async function getOpenEntriesForCommunity(communityId: string) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("visitor_entries")
     .select("*, residents(id, full_name, phone, whatsapp_phone), units(id, identifier, building)")

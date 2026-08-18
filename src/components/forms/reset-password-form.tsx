@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -23,30 +23,15 @@ export function ResetPasswordForm() {
 
   const {
     register,
-    setValue,
     handleSubmit,
     formState: { errors },
   } = useForm<ResetPasswordInput>({
     resolver: zodResolver(resetPasswordSchema),
     defaultValues: {
-      accessToken: "",
-      refreshToken: "",
       password: "",
       confirmPassword: "",
     },
   });
-
-  useEffect(() => {
-    const hash = window.location.hash.replace(/^#/, "");
-    const params = new URLSearchParams(hash);
-
-    setValue("accessToken", params.get("access_token") ?? "", {
-      shouldValidate: false,
-    });
-    setValue("refreshToken", params.get("refresh_token") ?? "", {
-      shouldValidate: false,
-    });
-  }, [setValue]);
 
   const onSubmit = handleSubmit(async (values) => {
     setServerError(null);
@@ -76,8 +61,6 @@ export function ResetPasswordForm() {
 
   return (
     <form className="space-y-5" onSubmit={onSubmit}>
-      <input type="hidden" {...register("accessToken")} />
-      <input type="hidden" {...register("refreshToken")} />
       <div className="space-y-2">
         <Label htmlFor="password">Nueva contrasena</Label>
         <Input id="password" type="password" placeholder="Crea una contrasena" {...register("password")} />

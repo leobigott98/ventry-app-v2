@@ -19,15 +19,15 @@ export function buildSessionUser(args: {
   } satisfies SessionUser;
 }
 
-export function mergeSessionWithMembership(
-  sessionUser: SessionUser,
+export function buildSessionUserFromMembership(
   membership: MembershipRecord,
+  authUserId: string,
 ) {
   return buildSessionUser({
     email: membership.email,
     fullName: membership.full_name,
     role: membership.role,
-    authUserId: membership.auth_user_id ?? sessionUser.authUserId,
+    authUserId,
     residentId: membership.resident_id,
   });
 }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { forgotPasswordSchema } from "@/lib/schemas/auth";
-import { createSupabaseAuthClient } from "@/lib/supabase/auth";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
@@ -14,10 +14,11 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const supabase = createSupabaseAuthClient();
-  const resetUrl = new URL("/reset-password", request.url).toString();
+  const supabase = await createServerSupabaseClient();
+  const resetUrl = new URL("/auth/callback", request.url);
+  resetUrl.searchParams.set("next", "/reset-password");
   const { error } = await supabase.auth.resetPasswordForEmail(parsed.data.email, {
-    redirectTo: resetUrl,
+    redirectTo: resetUrl.toString(),
   });
 
   if (error) {

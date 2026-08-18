@@ -18,8 +18,6 @@ export const forgotPasswordSchema = z.object({
 
 export const resetPasswordSchema = z
   .object({
-    accessToken: z.string().min(1, "El enlace de recuperacion es invalido."),
-    refreshToken: z.string().min(1, "El enlace de recuperacion es invalido."),
     password: z.string().min(8, "La contrasena debe tener al menos 8 caracteres."),
     confirmPassword: z.string().min(8, "Confirma la contrasena."),
   })

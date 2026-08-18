@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { resetPasswordSchema } from "@/lib/schemas/auth";
-import { createSupabaseAuthClient } from "@/lib/supabase/auth";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export async function POST(request: NextRequest) {
   const body = await request.json();
@@ -14,13 +14,12 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const supabase = createSupabaseAuthClient();
-  const { data: sessionData } = await supabase.auth.setSession({
-    access_token: parsed.data.accessToken,
-    refresh_token: parsed.data.refreshToken,
-  });
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  if (!sessionData.session) {
+  if (!user) {
     return NextResponse.json(
       { error: "El enlace de recuperacion ya no es valido." },
       { status: 400 },

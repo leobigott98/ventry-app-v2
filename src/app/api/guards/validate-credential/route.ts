@@ -25,7 +25,6 @@ export async function POST(request: NextRequest) {
     await logAccessCredentialAttempt({
       communityId: auth.context.community.id,
       credentialType: parsed.data.credentialType,
-      credentialValue: parsed.data.credentialValue,
       match,
       createdByEmail: auth.sessionUser.email,
     });

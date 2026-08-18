@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   getInvitationEffectiveStatus,
   getInvitationWindowLabel,
-} from "@/lib/domain/invitations";
+} from "@/lib/domain/invitation-utils";
 
 describe("getInvitationEffectiveStatus", () => {
   afterEach(() => {
@@ -54,6 +54,20 @@ describe("getInvitationEffectiveStatus", () => {
         window_start: "09:00",
         window_end: "10:00",
         no_time_limit: true,
+      }),
+    ).toBe("active");
+  });
+
+  it("interpreta la ventana en America/Caracas aunque el runtime use otra zona", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-17T13:30:00.000Z"));
+
+    expect(
+      getInvitationEffectiveStatus({
+        status: "active",
+        visit_date: "2026-08-17",
+        window_start: "09:00",
+        window_end: "10:00",
       }),
     ).toBe("active");
   });

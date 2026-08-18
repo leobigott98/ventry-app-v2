@@ -7,7 +7,10 @@ export function EventCredentialCard({
   credential,
   qrImageDataUrl,
 }: {
-  credential: EventCredentialRecord | null;
+  credential: Pick<
+    EventCredentialRecord,
+    "credential_type" | "credential_value" | "qr_payload"
+  > | null;
   qrImageDataUrl?: string | null;
 }) {
   if (!credential) return null;

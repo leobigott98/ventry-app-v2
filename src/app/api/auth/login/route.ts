@@ -1,15 +1,12 @@
 import { NextResponse } from "next/server";
 
-import { buildSessionUser, getDefaultAppRouteForRole } from "@/lib/auth/access";
+import { getDefaultAppRouteForRole } from "@/lib/auth/access";
 import {
-  AUTH_COOKIE_NAME,
-  encodeSession,
-  getSessionCookieOptions,
-} from "@/lib/auth/session";
-import { linkMembershipAuthUser } from "@/lib/domain/access";
-import { getCommunityContextForEmail } from "@/lib/domain/community";
+  getCommunityContextForUserIdWithClient,
+  getMembershipForUserIdWithClient,
+} from "@/lib/domain/community";
 import { loginSchema } from "@/lib/schemas/auth";
-import { createSupabaseAuthClient } from "@/lib/supabase/auth";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 export async function POST(request: Request) {
   const body = await request.json();
@@ -24,7 +21,7 @@ export async function POST(request: Request) {
 
   const email = parsed.data.email.trim().toLowerCase();
 
-  const supabase = createSupabaseAuthClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase.auth.signInWithPassword({
     email,
     password: parsed.data.password,
@@ -37,46 +34,34 @@ export async function POST(request: Request) {
     );
   }
 
-  const context = await getCommunityContextForEmail(email);
-  const metadata = data.user.user_metadata as {
-    full_name?: string;
-    role?: "resident" | "guard" | "admin";
-  } | null;
+  const { error: claimError } = await supabase.rpc("claim_current_user_memberships");
+  if (claimError) {
+    await supabase.auth.signOut();
+    return NextResponse.json(
+      { error: "No fue posible validar la membresia del usuario." },
+      { status: 500 },
+    );
+  }
 
-  let sessionUser;
+  const membership = await getMembershipForUserIdWithClient(data.user.id, supabase);
+  const context = membership?.is_active
+    ? await getCommunityContextForUserIdWithClient(data.user.id, supabase)
+    : null;
 
-  if (context) {
-    if (!context.membership.is_active) {
-      return NextResponse.json(
-        { error: "Tu acceso esta inactivo. Contacta a la administracion." },
-        { status: 403 },
-      );
-    }
+  if (membership && !membership.is_active) {
+    await supabase.auth.signOut();
+    return NextResponse.json(
+      { error: "Tu acceso esta inactivo. Contacta a la administracion." },
+      { status: 403 },
+    );
+  }
 
-    sessionUser = buildSessionUser({
-      email: context.membership.email,
-      fullName: context.membership.full_name,
-      role: context.membership.role,
-      authUserId: data.user.id,
-      residentId: context.membership.resident_id,
-    });
+  if (!context && data.user.app_metadata.can_create_community === true) {
+    return NextResponse.json({ ok: true, redirectTo: "/app/onboarding" });
+  }
 
-    if (!context.membership.auth_user_id) {
-      await linkMembershipAuthUser({
-        communityId: context.community.id,
-        email: context.membership.email,
-        authUserId: data.user.id,
-      });
-    }
-  } else if (metadata?.role === "admin") {
-    sessionUser = buildSessionUser({
-      email: data.user.email ?? email,
-      fullName: metadata.full_name ?? email.split("@")[0],
-      role: "admin",
-      authUserId: data.user.id,
-      residentId: null,
-    });
-  } else {
+  if (!context) {
+    await supabase.auth.signOut();
     return NextResponse.json(
       {
         error:
@@ -86,15 +71,8 @@ export async function POST(request: Request) {
     );
   }
 
-  const response = NextResponse.json({
+  return NextResponse.json({
     ok: true,
-    redirectTo: context ? getDefaultAppRouteForRole(sessionUser.role) : "/app/onboarding",
+    redirectTo: getDefaultAppRouteForRole(context.membership.role),
   });
-  response.cookies.set(
-    AUTH_COOKIE_NAME,
-    encodeSession(sessionUser),
-    getSessionCookieOptions(),
-  );
-
-  return response;
 }

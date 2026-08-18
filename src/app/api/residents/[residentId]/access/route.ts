@@ -23,7 +23,7 @@ export async function POST(
 
   try {
     const { residentId } = await params;
-    const membership = await provisionResidentAccess({
+    const result = await provisionResidentAccess({
       communityId: auth.context.community.id,
       residentId,
       input: parsed.data,
@@ -31,8 +31,10 @@ export async function POST(
 
     return NextResponse.json({
       ok: true,
-      membership,
-      message: "Acceso del residente habilitado.",
+      membership: result.membership,
+      message: result.retainedExistingPassword
+        ? "Acceso habilitado. El correo ya tenia una cuenta y conserva su contrasena actual."
+        : "Acceso del residente habilitado.",
     });
   } catch (error) {
     return NextResponse.json(

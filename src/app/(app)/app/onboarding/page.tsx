@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 import { OnboardingForm } from "@/components/forms/onboarding-form";
 import { SectionShell } from "@/components/layout/section-shell";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { getCommunityContextForEmail } from "@/lib/domain/community";
+import { getCommunityContextForUserId } from "@/lib/domain/community";
 import { getSessionUserOrRedirect } from "@/lib/domain/session-context";
 
 export default async function OnboardingPage() {
@@ -13,7 +13,9 @@ export default async function OnboardingPage() {
     redirect("/app");
   }
 
-  const existingCommunity = await getCommunityContextForEmail(sessionUser.email);
+  const existingCommunity = sessionUser.authUserId
+    ? await getCommunityContextForUserId(sessionUser.authUserId)
+    : null;
 
   if (existingCommunity) {
     redirect("/app/dashboard");

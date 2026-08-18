@@ -1,23 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getRequestSessionUser } from "@/lib/auth/request";
-import { getCommunityContextForEmail } from "@/lib/domain/community";
+import { requireApiAuthenticatedUser } from "@/lib/auth/api";
+import { getMembershipForUserId } from "@/lib/domain/community";
 import { createCommunityOnboarding } from "@/lib/domain/mutations";
 import { onboardingSchema } from "@/lib/schemas/community";
 
 export async function POST(request: NextRequest) {
-  const sessionUser = getRequestSessionUser(request);
+  const auth = await requireApiAuthenticatedUser();
+  if ("response" in auth) return auth.response;
 
-  if (!sessionUser) {
-    return NextResponse.json({ error: "Sesion invalida." }, { status: 401 });
-  }
-
-  if (sessionUser.role !== "admin") {
+  if (auth.user.app_metadata.can_create_community !== true) {
     return NextResponse.json({ error: "Solo un admin puede crear una comunidad." }, { status: 403 });
   }
 
-  const existingCommunity = await getCommunityContextForEmail(sessionUser.email);
-  if (existingCommunity) {
+  const existingMembership = await getMembershipForUserId(auth.user.id);
+  if (existingMembership) {
     return NextResponse.json(
       { error: "Tu usuario ya tiene una comunidad configurada." },
       { status: 409 },
@@ -33,7 +30,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    await createCommunityOnboarding(parsed.data, sessionUser);
+    await createCommunityOnboarding(parsed.data);
     return NextResponse.json({ ok: true, redirectTo: "/app/dashboard" });
   } catch (error) {
     return NextResponse.json(

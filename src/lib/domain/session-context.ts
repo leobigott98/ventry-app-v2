@@ -1,53 +1,86 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { mergeSessionWithMembership } from "@/lib/auth/access";
-import { getSessionUser } from "@/lib/auth/session";
+import {
+  buildSessionUser,
+  buildSessionUserFromMembership,
+} from "@/lib/auth/access";
 import type { CommunityRole } from "@/lib/domain/types";
-import { getCommunityContextForEmail } from "@/lib/domain/community";
+import {
+  getCommunityContextForUserId,
+  getMembershipForUserId,
+} from "@/lib/domain/community";
 import { getDefaultAppRouteForRole, hasRequiredRole } from "@/lib/auth/access";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 
-export async function getSessionUserOrRedirect() {
-  const cookieStore = await cookies();
-  const sessionUser = getSessionUser(cookieStore);
-
-  if (!sessionUser) {
-    redirect("/login");
+function getOnboardingUser(user: {
+  id: string;
+  email?: string;
+  app_metadata: Record<string, unknown>;
+  user_metadata: Record<string, unknown>;
+}) {
+  if (!user.email || user.app_metadata.can_create_community !== true) {
+    return null;
   }
 
-  return sessionUser;
+  return buildSessionUser({
+    email: user.email,
+    fullName:
+      typeof user.user_metadata.full_name === "string"
+        ? user.user_metadata.full_name
+        : user.email.split("@")[0],
+    role: "admin",
+    authUserId: user.id,
+    residentId: null,
+    pendingCommunityName:
+      typeof user.user_metadata.pending_community_name === "string"
+        ? user.user_metadata.pending_community_name
+        : null,
+  });
+}
+
+export async function getAuthenticatedUserOrRedirect() {
+  const supabase = await createServerSupabaseClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) redirect("/login");
+  return user;
+}
+
+export async function getSessionUserOrRedirect() {
+  const user = await getAuthenticatedUserOrRedirect();
+  const membership = await getMembershipForUserId(user.id);
+  if (membership && !membership.is_active) redirect("/login");
+  const context = membership ? await getCommunityContextForUserId(user.id) : null;
+
+  if (context?.membership.is_active) {
+    return buildSessionUserFromMembership(context.membership, user.id);
+  }
+
+  const onboardingUser = getOnboardingUser(user);
+  if (!context && onboardingUser) return onboardingUser;
+  redirect("/login");
 }
 
 export async function getCurrentAppUserOrRedirect() {
-  const sessionUser = await getSessionUserOrRedirect();
-  const context = await getCommunityContextForEmail(sessionUser.email);
-
-  if (!context) {
-    return sessionUser;
-  }
-
-  return mergeSessionWithMembership(sessionUser, context.membership);
+  return getSessionUserOrRedirect();
 }
 
 export async function getCommunityContextOrRedirect(options?: {
   allowedRoles?: CommunityRole[];
 }) {
-  const sessionUser = await getSessionUserOrRedirect();
-  const context = await getCommunityContextForEmail(sessionUser.email);
+  const user = await getAuthenticatedUserOrRedirect();
+  const membership = await getMembershipForUserId(user.id);
+  if (membership && !membership.is_active) redirect("/login");
+  const context = membership ? await getCommunityContextForUserId(user.id) : null;
 
   if (!context) {
-    if (sessionUser.role === "admin") {
-      redirect("/app/onboarding");
-    }
-
+    if (getOnboardingUser(user)) redirect("/app/onboarding");
     redirect("/login");
   }
 
-  if (!context.membership.is_active) {
-    redirect("/login");
-  }
-
-  const currentUser = mergeSessionWithMembership(sessionUser, context.membership);
+  const currentUser = buildSessionUserFromMembership(context.membership, user.id);
 
   if (!hasRequiredRole(currentUser.role, options?.allowedRoles)) {
     redirect(getDefaultAppRouteForRole(currentUser.role));

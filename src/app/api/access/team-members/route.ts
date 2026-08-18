@@ -19,15 +19,17 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const member = await provisionTeamMemberAccess({
+    const result = await provisionTeamMemberAccess({
       communityId: auth.context.community.id,
       input: parsed.data,
     });
 
     return NextResponse.json({
       ok: true,
-      member,
-      message: "Acceso del equipo guardado.",
+      member: result.membership,
+      message: result.retainedExistingPassword
+        ? "Acceso guardado. El correo ya tenia una cuenta y conserva su contrasena actual."
+        : "Acceso del equipo guardado.",
     });
   } catch (error) {
     return NextResponse.json(

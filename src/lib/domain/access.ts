@@ -1,5 +1,8 @@
+import "server-only";
+
 import { createServerSupabaseClient } from "@/lib/supabase/server";
-import { createSupabaseAdminClient } from "@/lib/supabase/auth";
+import { createSupabaseAdminClient } from "@/lib/supabase/admin";
+import { mayRotateProvisionedAuthUser } from "@/lib/domain/access-utils";
 import type { MembershipRecord, ResidentRecord } from "@/lib/domain/types";
 import type {
   ResidentAccessInput,
@@ -12,37 +15,46 @@ function normalizeEmail(email: string) {
 
 async function findAuthUserByEmail(email: string) {
   const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase.auth.admin.listUsers({
-    page: 1,
-    perPage: 1000,
-  });
+  const normalizedEmail = normalizeEmail(email);
 
-  if (error) {
-    throw new Error(error.message);
+  for (let page = 1; ; page += 1) {
+    const { data, error } = await supabase.auth.admin.listUsers({ page, perPage: 1000 });
+    if (error) throw new Error(error.message);
+
+    const match = data.users.find(
+      (user) => normalizeEmail(user.email ?? "") === normalizedEmail,
+    );
+    if (match) return match;
+    if (data.users.length < 1000) return null;
   }
-
-  return (
-    data.users.find((user) => normalizeEmail(user.email ?? "") === normalizeEmail(email)) ?? null
-  );
 }
 
 async function createOrUpdateAuthUser(args: {
   email: string;
   password: string;
   fullName: string;
-  role: MembershipRecord["role"];
+  allowedExistingAuthUserId?: string | null;
 }) {
   const supabase = createSupabaseAdminClient();
   const existingUser = await findAuthUserByEmail(args.email);
 
   if (existingUser) {
+    // An administrator may rotate credentials only for the account already linked
+    // to the membership they administer. Reusing an email from another membership
+    // must never reset that person's password or metadata.
+    if (!mayRotateProvisionedAuthUser(existingUser.id, args.allowedExistingAuthUserId)) {
+      return { user: existingUser, retainedExistingPassword: true };
+    }
+
     const { data, error } = await supabase.auth.admin.updateUserById(existingUser.id, {
       email: normalizeEmail(args.email),
       password: args.password,
       email_confirm: true,
       user_metadata: {
         full_name: args.fullName,
-        role: args.role,
+      },
+      app_metadata: {
+        can_create_community: false,
       },
     });
 
@@ -50,7 +62,7 @@ async function createOrUpdateAuthUser(args: {
       throw new Error(error?.message || "No fue posible actualizar el acceso.");
     }
 
-    return data.user;
+    return { user: data.user, retainedExistingPassword: false };
   }
 
   const { data, error } = await supabase.auth.admin.createUser({
@@ -59,7 +71,9 @@ async function createOrUpdateAuthUser(args: {
     email_confirm: true,
     user_metadata: {
       full_name: args.fullName,
-      role: args.role,
+    },
+    app_metadata: {
+      can_create_community: false,
     },
   });
 
@@ -67,33 +81,15 @@ async function createOrUpdateAuthUser(args: {
     throw new Error(error?.message || "No fue posible crear el acceso.");
   }
 
-  return data.user;
+  return { user: data.user, retainedExistingPassword: false };
 }
 
 function membershipSelect() {
   return "id, community_id, email, full_name, phone, role, resident_id, auth_user_id, is_primary, is_active, notes, created_at, updated_at";
 }
 
-export async function linkMembershipAuthUser(args: {
-  communityId: string;
-  email: string;
-  authUserId: string;
-}) {
-  const supabase = createServerSupabaseClient();
-  const { error } = await supabase
-    .from("community_memberships")
-    .update({ auth_user_id: args.authUserId })
-    .eq("community_id", args.communityId)
-    .eq("email", normalizeEmail(args.email))
-    .is("auth_user_id", null);
-
-  if (error) {
-    throw new Error(error.message);
-  }
-}
-
 export async function getResidentAccessMemberships(communityId: string) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("community_memberships")
     .select(membershipSelect())
@@ -113,25 +109,39 @@ export async function provisionTeamMemberAccess(args: {
   communityId: string;
   input: TeamMemberAccessInput;
 }) {
-  const authUser = await createOrUpdateAuthUser({
-    email: args.input.email,
+  const normalizedEmail = normalizeEmail(args.input.email);
+  const supabase = await createServerSupabaseClient();
+  const { data: existingMembershipData, error: membershipError } = await supabase
+    .from("community_memberships")
+    .select(membershipSelect())
+    .eq("community_id", args.communityId)
+    .eq("email", normalizedEmail)
+    .maybeSingle();
+
+  if (membershipError) throw new Error(membershipError.message);
+  const existingMembership = existingMembershipData as unknown as MembershipRecord | null;
+  if (existingMembership?.role === "resident") {
+    throw new Error("Ese correo ya pertenece a un acceso de residente.");
+  }
+
+  const authProvision = await createOrUpdateAuthUser({
+    email: normalizedEmail,
     password: args.input.password,
     fullName: args.input.fullName,
-    role: args.input.role,
+    allowedExistingAuthUserId: existingMembership?.auth_user_id,
   });
 
-  const supabase = createServerSupabaseClient();
   const { data, error } = await supabase
     .from("community_memberships")
     .upsert(
       {
         community_id: args.communityId,
-        email: normalizeEmail(args.input.email),
+        email: normalizedEmail,
         full_name: args.input.fullName,
         phone: args.input.phone,
         role: args.input.role,
         resident_id: null,
-        auth_user_id: authUser.id,
+        auth_user_id: authProvision.user.id,
         is_primary: false,
         is_active: true,
         notes: args.input.notes,
@@ -145,11 +155,14 @@ export async function provisionTeamMemberAccess(args: {
     throw new Error(error?.message || "No fue posible guardar el miembro del equipo.");
   }
 
-  return data as unknown as MembershipRecord;
+  return {
+    membership: data as unknown as MembershipRecord,
+    retainedExistingPassword: authProvision.retainedExistingPassword,
+  };
 }
 
 export async function getResidentByIdForAccess(communityId: string, residentId: string) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("residents")
     .select("*")
@@ -168,7 +181,7 @@ export async function getResidentAccessMembership(
   communityId: string,
   residentId: string,
 ) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("community_memberships")
     .select(membershipSelect())
@@ -195,14 +208,16 @@ export async function provisionResidentAccess(args: {
     throw new Error("No fue posible encontrar el residente.");
   }
 
-  const authUser = await createOrUpdateAuthUser({
+  const existingMembership = await getResidentAccessMembership(args.communityId, resident.id);
+
+  const authProvision = await createOrUpdateAuthUser({
     email: args.input.email,
     password: args.input.password,
     fullName: resident.full_name,
-    role: "resident",
+    allowedExistingAuthUserId: existingMembership?.auth_user_id,
   });
 
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { error: residentUpdateError } = await supabase
     .from("residents")
     .update({ email: normalizeEmail(args.input.email) })
@@ -213,7 +228,6 @@ export async function provisionResidentAccess(args: {
     throw new Error(residentUpdateError.message);
   }
 
-  const existingMembership = await getResidentAccessMembership(args.communityId, resident.id);
   const membershipPayload = {
     community_id: args.communityId,
     email: normalizeEmail(args.input.email),
@@ -221,7 +235,7 @@ export async function provisionResidentAccess(args: {
     phone: resident.phone,
     role: "resident" as const,
     resident_id: resident.id,
-    auth_user_id: authUser.id,
+    auth_user_id: authProvision.user.id,
     is_primary: false,
     is_active: resident.is_active,
     notes: resident.notes,
@@ -244,11 +258,14 @@ export async function provisionResidentAccess(args: {
     throw new Error(error?.message || "No fue posible habilitar el acceso del residente.");
   }
 
-  return data as unknown as MembershipRecord;
+  return {
+    membership: data as unknown as MembershipRecord,
+    retainedExistingPassword: authProvision.retainedExistingPassword,
+  };
 }
 
 async function getTeamMemberForMutation(communityId: string, memberId: string) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("community_memberships")
     .select(membershipSelect())
@@ -279,7 +296,7 @@ async function assertTeamMemberCanBeModified(args: {
   }
 
   if (args.deactivateOrDelete && args.member.role === "admin") {
-    const supabase = createServerSupabaseClient();
+    const supabase = await createServerSupabaseClient();
     const { count, error } = await supabase
       .from("community_memberships")
       .select("*", { count: "exact", head: true })
@@ -316,7 +333,7 @@ export async function updateTeamMemberStatus(args: {
     deactivateOrDelete: !args.isActive,
   });
 
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("community_memberships")
     .update({ is_active: args.isActive })
@@ -349,7 +366,7 @@ export async function deleteTeamMemberAccess(args: {
     deactivateOrDelete: true,
   });
 
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { error } = await supabase
     .from("community_memberships")
     .delete()
@@ -364,7 +381,7 @@ export async function getMembershipsByRole(
   communityId: string,
   roles: MembershipRecord["role"][],
 ) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("community_memberships")
     .select(membershipSelect())

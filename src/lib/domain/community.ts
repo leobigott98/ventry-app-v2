@@ -1,4 +1,5 @@
 import { cache } from "react";
+import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type {
   CommunityRecord,
@@ -17,6 +18,37 @@ type MembershipWithCommunity = MembershipRecord & {
   communities: CommunityRecord | null;
 };
 
+const membershipColumns =
+  "id, community_id, email, full_name, phone, role, resident_id, auth_user_id, is_primary, is_active, notes, created_at, updated_at";
+
+async function loadMembershipForUserId(
+  authUserId: string,
+  supabase: SupabaseClient,
+) {
+  const { data, error } = await supabase
+    .from("community_memberships")
+    .select(membershipColumns)
+    .eq("auth_user_id", authUserId)
+    .order("is_primary", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (error) throw new Error(error.message);
+  return data as unknown as MembershipRecord | null;
+}
+
+export function getMembershipForUserIdWithClient(
+  authUserId: string,
+  supabase: SupabaseClient,
+) {
+  return loadMembershipForUserId(authUserId, supabase);
+}
+
+export const getMembershipForUserId = cache(async (authUserId: string) => {
+  const supabase = await createServerSupabaseClient();
+  return loadMembershipForUserId(authUserId, supabase);
+});
+
 function normalizeUnitRelation(
   value:
     | Pick<UnitRecord, "id" | "identifier" | "building">
@@ -33,14 +65,14 @@ function normalizeUnitRelation(
   return value ?? null;
 }
 
-export const getCommunityContextForEmail = cache(async (email: string) => {
-  const supabase = createServerSupabaseClient();
-  const normalizedEmail = email.trim().toLowerCase();
-
+async function loadCommunityContextForUserId(
+  authUserId: string,
+  supabase: SupabaseClient,
+) {
   const { data, error } = await supabase
     .from("community_memberships")
-    .select("id, community_id, email, full_name, phone, role, resident_id, auth_user_id, is_primary, is_active, notes, created_at, updated_at, communities(*)")
-    .eq("email", normalizedEmail)
+    .select(`${membershipColumns}, communities(*)`)
+    .eq("auth_user_id", authUserId)
     .order("is_primary", { ascending: false })
     .limit(1)
     .maybeSingle();
@@ -61,10 +93,22 @@ export const getCommunityContextForEmail = cache(async (email: string) => {
     community: communities,
     membership: membership,
   } satisfies CommunityContext;
+}
+
+export async function getCommunityContextForUserIdWithClient(
+  authUserId: string,
+  supabase: SupabaseClient,
+) {
+  return loadCommunityContextForUserId(authUserId, supabase);
+}
+
+export const getCommunityContextForUserId = cache(async (authUserId: string) => {
+  const supabase = await createServerSupabaseClient();
+  return loadCommunityContextForUserId(authUserId, supabase);
 });
 
 export async function getUnitsForCommunity(communityId: string) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("units")
     .select("*")
@@ -80,7 +124,7 @@ export async function getUnitsForCommunity(communityId: string) {
 }
 
 export async function getUnitById(communityId: string, unitId: string) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("units")
     .select("*")
@@ -96,7 +140,7 @@ export async function getUnitById(communityId: string, unitId: string) {
 }
 
 export async function getResidentsForCommunity(communityId: string) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("residents")
     .select("*, units:units(id, identifier, building)")
@@ -124,7 +168,7 @@ export async function getResidentsForCommunity(communityId: string) {
 }
 
 export async function getResidentById(communityId: string, residentId: string) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("residents")
     .select("*")
@@ -140,7 +184,7 @@ export async function getResidentById(communityId: string, residentId: string) {
 }
 
 export async function getRoleMembers(communityId: string) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
     .from("community_memberships")
     .select("*")
@@ -157,7 +201,7 @@ export async function getRoleMembers(communityId: string) {
 }
 
 export async function getDashboardSummary(communityId: string) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
 
   const [
     { count: activeUnitsCount, error: activeUnitsError },

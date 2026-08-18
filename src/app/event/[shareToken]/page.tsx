@@ -73,7 +73,7 @@ export default async function SharedEventPage({
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-2xl border border-border bg-secondary/45 p-4">
                 <UsersRound className="h-5 w-5 text-primary" />
-                <div className="mt-2 font-semibold">{event.event_guests.length} invitados</div>
+                <div className="mt-2 font-semibold">{event.guest_count} invitados</div>
                 <div className="mt-1 text-xs text-muted-foreground">Lista privada en garita</div>
               </div>
               <div className="rounded-2xl border border-border bg-secondary/45 p-4">

@@ -1,19 +1,31 @@
-import { createClient } from "@supabase/supabase-js";
+import "server-only";
+
+import { createServerClient, type SetAllCookies } from "@supabase/ssr";
+import { cookies } from "next/headers";
 
 import { supabaseAnonKey, supabaseUrl } from "@/lib/supabase/config";
 
-export function createServerSupabaseClient() {
+export async function createServerSupabaseClient() {
   if (!supabaseUrl || !supabaseAnonKey) {
     throw new Error("Missing Supabase environment variables.");
   }
 
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const cookieStore = await cookies();
 
-  return createClient(supabaseUrl, serviceRoleKey || supabaseAnonKey, {
-    auth: {
-      persistSession: false,
-      autoRefreshToken: false,
+  return createServerClient(supabaseUrl, supabaseAnonKey, {
+    cookies: {
+      getAll() {
+        return cookieStore.getAll();
+      },
+      setAll(cookiesToSet: Parameters<SetAllCookies>[0]) {
+        try {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            cookieStore.set(name, value, options);
+          });
+        } catch {
+          // Server Components cannot write cookies. Middleware refreshes them.
+        }
+      },
     },
   });
 }
-

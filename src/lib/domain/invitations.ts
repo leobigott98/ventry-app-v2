@@ -4,11 +4,24 @@ import type {
   AccessCredentialRecord,
   InvitationEventRecord,
   InvitationRecord,
-  InvitationStatus,
   ResidentRecord,
   UnitRecord,
 } from "@/lib/domain/types";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import {
+  getInvitationAccessTypeLabel,
+  getInvitationEffectiveStatus,
+  getInvitationStatusLabel,
+  getInvitationWindowLabel,
+} from "@/lib/domain/invitation-utils";
+
+export {
+  getInvitationAccessTypeLabel,
+  getInvitationEffectiveStatus,
+  getInvitationStatusLabel,
+  getInvitationStatusVariant,
+  getInvitationWindowLabel,
+} from "@/lib/domain/invitation-utils";
 
 export type InvitationListItem = InvitationRecord & {
   residents: Pick<ResidentRecord, "id" | "full_name" | "phone" | "whatsapp_phone"> | null;
@@ -24,6 +37,25 @@ export type InvitationDetailRecord = InvitationRecord & {
   units: Pick<UnitRecord, "id" | "identifier" | "building"> | null;
   access_credentials: AccessCredentialRecord | null;
   invitation_events: InvitationEventRecord[];
+};
+
+export type PublicInvitationRecord = Pick<
+  InvitationRecord,
+  | "visitor_name"
+  | "access_type"
+  | "visit_date"
+  | "window_start"
+  | "window_end"
+  | "window_end_date"
+  | "no_time_limit"
+  | "status"
+> & {
+  residents: Pick<ResidentRecord, "full_name"> | null;
+  units: Pick<UnitRecord, "identifier" | "building"> | null;
+  access_credentials: Pick<
+    AccessCredentialRecord,
+    "credential_type" | "credential_value" | "qr_payload"
+  > | null;
 };
 
 function normalizeCredential(
@@ -42,86 +74,6 @@ function normalizeEvents(
   return [...(value ?? [])].sort((left, right) =>
     right.created_at.localeCompare(left.created_at),
   );
-}
-
-export function getInvitationEndDate(invitation: Pick<InvitationRecord, "visit_date" | "window_end_date">) {
-  return invitation.window_end_date ?? invitation.visit_date;
-}
-
-export function getInvitationWindowLabel(
-  invitation: Pick<InvitationRecord, "visit_date" | "window_start" | "window_end" | "window_end_date" | "no_time_limit">,
-) {
-  if (invitation.no_time_limit) {
-    return `Desde ${invitation.visit_date} ${invitation.window_start}, sin limite`;
-  }
-
-  const endDate = getInvitationEndDate(invitation);
-  const endLabel = endDate === invitation.visit_date ? invitation.window_end : `${endDate} ${invitation.window_end}`;
-  return `${invitation.visit_date} ${invitation.window_start} - ${endLabel}`;
-}
-
-export function getInvitationEffectiveStatus(invitation: {
-  status: InvitationRecord["status"];
-  visit_date: string;
-  window_start: string;
-  window_end: string;
-  window_end_date?: string | null;
-  no_time_limit?: boolean | null;
-}): InvitationStatus {
-  if (invitation.status === "revoked" || invitation.status === "used") {
-    return invitation.status;
-  }
-
-  if (invitation.no_time_limit) {
-    return "active";
-  }
-
-  const endDate = invitation.window_end_date ?? invitation.visit_date;
-  const end = new Date(`${endDate}T${invitation.window_end}:00`);
-  if (!Number.isNaN(end.valueOf()) && end.getTime() < Date.now()) {
-    return "expired";
-  }
-
-  return "active";
-}
-
-export function getInvitationStatusLabel(status: InvitationStatus) {
-  switch (status) {
-    case "active":
-      return "Activa";
-    case "used":
-      return "Usada";
-    case "expired":
-      return "Vencida";
-    case "revoked":
-      return "Revocada";
-  }
-}
-
-export function getInvitationAccessTypeLabel(accessType: InvitationRecord["access_type"]) {
-  switch (accessType) {
-    case "visitor":
-      return "Visita";
-    case "delivery":
-      return "Delivery";
-    case "service_provider":
-      return "Proveedor";
-    case "frequent_visitor":
-      return "Visitante frecuente";
-  }
-}
-
-export function getInvitationStatusVariant(status: InvitationStatus) {
-  switch (status) {
-    case "active":
-      return "success" as const;
-    case "used":
-      return "default" as const;
-    case "expired":
-      return "warning" as const;
-    case "revoked":
-      return "outline" as const;
-  }
 }
 
 export function buildInvitationShareText(
@@ -151,7 +103,7 @@ export function buildInvitationShareText(
 
 export const getInvitationsForCommunity = cache(
   async (communityId: string, residentId?: string | null) => {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   let query = supabase
     .from("invitations")
     .select(
@@ -186,7 +138,7 @@ export async function getInvitationById(
   invitationId: string,
   residentId?: string | null,
 ) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   let query = supabase
     .from("invitations")
     .select(
@@ -222,14 +174,9 @@ export async function getInvitationById(
 }
 
 export async function getInvitationByShareToken(shareToken: string) {
-  const supabase = createServerSupabaseClient();
+  const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
-    .from("invitations")
-    .select(
-      "*, residents(id, full_name, phone, whatsapp_phone, email), units(id, identifier, building), access_credentials(*), invitation_events(*)",
-    )
-    .eq("share_token", shareToken)
-    .maybeSingle();
+    .rpc("get_public_invitation", { p_share_token: shareToken });
 
   if (error) {
     throw new Error(error.message);
@@ -239,14 +186,43 @@ export async function getInvitationByShareToken(shareToken: string) {
     return null;
   }
 
-  const invitation = data as Omit<InvitationDetailRecord, "access_credentials" | "invitation_events"> & {
-    access_credentials: AccessCredentialRecord[] | AccessCredentialRecord | null;
-    invitation_events: InvitationEventRecord[] | null;
+  const dto = data as {
+    visitor_name: string | null;
+    access_type: InvitationRecord["access_type"];
+    visit_date: string;
+    window_start: string;
+    window_end: string;
+    window_end_date: string | null;
+    no_time_limit: boolean;
+    status: InvitationRecord["status"];
+    resident_name: string;
+    unit_identifier: string | null;
+    unit_building: string | null;
+    credential_type: AccessCredentialRecord["credential_type"] | null;
+    credential_value: string | null;
+    qr_payload: string | null;
   };
 
   return {
-    ...invitation,
-    access_credentials: normalizeCredential(invitation.access_credentials),
-    invitation_events: normalizeEvents(invitation.invitation_events),
-  };
+    visitor_name: dto.visitor_name,
+    access_type: dto.access_type,
+    visit_date: dto.visit_date,
+    window_start: dto.window_start,
+    window_end: dto.window_end,
+    window_end_date: dto.window_end_date,
+    no_time_limit: dto.no_time_limit,
+    status: dto.status,
+    residents: { full_name: dto.resident_name },
+    units: dto.unit_identifier
+      ? { identifier: dto.unit_identifier, building: dto.unit_building }
+      : null,
+    access_credentials:
+      dto.credential_type && dto.credential_value
+        ? {
+            credential_type: dto.credential_type,
+            credential_value: dto.credential_value,
+            qr_payload: dto.qr_payload,
+          }
+        : null,
+  } satisfies PublicInvitationRecord;
 }

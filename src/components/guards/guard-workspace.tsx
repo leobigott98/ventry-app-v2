@@ -29,8 +29,8 @@ import {
   getInvitationStatusLabel,
   getInvitationStatusVariant,
   getInvitationWindowLabel,
-} from "@/lib/domain/invitations";
-import { getEventEffectiveStatus, getEventWindowLabel } from "@/lib/domain/events";
+} from "@/lib/domain/invitation-utils";
+import { getEventEffectiveStatus, getEventWindowLabel } from "@/lib/domain/event-utils";
 import type {
   AccessEventRecord,
   EventGuestRecord,
@@ -61,7 +61,6 @@ type GuardInvitation = {
   status: "active" | "used" | "revoked";
   residents: { full_name: string } | null;
   units: { identifier: string; building: string | null } | null;
-  access_credentials: { credential_type: "pin" | "qr"; credential_value: string } | null;
   effective_status?: InvitationStatus;
 };
 
@@ -409,7 +408,6 @@ export function GuardWorkspace({
     if (!payload.match) {
       prependActivity("validation_failed", "Validacion fallida", {
         credentialType: type,
-        credentialValue: valueToValidate,
       });
       setValidationError(payload.message ?? "No encontramos ese codigo.");
       return false;
