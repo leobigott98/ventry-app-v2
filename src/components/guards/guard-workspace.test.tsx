@@ -109,4 +109,86 @@ describe("GuardWorkspace", () => {
       }),
     );
   });
+
+  it("bloquea dobles toques y reutiliza la misma idempotency key al reintentar", async () => {
+    const match = {
+      kind: "invitation",
+      invitation: {
+        id: "invitation-1",
+        visitor_name: "Carlos Rojas",
+        access_type: "visitor",
+        visit_date: "2026-08-17",
+        window_start: "09:00",
+        window_end: "11:00",
+        window_end_date: null,
+        no_time_limit: false,
+        status: "active",
+        residents: { full_name: "Ana Perez" },
+        units: { identifier: "1-A", building: "Torre Norte" },
+        effective_status: "active",
+        status_label: "Activa",
+      },
+      openEntry: null,
+    };
+    let resolveFirst!: (response: Response) => void;
+    const entry = {
+      id: "entry-1",
+      invitation_id: "invitation-1",
+      visitor_name: "Carlos Rojas",
+      residents: null,
+      units: null,
+    };
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: true, match }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      )
+      .mockImplementationOnce(
+        () => new Promise<Response>((resolve) => { resolveFirst = resolve; }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: true, entry }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    render(
+      <GuardWorkspace
+        residents={[]}
+        recentInvitations={[]}
+        openEntries={[]}
+        recentEvents={[]}
+      />,
+    );
+
+    await user.type(screen.getByLabelText("PIN"), "123456");
+    await user.click(screen.getAllByRole("button", { name: "Validar PIN" }).at(-1)!);
+    const entryButton = await screen.findByRole("button", { name: "Registrar entrada" });
+    await user.dblClick(entryButton);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    expect(entryButton).toBeDisabled();
+    expect(entryButton).toHaveAttribute("aria-busy", "true");
+
+    const firstHeaders = fetchMock.mock.calls[1]?.[1]?.headers as Record<string, string>;
+    expect(firstHeaders["Idempotency-Key"]).toMatch(/^[0-9a-f-]{36}$/i);
+
+    resolveFirst(new Response(JSON.stringify({ error: "Intenta nuevamente." }), {
+      status: 409,
+      headers: { "Content-Type": "application/json" },
+    }));
+    expect(await screen.findByText("Intenta nuevamente.")).toBeInTheDocument();
+    await waitFor(() => expect(entryButton).toBeEnabled());
+
+    await user.click(entryButton);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3));
+    const retryHeaders = fetchMock.mock.calls[2]?.[1]?.headers as Record<string, string>;
+    expect(retryHeaders["Idempotency-Key"]).toBe(firstHeaders["Idempotency-Key"]);
+    expect(await screen.findByText("Entrada registrada.")).toBeInTheDocument();
+  });
 });

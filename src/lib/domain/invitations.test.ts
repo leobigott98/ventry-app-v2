@@ -35,7 +35,7 @@ describe("getInvitationEffectiveStatus", () => {
     ).toBe("expired");
   });
 
-  it("mantiene activa una ventana futura o sin limite", () => {
+  it("marca como programada una ventana futura y activa una iniciada sin limite", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-17T12:00:00"));
 
@@ -46,7 +46,7 @@ describe("getInvitationEffectiveStatus", () => {
         window_start: "09:00",
         window_end: "10:00",
       }),
-    ).toBe("active");
+    ).toBe("scheduled");
     expect(
       getInvitationEffectiveStatus({
         status: "active",

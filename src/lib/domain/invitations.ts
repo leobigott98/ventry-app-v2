@@ -166,10 +166,30 @@ export async function getInvitationById(
     invitation_events: InvitationEventRecord[] | null;
   };
 
-  return {
+  const normalizedInvitation = {
     ...invitation,
     access_credentials: normalizeCredential(invitation.access_credentials),
     invitation_events: normalizeEvents(invitation.invitation_events),
+  };
+
+  if (!normalizedInvitation.access_credentials) return normalizedInvitation;
+
+  const { data: visibleCredential, error: credentialError } = await supabase.rpc(
+    "get_invitation_credential",
+    { p_invitation_id: invitationId },
+  );
+  if (credentialError) throw new Error(credentialError.message);
+  if (!visibleCredential) return normalizedInvitation;
+
+  return {
+    ...normalizedInvitation,
+    access_credentials: {
+      ...normalizedInvitation.access_credentials,
+      ...(visibleCredential as Pick<
+        AccessCredentialRecord,
+        "credential_type" | "credential_value" | "qr_payload"
+      >),
+    },
   };
 }
 

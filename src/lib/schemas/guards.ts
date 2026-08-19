@@ -8,12 +8,15 @@ export const validateCredentialSchema = z.object({
   credentialValue: z
     .string()
     .trim()
-    .min(3, "Ingresa un PIN o codigo valido."),
+    .min(3, "Ingresa un PIN o codigo valido.")
+    .max(512, "El codigo es demasiado largo."),
 });
 
 export const registerInvitationEntrySchema = z.object({
   invitationId: z.string().uuid("Invitacion invalida."),
 });
+
+export const idempotencyKeySchema = z.string().uuid("Idempotency-Key invalida.");
 
 export const registerExitSchema = z.object({
   entryId: z.string().uuid("Registro invalido."),

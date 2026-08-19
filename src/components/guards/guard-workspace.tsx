@@ -30,7 +30,7 @@ import {
   getInvitationStatusVariant,
   getInvitationWindowLabel,
 } from "@/lib/domain/invitation-utils";
-import { getEventEffectiveStatus, getEventWindowLabel } from "@/lib/domain/event-utils";
+import { getEventWindowLabel } from "@/lib/domain/event-utils";
 import type {
   AccessEventRecord,
   EventGuestRecord,
@@ -73,6 +73,7 @@ type GuardEvent = ResidentEventRecord & {
   residents: { full_name: string } | null;
   units: { identifier: string; building: string | null } | null;
   event_guests: EventGuestRecord[];
+  effective_status: "scheduled" | "active" | "expired" | "revoked";
 };
 
 type ValidationMatch =
@@ -165,6 +166,11 @@ export function GuardWorkspace({
   const scannerActiveRef = useRef(false);
   const validationInFlightRef = useRef(false);
   const credentialRequestInFlightRef = useRef(false);
+  const entryIdempotencyKeysRef = useRef(new Map<string, string>());
+  const entryRequestsInFlightRef = useRef(new Set<string>());
+  const [pendingEntryOperations, setPendingEntryOperations] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<GuardInvitation[]>(recentInvitations);
@@ -344,7 +350,10 @@ export function GuardWorkspace({
     setRecentActivity((current) => [event, ...current].slice(0, 12));
   }
 
-  function syncInvitationStatus(invitationId: string, status: Exclude<InvitationStatus, "expired">) {
+  function syncInvitationStatus(
+    invitationId: string,
+    status: Exclude<InvitationStatus, "scheduled" | "expired">,
+  ) {
     const updateInvitation = (invitation: GuardInvitation) =>
       invitation.id === invitationId
         ? {
@@ -360,6 +369,15 @@ export function GuardWorkspace({
 
   function upsertOpenEntry(entry: OpenEntry) {
     setOpenEntries((current) => [entry, ...current.filter((item) => item.id !== entry.id)].slice(0, 12));
+  }
+
+  function setEntryOperationPending(operationKey: string, pending: boolean) {
+    setPendingEntryOperations((current) => {
+      const next = new Set(current);
+      if (pending) next.add(operationKey);
+      else next.delete(operationKey);
+      return next;
+    });
   }
 
   async function validateCredential(type: "pin" | "qr", valueOverride?: string) {
@@ -506,72 +524,104 @@ export function GuardWorkspace({
   }
 
   async function registerEventGuest(eventId: string, eventGuestId: string) {
-    setFlash(null);
-    const response = await fetch("/api/guards/event-entries", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ eventId, eventGuestId }),
-    });
-    const payload = (await response.json()) as { error?: string; entry?: OpenEntry };
-    if (!response.ok || !payload.entry) {
-      setFlash({ variant: "error", message: payload.error ?? "No fue posible registrar la entrada." });
-      return;
-    }
+    const operationKey = `event:${eventId}:${eventGuestId}`;
+    if (entryRequestsInFlightRef.current.has(operationKey)) return;
 
-    upsertOpenEntry(payload.entry);
-    setValidationMatch((current) =>
-      current?.kind === "event"
-        ? {
-            ...current,
-            event: {
-              ...current.event,
-              event_guests: current.event.event_guests.map((guest) =>
-                guest.id === eventGuestId
-                  ? { ...guest, attendance_status: "inside", checked_in_at: new Date().toISOString() }
-                  : guest,
-              ),
-            },
-          }
-        : current,
-    );
-    prependActivity("entry_registered", "Entrada de evento registrada", {
-      visitorName: payload.entry.visitor_name,
-      eventId,
-    }, null, payload.entry.id);
-    setFlash({ variant: "success", message: `${payload.entry.visitor_name} fue registrado.` });
+    setFlash(null);
+    entryRequestsInFlightRef.current.add(operationKey);
+    setEntryOperationPending(operationKey, true);
+    const idempotencyKey =
+      entryIdempotencyKeysRef.current.get(operationKey) ?? crypto.randomUUID();
+    entryIdempotencyKeysRef.current.set(operationKey, idempotencyKey);
+    try {
+      const response = await fetch("/api/guards/event-entries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
+        body: JSON.stringify({ eventId, eventGuestId }),
+      });
+      const payload = (await response.json()) as { error?: string; entry?: OpenEntry };
+      if (!response.ok || !payload.entry) {
+        setFlash({ variant: "error", message: payload.error ?? "No fue posible registrar la entrada." });
+        return;
+      }
+      entryIdempotencyKeysRef.current.delete(operationKey);
+
+      upsertOpenEntry(payload.entry);
+      setValidationMatch((current) =>
+        current?.kind === "event"
+          ? {
+              ...current,
+              event: {
+                ...current.event,
+                event_guests: current.event.event_guests.map((guest) =>
+                  guest.id === eventGuestId
+                    ? { ...guest, attendance_status: "inside", checked_in_at: new Date().toISOString() }
+                    : guest,
+                ),
+              },
+            }
+          : current,
+      );
+      prependActivity("entry_registered", "Entrada de evento registrada", {
+        visitorName: payload.entry.visitor_name,
+        eventId,
+      }, null, payload.entry.id);
+      setFlash({ variant: "success", message: `${payload.entry.visitor_name} fue registrado.` });
+    } catch {
+      setFlash({ variant: "error", message: "No fue posible conectar para registrar la entrada." });
+    } finally {
+      entryRequestsInFlightRef.current.delete(operationKey);
+      setEntryOperationPending(operationKey, false);
+    }
   }
   async function registerEntry(invitationId: string) {
-    setFlash(null);
-    const response = await fetch("/api/guards/entries", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ invitationId }),
-    });
-    const payload = (await response.json()) as { error?: string; entry?: OpenEntry };
-    if (!response.ok || !payload.entry) {
-      setFlash({ variant: "error", message: payload.error ?? "No fue posible registrar la entrada." });
-      return;
-    }
+    const operationKey = `invitation:${invitationId}`;
+    if (entryRequestsInFlightRef.current.has(operationKey)) return;
 
-    upsertOpenEntry(payload.entry);
-    syncInvitationStatus(invitationId, "used");
-    setValidationMatch((current) =>
-      current?.kind === "invitation"
-        ? {
-            ...current,
-            invitation: { ...current.invitation, effective_status: "used", status_label: "Usada" },
-            openEntry: payload.entry!,
-          }
-        : current,
-    );
-    prependActivity(
-      "entry_registered",
-      "Entrada registrada",
-      { visitorName: payload.entry.visitor_name },
-      invitationId,
-      payload.entry.id,
-    );
-    setFlash({ variant: "success", message: "Entrada registrada." });
+    setFlash(null);
+    entryRequestsInFlightRef.current.add(operationKey);
+    setEntryOperationPending(operationKey, true);
+    const idempotencyKey =
+      entryIdempotencyKeysRef.current.get(operationKey) ?? crypto.randomUUID();
+    entryIdempotencyKeysRef.current.set(operationKey, idempotencyKey);
+    try {
+      const response = await fetch("/api/guards/entries", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
+        body: JSON.stringify({ invitationId }),
+      });
+      const payload = (await response.json()) as { error?: string; entry?: OpenEntry };
+      if (!response.ok || !payload.entry) {
+        setFlash({ variant: "error", message: payload.error ?? "No fue posible registrar la entrada." });
+        return;
+      }
+      entryIdempotencyKeysRef.current.delete(operationKey);
+
+      upsertOpenEntry(payload.entry);
+      syncInvitationStatus(invitationId, "used");
+      setValidationMatch((current) =>
+        current?.kind === "invitation"
+          ? {
+              ...current,
+              invitation: { ...current.invitation, effective_status: "used", status_label: "Usada" },
+              openEntry: payload.entry!,
+            }
+          : current,
+      );
+      prependActivity(
+        "entry_registered",
+        "Entrada registrada",
+        { visitorName: payload.entry.visitor_name },
+        invitationId,
+        payload.entry.id,
+      );
+      setFlash({ variant: "success", message: "Entrada registrada." });
+    } catch {
+      setFlash({ variant: "error", message: "No fue posible conectar para registrar la entrada." });
+    } finally {
+      entryRequestsInFlightRef.current.delete(operationKey);
+      setEntryOperationPending(operationKey, false);
+    }
   }
 
   async function registerExit(entryId: string) {
@@ -785,8 +835,8 @@ export function GuardWorkspace({
                           <div className="mt-1 font-display text-xl font-semibold text-foreground">{validationMatch.event.name}</div>
                           <div className="mt-1 text-sm text-muted-foreground">{validationMatch.event.residents?.full_name || "Sin residente"} | {formatUnit(validationMatch.event.units)}</div>
                         </div>
-                        <Badge variant={getEventEffectiveStatus(validationMatch.event) === "active" ? "success" : "warning"}>
-                          {getEventEffectiveStatus(validationMatch.event) === "active" ? "Activo" : getEventEffectiveStatus(validationMatch.event) === "scheduled" ? "Aun no inicia" : "Finalizado"}
+                        <Badge variant={validationMatch.event.effective_status === "active" ? "success" : "warning"}>
+                          {validationMatch.event.effective_status === "active" ? "Activo" : validationMatch.event.effective_status === "scheduled" ? "Aun no inicia" : "Finalizado"}
                         </Badge>
                       </div>
                       <div className="rounded-2xl border border-border bg-surface p-4 text-sm">
@@ -805,15 +855,25 @@ export function GuardWorkspace({
                         {validationMatch.event.event_guests
                           .filter((guest) => guest.full_name.toLocaleLowerCase().includes(eventGuestQuery.trim().toLocaleLowerCase()))
                           .slice(0, 60)
-                          .map((guest) => (
+                          .map((guest) => {
+                            const operationKey = `event:${validationMatch.event.id}:${guest.id}`;
+                            const isRegistering = pendingEntryOperations.has(operationKey);
+                            return (
                             <div key={guest.id} className="flex items-center gap-3 rounded-2xl border border-border bg-surface p-3">
                               <div className="min-w-0 flex-1">
                                 <div className="truncate font-semibold">{guest.full_name}</div>
                                 <div className="truncate text-xs text-muted-foreground">{guest.phone || guest.notes || "Invitado del evento"}</div>
                               </div>
-                              {guest.attendance_status === "pending" && getEventEffectiveStatus(validationMatch.event) === "active" ? (
-                                <Button className="h-11 shrink-0" type="button" onClick={() => void registerEventGuest(validationMatch.event.id, guest.id)}>
-                                  Registrar
+                              {guest.attendance_status === "pending" && validationMatch.event.effective_status === "active" ? (
+                                <Button
+                                  aria-busy={isRegistering}
+                                  className="h-11 shrink-0"
+                                  disabled={isRegistering}
+                                  type="button"
+                                  onClick={() => void registerEventGuest(validationMatch.event.id, guest.id)}
+                                >
+                                  {isRegistering ? <LoaderCircle aria-hidden="true" className="h-4 w-4 animate-spin" /> : null}
+                                  {isRegistering ? "Registrando..." : "Registrar"}
                                 </Button>
                               ) : (
                                 <Badge variant={guest.attendance_status === "inside" ? "warning" : "success"}>
@@ -821,7 +881,8 @@ export function GuardWorkspace({
                                 </Badge>
                               )}
                             </div>
-                          ))}
+                            );
+                          })}
                       </div>
                       <Button asChild className="h-12 w-full" type="button" variant="ghost">
                         <Link href={`/app/events/${validationMatch.event.id}`}>Ver evento completo</Link>
@@ -841,7 +902,22 @@ export function GuardWorkspace({
                         <div className="rounded-2xl border border-border bg-surface p-4 text-sm">{getInvitationAccessTypeLabel(validationMatch.invitation.access_type)}</div>
                       </div>
                       <div className="flex flex-col gap-3 sm:flex-row">
-                        {validationMatch.invitation.effective_status === "active" ? <Button className="h-14 flex-1 text-base" type="button" onClick={() => void registerEntry(validationMatch.invitation.id)}>Registrar entrada</Button> : null}
+                        {validationMatch.invitation.effective_status === "active" ? (
+                          <Button
+                            aria-busy={pendingEntryOperations.has(`invitation:${validationMatch.invitation.id}`)}
+                            className="h-14 flex-1 text-base"
+                            disabled={pendingEntryOperations.has(`invitation:${validationMatch.invitation.id}`)}
+                            type="button"
+                            onClick={() => void registerEntry(validationMatch.invitation.id)}
+                          >
+                            {pendingEntryOperations.has(`invitation:${validationMatch.invitation.id}`) ? (
+                              <LoaderCircle aria-hidden="true" className="h-5 w-5 animate-spin" />
+                            ) : null}
+                            {pendingEntryOperations.has(`invitation:${validationMatch.invitation.id}`)
+                              ? "Registrando..."
+                              : "Registrar entrada"}
+                          </Button>
+                        ) : null}
                         {validationMatch.openEntry ? <Button className="h-14 flex-1 text-base" type="button" variant="outline" onClick={() => void registerExit(validationMatch.openEntry!.id)}>Registrar salida</Button> : null}
                         <Button asChild className="h-14 text-base" type="button" variant="ghost"><Link href={`/app/invitations/${validationMatch.invitation.id}`}>Detalle</Link></Button>
                       </div>
@@ -953,7 +1029,17 @@ export function GuardWorkspace({
                       </div>
                       <div className="mt-4 flex flex-col gap-3 sm:flex-row">
                         <Button asChild className="h-12" type="button" variant="outline"><Link href={`/app/invitations/${invitation.id}`}>Detalle</Link></Button>
-                        {status === "active" ? <Button className="h-12" type="button" onClick={() => void registerEntry(invitation.id)}>Entrada</Button> : null}
+                        {status === "active" ? (
+                          <Button
+                            aria-busy={pendingEntryOperations.has(`invitation:${invitation.id}`)}
+                            className="h-12"
+                            disabled={pendingEntryOperations.has(`invitation:${invitation.id}`)}
+                            type="button"
+                            onClick={() => void registerEntry(invitation.id)}
+                          >
+                            {pendingEntryOperations.has(`invitation:${invitation.id}`) ? "Registrando..." : "Entrada"}
+                          </Button>
+                        ) : null}
                       </div>
                     </div>
                   );

@@ -1,5 +1,4 @@
 import { CalendarDays, MapPin, ShieldCheck, UsersRound } from "lucide-react";
-import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import QRCode from "qrcode";
 
@@ -13,12 +12,6 @@ import {
   getEventWindowLabel,
 } from "@/lib/domain/events";
 
-function baseUrl(requestHeaders: Headers) {
-  const host = requestHeaders.get("x-forwarded-host") || requestHeaders.get("host");
-  const protocol = requestHeaders.get("x-forwarded-proto") || "http";
-  return host ? `${protocol}://${host}` : "";
-}
-
 export default async function SharedEventPage({
   params,
 }: {
@@ -30,10 +23,7 @@ export default async function SharedEventPage({
 
   const status = getEventEffectiveStatus(event);
   const credential = event.event_credentials;
-  const origin = baseUrl(await headers());
-  const scanValue = credential?.qr_payload
-    ? `${origin}/app/guards?qr=${encodeURIComponent(credential.qr_payload)}`
-    : null;
+  const scanValue = credential?.qr_payload ?? null;
   const qrImageDataUrl =
     credential?.credential_type === "qr" && scanValue
       ? await QRCode.toDataURL(scanValue, {

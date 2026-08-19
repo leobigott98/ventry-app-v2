@@ -80,6 +80,7 @@ export const invitationAccessTypeOptions = [
 ] as const;
 
 export const invitationStatusOptions = [
+  { value: "scheduled", label: "Programada" },
   { value: "active", label: "Activa" },
   { value: "used", label: "Usada" },
   { value: "expired", label: "Vencida" },
@@ -137,6 +138,7 @@ export type CommunityRecord = {
   name: string;
   address: string;
   location_label: string;
+  time_zone?: string;
   planned_unit_count: number;
   access_policy_mode: AccessPolicyMode;
   access_policy_notes: string | null;
@@ -204,7 +206,7 @@ export type InvitationRecord = {
   window_end: string;
   window_end_date: string | null;
   no_time_limit: boolean;
-  status: Exclude<InvitationStatus, "expired">;
+  status: Exclude<InvitationStatus, "scheduled" | "expired">;
   notes: string | null;
   share_token: string;
   revoked_at: string | null;

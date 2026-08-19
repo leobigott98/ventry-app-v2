@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { requireApiCommunityContext } from "@/lib/auth/api";
 import { registerInvitationEntry } from "@/lib/domain/mutations";
-import { registerInvitationEntrySchema } from "@/lib/schemas/guards";
+import { idempotencyKeySchema, registerInvitationEntrySchema } from "@/lib/schemas/guards";
 
 export async function POST(request: NextRequest) {
   const auth = await requireApiCommunityContext(request, ["admin", "guard"]);
@@ -17,19 +17,27 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   }
+  const idempotencyKey = idempotencyKeySchema.safeParse(
+    request.headers.get("Idempotency-Key"),
+  );
+  if (!idempotencyKey.success) {
+    return NextResponse.json(
+      { error: idempotencyKey.error.issues[0]?.message ?? "Idempotency-Key invalida." },
+      { status: 400 },
+    );
+  }
 
   try {
     const entry = await registerInvitationEntry({
       communityId: auth.context.community.id,
       invitationId: parsed.data.invitationId,
+      idempotencyKey: idempotencyKey.data,
     });
     return NextResponse.json({ ok: true, entry });
-  } catch (error) {
+  } catch {
     return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : "No fue posible registrar la entrada.",
-      },
-      { status: 500 },
+      { error: "No fue posible registrar la entrada. Verifica el estado e intenta nuevamente." },
+      { status: 409 },
     );
   }
 }

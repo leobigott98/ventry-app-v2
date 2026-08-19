@@ -1,5 +1,11 @@
 # Estado actual del repositorio
 
+## Actualizacion de seguridad de credenciales (18 de agosto de 2026)
+
+La rama `codex/03-credential-security`, mediante la migracion pendiente `202608180002_credential_security_atomic_access.sql`, corrige los hallazgos historicos de esta auditoria relativos a `Math.random()`, payloads QR con IDs, credenciales completas en auditoria, ausencia de rate limiting y doble entrada concurrente. Las credenciales version 1 se conservan compatibles; las version 2 usan generacion criptografica, secreto fuera de RLS ordinaria, validacion rate-limited y registro transaccional/idempotente. La ventana de garita se calcula con `communities.time_zone`. Detalles, threat model y despliegue manual: `docs/credential-security.md`.
+
+La matriz y los riesgos debajo describen el commit auditado originalmente y se conservan como registro historico; no deben interpretarse como el estado de esta rama sin leer la actualizacion anterior.
+
 Auditoria realizada el 17 de agosto de 2026 sobre `leobigott98/ventry-app-v2`, commit `35cb23cad41fda073dd90b52735f460f9db54f2b` de `origin/main`. La rama de trabajo estaba limpia y a `0/0` commits de `origin/main` despues de `git fetch origin main --prune`.
 
 ## Matriz de implementacion

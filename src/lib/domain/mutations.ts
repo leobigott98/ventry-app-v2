@@ -2,6 +2,11 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getInvitationEffectiveStatus } from "@/lib/domain/invitations";
 import { getInvitationById } from "@/lib/domain/invitations";
 import { getVisitorEntryById } from "@/lib/domain/guards";
+import {
+  createNumericPin,
+  createOpaqueQrCredential,
+  createOpaqueShareToken,
+} from "@/lib/security/credentials";
 
 import type {
   OnboardingInput,
@@ -15,12 +20,25 @@ import type {
   UnannouncedVisitorInput,
 } from "@/lib/schemas/guards";
 
-function createOneTimePin() {
-  return String(Math.floor(100000 + Math.random() * 900000));
-}
-
-function createShareToken() {
-  return crypto.randomUUID().replace(/-/g, "");
+async function storeInvitationCredential(args: {
+  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>;
+  communityId: string;
+  invitationId: string;
+  credentialType: "pin" | "qr";
+}) {
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    const credentialValue =
+      args.credentialType === "pin" ? createNumericPin(6) : createOpaqueQrCredential();
+    const { error } = await args.supabase.rpc("store_invitation_credential", {
+      p_community_id: args.communityId,
+      p_invitation_id: args.invitationId,
+      p_credential_type: args.credentialType,
+      p_credential_value: credentialValue,
+    });
+    if (!error) return;
+    if (error.code !== "23505") throw new Error("No fue posible proteger la credencial.");
+  }
+  throw new Error("No fue posible generar una credencial unica. Intenta nuevamente.");
 }
 
 function getEventSourceFromRegistrationSource(
@@ -259,11 +277,7 @@ export async function createInvitation(communityId: string, input: CreateInvitat
     throw new Error(residentError?.message || "No fue posible encontrar un residente activo.");
   }
 
-  const shareToken = createShareToken();
-  const credentialValue =
-    input.credentialType === "pin"
-      ? createOneTimePin()
-      : crypto.randomUUID().replace(/-/g, "").slice(0, 24).toUpperCase();
+  const shareToken = createOpaqueShareToken();
   const windowEnd = input.noTimeLimit ? "23:59" : input.windowEnd;
   const windowEndDate = input.noTimeLimit ? null : input.windowEndDate ?? input.visitDate;
 
@@ -291,21 +305,16 @@ export async function createInvitation(communityId: string, input: CreateInvitat
     throw new Error(invitationError?.message || "No fue posible crear la invitacion.");
   }
 
-  const qrPayload =
-    input.credentialType === "qr"
-      ? `ventry:${communityId}:${invitation.id}:${credentialValue}`
-      : null;
-
-  const { error: credentialError } = await supabase.from("access_credentials").insert({
-    invitation_id: invitation.id,
-    credential_type: input.credentialType,
-    credential_value: credentialValue,
-    qr_payload: qrPayload,
-  });
-
-  if (credentialError) {
+  try {
+    await storeInvitationCredential({
+      supabase,
+      communityId,
+      invitationId: invitation.id,
+      credentialType: input.credentialType as "pin" | "qr",
+    });
+  } catch (error) {
     await supabase.from("invitations").delete().eq("id", invitation.id);
-    throw new Error(credentialError.message);
+    throw error;
   }
 
   const { error: eventError } = await supabase.from("invitation_events").insert({
@@ -444,80 +453,17 @@ export async function logInvitationShare(invitationId: string, channel: "whatsap
   }
 }
 
-export async function logCredentialValidationAttempt(args: {
-  communityId: string;
-  invitationId?: string | null;
-  residentId?: string | null;
-  unitId?: string | null;
-  visitorName?: string | null;
-  accessType?: "visitor" | "delivery" | "service_provider" | "frequent_visitor" | null;
-  credentialType: "pin" | "qr";
-  matched: boolean;
-  createdByEmail: string;
-  status?: string;
-}) {
-  const supabase = await createServerSupabaseClient();
-  const duplicateSince = new Date(Date.now() - 3000).toISOString();
-  let duplicateQuery = supabase
-    .from("access_events")
-    .select("id")
-    .eq("community_id", args.communityId)
-    .eq("created_by_email", args.createdByEmail)
-    .eq("access_event_type", args.matched ? "validation_success" : "validation_failed")
-    .eq("details->>credentialType", args.credentialType)
-    .gte("created_at", duplicateSince);
-  duplicateQuery = args.invitationId
-    ? duplicateQuery.eq("invitation_id", args.invitationId)
-    : duplicateQuery.is("invitation_id", null);
-  const { data: duplicate, error: duplicateError } = await duplicateQuery.limit(1).maybeSingle();
-
-  if (duplicateError) {
-    throw new Error(duplicateError.message);
-  }
-
-  if (duplicate) {
-    return;
-  }
-
-  await logAccessEvent({
-    communityId: args.communityId,
-    invitationId: args.invitationId ?? null,
-    residentId: args.residentId ?? null,
-    unitId: args.unitId ?? null,
-    visitorName: args.visitorName ?? null,
-    accessType: args.accessType ?? null,
-    accessEventType: args.matched ? "validation_success" : "validation_failed",
-    eventStatus: args.matched ? "validated" : "rejected",
-    eventDirection: "validation",
-    eventSource: args.invitationId ? "invitation" : "validation",
-    eventLabel: args.matched ? "Validacion correcta" : "Validacion fallida",
-    notes: args.status ? `Estado de la invitacion: ${args.status}` : null,
-    details: {
-      credentialType: args.credentialType,
-      status: args.status ?? null,
-    },
-    createdByEmail: args.createdByEmail,
-  });
-}
 export async function registerInvitationEntry(args: {
   communityId: string;
   invitationId: string;
+  idempotencyKey: string;
 }) {
   const supabase = await createServerSupabaseClient();
-  const invitation = await getInvitationById(args.communityId, args.invitationId);
-
-  if (!invitation) {
-    throw new Error("No fue posible encontrar la invitacion.");
-  }
-
-  const effectiveStatus = getInvitationEffectiveStatus(invitation);
-  if (effectiveStatus !== "active") {
-    throw new Error(`La invitacion esta ${effectiveStatus}.`);
-  }
 
   const { data: entryId, error } = await supabase.rpc("register_invitation_entry", {
     p_community_id: args.communityId,
-    p_invitation_id: invitation.id,
+    p_invitation_id: args.invitationId,
+    p_idempotency_key: args.idempotencyKey,
   });
 
   if (error || !entryId) {

@@ -46,9 +46,7 @@ export default async function EventDetailPage({
   const requestHeaders = await headers();
   const origin = baseUrl(requestHeaders);
   const credential = event.event_credentials;
-  const scanValue = credential?.qr_payload
-    ? `${origin}/app/guards?qr=${encodeURIComponent(credential.qr_payload)}`
-    : null;
+  const scanValue = credential?.qr_payload ?? null;
   const qrImageDataUrl =
     credential?.credential_type === "qr" && scanValue
       ? await QRCode.toDataURL(scanValue, {

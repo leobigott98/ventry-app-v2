@@ -34,11 +34,11 @@ insert into public.community_memberships (
 
 insert into public.invitations (
   id, community_id, resident_id, unit_id, visitor_name, access_type,
-  visit_date, window_start, window_end, status, share_token
+  visit_date, window_start, window_end, no_time_limit, status, share_token
 ) values
-  ('10000000-0000-4000-8000-000000002001', '10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000101', '10000000-0000-4000-8000-000000000010', 'Visita A1', 'visitor', current_date, '08:00', '20:00', 'active', 'share-a1'),
-  ('10000000-0000-4000-8000-000000002002', '10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000102', '10000000-0000-4000-8000-000000000010', 'Visita A2', 'visitor', current_date, '08:00', '20:00', 'active', 'share-a2'),
-  ('20000000-0000-4000-8000-000000002001', '20000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000101', '20000000-0000-4000-8000-000000000010', 'Visita B1', 'visitor', current_date, '08:00', '20:00', 'active', 'share-b1');
+  ('10000000-0000-4000-8000-000000002001', '10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000101', '10000000-0000-4000-8000-000000000010', 'Visita A1', 'visitor', current_date - 1, '00:00', '23:59', true, 'active', 'share-a1'),
+  ('10000000-0000-4000-8000-000000002002', '10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000102', '10000000-0000-4000-8000-000000000010', 'Visita A2', 'visitor', current_date - 1, '00:00', '23:59', true, 'active', 'share-a2'),
+  ('20000000-0000-4000-8000-000000002001', '20000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000101', '20000000-0000-4000-8000-000000000010', 'Visita B1', 'visitor', current_date - 1, '00:00', '23:59', true, 'active', 'share-b1');
 
 insert into public.access_credentials (invitation_id, credential_type, credential_value) values
   ('10000000-0000-4000-8000-000000002001', 'pin', '111111'),
@@ -49,9 +49,9 @@ insert into public.resident_events (
   id, community_id, resident_id, unit_id, name, event_date, window_start,
   window_end_date, window_end, share_token
 ) values
-  ('10000000-0000-4000-8000-000000003001', '10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000101', '10000000-0000-4000-8000-000000000010', 'Evento A1', current_date, '08:00', current_date, '20:00', 'event-a1'),
-  ('10000000-0000-4000-8000-000000003002', '10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000102', '10000000-0000-4000-8000-000000000010', 'Evento A2', current_date, '08:00', current_date, '20:00', 'event-a2'),
-  ('20000000-0000-4000-8000-000000003001', '20000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000101', '20000000-0000-4000-8000-000000000010', 'Evento B1', current_date, '08:00', current_date, '20:00', 'event-b1');
+  ('10000000-0000-4000-8000-000000003001', '10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000101', '10000000-0000-4000-8000-000000000010', 'Evento A1', current_date - 1, '00:00', current_date + 1, '23:59', 'event-a1'),
+  ('10000000-0000-4000-8000-000000003002', '10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000102', '10000000-0000-4000-8000-000000000010', 'Evento A2', current_date - 1, '00:00', current_date + 1, '23:59', 'event-a2'),
+  ('20000000-0000-4000-8000-000000003001', '20000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000101', '20000000-0000-4000-8000-000000000010', 'Evento B1', current_date - 1, '00:00', current_date + 1, '23:59', 'event-b1');
 
 insert into public.event_guests (event_id, full_name) values
   ('10000000-0000-4000-8000-000000003001', 'Invitado A1'),
@@ -185,8 +185,7 @@ select set_config(
 do $$
 declare
   v_updated integer;
-  v_invitation_id uuid;
-  v_event_id uuid;
+  v_validation jsonb;
   v_entry_id uuid;
 begin
   if (select count(*) from public.invitations) <> 2 then
@@ -203,23 +202,28 @@ begin
     raise exception 'guard A can read raw credentials';
   end if;
 
-  v_invitation_id := public.match_invitation_credential(
-    '10000000-0000-4000-8000-000000000001', 'pin', '111111'
+  v_validation := public.validate_access_credential(
+    '10000000-0000-4000-8000-000000000001', 'pin', '111111',
+    'rls-test-device-00000001', '127.0.0.1'
   );
-  if v_invitation_id <> '10000000-0000-4000-8000-000000002001' then
+  if v_validation ->> 'kind' <> 'invitation'
+     or v_validation ->> 'resourceId' <> '10000000-0000-4000-8000-000000002001' then
     raise exception 'guard A cannot validate a community A invitation credential';
   end if;
 
-  v_event_id := public.match_event_credential(
-    '10000000-0000-4000-8000-000000000001', 'pin', '44444444'
+  v_validation := public.validate_access_credential(
+    '10000000-0000-4000-8000-000000000001', 'pin', '44444444',
+    'rls-test-device-00000001', '127.0.0.1'
   );
-  if v_event_id <> '10000000-0000-4000-8000-000000003001' then
+  if v_validation ->> 'kind' <> 'event'
+     or v_validation ->> 'resourceId' <> '10000000-0000-4000-8000-000000003001' then
     raise exception 'guard A cannot validate a community A event credential';
   end if;
 
   begin
-    perform public.match_invitation_credential(
-      '20000000-0000-4000-8000-000000000001', 'pin', '333333'
+    perform public.validate_access_credential(
+      '20000000-0000-4000-8000-000000000001', 'pin', '333333',
+      'rls-test-device-00000001', '127.0.0.1'
     );
     raise exception 'guard A validated a community B credential';
   exception when insufficient_privilege then
@@ -237,7 +241,8 @@ begin
 
   v_entry_id := public.register_invitation_entry(
     '10000000-0000-4000-8000-000000000001',
-    '10000000-0000-4000-8000-000000002001'
+    '10000000-0000-4000-8000-000000002001',
+    '10000000-0000-4000-8000-000000009001'
   );
   if v_entry_id is null
      or not exists (
@@ -248,12 +253,21 @@ begin
     raise exception 'atomic invitation entry did not create its audit event';
   end if;
 
+  if public.register_invitation_entry(
+    '10000000-0000-4000-8000-000000000001',
+    '10000000-0000-4000-8000-000000002001',
+    '10000000-0000-4000-8000-000000009001'
+  ) <> v_entry_id then
+    raise exception 'idempotent retry returned a different entry';
+  end if;
+
   begin
     perform public.register_invitation_entry(
       '10000000-0000-4000-8000-000000000001',
-      '10000000-0000-4000-8000-000000002001'
+      '10000000-0000-4000-8000-000000002001',
+      '10000000-0000-4000-8000-000000009002'
     );
-    raise exception 'the same invitation was consumed twice';
+    raise exception 'the same invitation was consumed twice with different keys';
   exception when object_not_in_prerequisite_state then
     null;
   end;

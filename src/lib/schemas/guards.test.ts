@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   guardSearchSchema,
+  idempotencyKeySchema,
   manualVehicleEntrySchema,
   registerExitSchema,
   registerInvitationEntrySchema,
@@ -19,6 +20,12 @@ describe("esquemas de garita", () => {
     expect(
       validateCredentialSchema.safeParse({ credentialType: "qr", credentialValue: " x " }).success,
     ).toBe(false);
+    expect(
+      validateCredentialSchema.safeParse({
+        credentialType: "qr",
+        credentialValue: "A".repeat(513),
+      }).success,
+    ).toBe(false);
   });
 
   it("exige identificadores UUID para entradas y salidas", () => {
@@ -26,6 +33,8 @@ describe("esquemas de garita", () => {
     expect(registerInvitationEntrySchema.safeParse({ invitationId: "invalida" }).success).toBe(false);
     expect(registerExitSchema.safeParse({ entryId: uuid }).success).toBe(true);
     expect(registerExitSchema.safeParse({ entryId: "invalido" }).success).toBe(false);
+    expect(idempotencyKeySchema.safeParse(uuid).success).toBe(true);
+    expect(idempotencyKeySchema.safeParse(null).success).toBe(false);
   });
 
   it("valida visitantes no anunciados y vehiculos", () => {

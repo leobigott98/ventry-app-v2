@@ -40,6 +40,8 @@ export function getInvitationEffectiveStatus(invitation: {
     return invitation.status;
   }
 
+  const start = parseAppLocalDateTime(invitation.visit_date, invitation.window_start);
+  if (!Number.isNaN(start.valueOf()) && start.getTime() > Date.now()) return "scheduled";
   if (invitation.no_time_limit) return "active";
   const endDate = invitation.window_end_date ?? invitation.visit_date;
   const end = parseAppLocalDateTime(endDate, invitation.window_end);
@@ -50,6 +52,7 @@ export function getInvitationEffectiveStatus(invitation: {
 
 export function getInvitationStatusLabel(status: InvitationStatus) {
   switch (status) {
+    case "scheduled": return "Programada";
     case "active": return "Activa";
     case "used": return "Usada";
     case "expired": return "Vencida";
@@ -68,6 +71,7 @@ export function getInvitationAccessTypeLabel(accessType: InvitationRecord["acces
 
 export function getInvitationStatusVariant(status: InvitationStatus) {
   switch (status) {
+    case "scheduled": return "outline" as const;
     case "active": return "success" as const;
     case "used": return "default" as const;
     case "expired": return "warning" as const;

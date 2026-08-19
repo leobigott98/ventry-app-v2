@@ -84,31 +84,12 @@ export async function searchInvitationsForGuard(communityId: string, query: stri
   }));
 }
 
-export async function searchInvitationsByCredential(
+export async function getInvitationValidationMatch(
   communityId: string,
-  credentialType: "pin" | "qr",
-  credentialValue: string,
+  invitationId: string,
+  effectiveStatus: "scheduled" | "active" | "expired" | "revoked" | "used",
 ) {
   const supabase = await createServerSupabaseClient();
-  const cleanedValue = credentialValue.trim();
-
-  const { data: invitationId, error: matchError } = await supabase.rpc(
-    "match_invitation_credential",
-    {
-      p_community_id: communityId,
-      p_credential_type: credentialType,
-      p_credential_value: cleanedValue,
-    },
-  );
-
-  if (matchError) {
-    throw new Error(matchError.message);
-  }
-
-  if (!invitationId) {
-    return null;
-  }
-
   const { data, error } = await supabase
     .from("invitations")
     .select("*, residents(id, full_name, phone, whatsapp_phone), units(id, identifier, building)")
@@ -126,8 +107,8 @@ export async function searchInvitationsByCredential(
   return {
     invitation: {
       ...invitation,
-      effective_status: getInvitationEffectiveStatus(invitation),
-      status_label: getInvitationStatusLabel(getInvitationEffectiveStatus(invitation)),
+      effective_status: effectiveStatus,
+      status_label: getInvitationStatusLabel(effectiveStatus),
     },
     openEntry,
   };
