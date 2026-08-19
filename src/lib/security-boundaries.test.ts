@@ -70,4 +70,30 @@ describe("authentication and credential boundaries", () => {
     expect(migration).toContain("idx_visitor_entries_community_idempotency");
     expect(migration).toContain("register_event_guest_entry");
   });
+
+  it("scopes manual guard entries to the authenticated community and makes them idempotent", () => {
+    const mutations = read("src/lib/domain/mutations.ts");
+    const unannouncedRoute = read("src/app/api/guards/unannounced/route.ts");
+    const vehicleRoute = read("src/app/api/guards/vehicle/route.ts");
+
+    expect(mutations).toContain('.eq("community_id", args.communityId)');
+    expect(mutations).toContain("El residente seleccionado no pertenece a esta comunidad.");
+    expect(mutations).toContain("idempotency_key: args.idempotencyKey");
+    expect(unannouncedRoute).toContain('request.headers.get("Idempotency-Key")');
+    expect(vehicleRoute).toContain('request.headers.get("Idempotency-Key")');
+  });
+
+  it("does not expose internal errors from guard API responses", () => {
+    const guardRoutes = [
+      "src/app/api/guards/entries/route.ts",
+      "src/app/api/guards/event-entries/route.ts",
+      "src/app/api/guards/invitation-search/route.ts",
+      "src/app/api/guards/unannounced/route.ts",
+      "src/app/api/guards/vehicle/route.ts",
+      "src/app/api/guards/entries/[entryId]/exit/route.ts",
+      "src/app/api/guards/validate-credential/route.ts",
+    ].map(read).join("\n");
+
+    expect(guardRoutes).not.toContain("error instanceof Error ? error.message");
+  });
 });

@@ -24,7 +24,7 @@ export function CredentialCard({ credential, qrImageDataUrl }: CredentialCardPro
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="rounded-[28px] border border-primary/20 bg-primary/10 px-6 py-8 text-center shadow-[0_0_0_1px_rgba(0,212,255,0.08)]">
+          <div className="rounded-xl border border-primary/20 bg-primary/10 px-6 py-8 text-center shadow-glow">
             <div className="text-xs font-semibold uppercase tracking-[0.25em] text-primary">
               PIN unico
             </div>
@@ -46,7 +46,7 @@ export function CredentialCard({ credential, qrImageDataUrl }: CredentialCardPro
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="mx-auto flex w-full max-w-sm justify-center rounded-[28px] border border-border bg-white p-5">
+        <div className="mx-auto flex w-full max-w-sm justify-center rounded-xl border border-border bg-white p-5">
           {qrImageDataUrl ? (
             <img
               alt="QR de acceso"

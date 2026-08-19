@@ -4,14 +4,55 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { GuardWorkspace } from "@/components/guards/guard-workspace";
 
+const navigationMocks = vi.hoisted(() => ({ query: "" }));
+
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }),
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => new URLSearchParams(navigationMocks.query),
 }));
 
 describe("GuardWorkspace", () => {
   beforeEach(() => {
+    navigationMocks.query = "";
     vi.clearAllMocks();
+  });
+
+  it("abre la operación no anunciada desde un deep-link válido", async () => {
+    navigationMocks.query = "action=unannounced";
+
+    render(
+      <GuardWorkspace
+        residents={[]}
+        recentInvitations={[]}
+        openEntries={[]}
+        recentEvents={[]}
+      />,
+    );
+
+    expect(await screen.findByLabelText("Nombre del visitante")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /No anunciado/ })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+  });
+
+  it("ignora acciones manipuladas por el cliente y conserva Validar PIN", () => {
+    navigationMocks.query = "action=__proto__";
+
+    render(
+      <GuardWorkspace
+        residents={[]}
+        recentInvitations={[]}
+        openEntries={[]}
+        recentEvents={[]}
+      />,
+    );
+
+    expect(screen.getByLabelText("PIN")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /Validar PIN/ })[0]).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
   });
 
   it("valida una credencial contra la API y muestra una falta de coincidencia", async () => {
@@ -190,5 +231,62 @@ describe("GuardWorkspace", () => {
     const retryHeaders = fetchMock.mock.calls[2]?.[1]?.headers as Record<string, string>;
     expect(retryHeaders["Idempotency-Key"]).toBe(firstHeaders["Idempotency-Key"]);
     expect(await screen.findByText("Entrada registrada.")).toBeInTheDocument();
+  });
+
+  it("bloquea el doble envio manual y conserva su idempotency key en el reintento", async () => {
+    navigationMocks.query = "action=unannounced";
+    let resolveFirst!: (response: Response) => void;
+    const entry = {
+      id: "entry-manual-1",
+      invitation_id: null,
+      visitor_name: "Carlos Rojas",
+      residents: null,
+      units: null,
+    };
+    const fetchMock = vi
+      .fn()
+      .mockImplementationOnce(
+        () => new Promise<Response>((resolve) => { resolveFirst = resolve; }),
+      )
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ ok: true, entry }), {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        }),
+      );
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    render(
+      <GuardWorkspace
+        residents={[]}
+        recentInvitations={[]}
+        openEntries={[]}
+        recentEvents={[]}
+      />,
+    );
+
+    await user.type(await screen.findByLabelText("Nombre del visitante"), "Carlos Rojas");
+    const submitButton = screen.getByRole("button", { name: "Registrar visitante" });
+    await user.dblClick(submitButton);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    expect(submitButton).toBeDisabled();
+    expect(submitButton).toHaveAttribute("aria-busy", "true");
+
+    const firstHeaders = fetchMock.mock.calls[0]?.[1]?.headers as Record<string, string>;
+    expect(firstHeaders["Idempotency-Key"]).toMatch(/^[0-9a-f-]{36}$/i);
+
+    resolveFirst(new Response(JSON.stringify({ error: "Intenta nuevamente." }), {
+      status: 409,
+      headers: { "Content-Type": "application/json" },
+    }));
+    expect(await screen.findByText("Intenta nuevamente.")).toBeInTheDocument();
+    await waitFor(() => expect(submitButton).toBeEnabled());
+
+    await user.click(submitButton);
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2));
+    const retryHeaders = fetchMock.mock.calls[1]?.[1]?.headers as Record<string, string>;
+    expect(retryHeaders["Idempotency-Key"]).toBe(firstHeaders["Idempotency-Key"]);
+    expect(await screen.findByText("Visitante registrado y marcado como dentro.")).toBeInTheDocument();
   });
 });

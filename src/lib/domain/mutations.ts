@@ -493,8 +493,16 @@ export async function registerEntryExit(args: {
     .select("*")
     .maybeSingle();
 
-  if (error || !entry) {
-    throw new Error(error?.message || "No fue posible registrar la salida.");
+  if (error) {
+    throw new Error("No fue posible registrar la salida.");
+  }
+
+  if (!entry) {
+    const existingEntry = await getVisitorEntryById(args.communityId, args.entryId);
+    if (existingEntry?.entry_status === "exited") {
+      return existingEntry;
+    }
+    throw new Error("No fue posible registrar la salida.");
   }
 
   if (entry.event_guest_id) {
@@ -544,18 +552,37 @@ export async function registerUnannouncedVisitor(args: {
   communityId: string;
   input: UnannouncedVisitorInput;
   createdByEmail: string;
+  idempotencyKey: string;
 }) {
   const supabase = await createServerSupabaseClient();
 
   let unitId: string | null = null;
   if (args.input.residentId) {
-    const { data: resident } = await supabase
+    const { data: resident, error: residentError } = await supabase
       .from("residents")
       .select("unit_id")
       .eq("community_id", args.communityId)
       .eq("id", args.input.residentId)
       .maybeSingle();
-    unitId = resident?.unit_id ?? null;
+    if (residentError || !resident) {
+      throw new Error("El residente seleccionado no pertenece a esta comunidad.");
+    }
+    unitId = resident.unit_id;
+  }
+
+  const { data: existingEntryId, error: existingEntryError } = await supabase
+    .from("visitor_entries")
+    .select("id")
+    .eq("community_id", args.communityId)
+    .eq("idempotency_key", args.idempotencyKey)
+    .maybeSingle();
+  if (existingEntryError) {
+    throw new Error("No fue posible verificar la operacion.");
+  }
+  if (existingEntryId) {
+    const existingEntry = await getVisitorEntryById(args.communityId, existingEntryId.id);
+    if (existingEntry) return existingEntry;
+    throw new Error("No fue posible recuperar la operacion existente.");
   }
 
   const { data: entry, error } = await supabase
@@ -569,12 +596,25 @@ export async function registerUnannouncedVisitor(args: {
       registration_source: "unannounced",
       notes: args.input.notes,
       created_by_email: args.createdByEmail,
+      idempotency_key: args.idempotencyKey,
     })
     .select("*")
     .single();
 
   if (error || !entry) {
-    throw new Error(error?.message || "No fue posible registrar el visitante.");
+    if (error?.code === "23505") {
+      const { data: concurrentEntry } = await supabase
+        .from("visitor_entries")
+        .select("id")
+        .eq("community_id", args.communityId)
+        .eq("idempotency_key", args.idempotencyKey)
+        .maybeSingle();
+      if (concurrentEntry) {
+        const existingEntry = await getVisitorEntryById(args.communityId, concurrentEntry.id);
+        if (existingEntry) return existingEntry;
+      }
+    }
+    throw new Error("No fue posible registrar el visitante.");
   }
 
   await logAccessEvent({
@@ -604,18 +644,37 @@ export async function registerManualVehicleEntry(args: {
   communityId: string;
   input: ManualVehicleEntryInput;
   createdByEmail: string;
+  idempotencyKey: string;
 }) {
   const supabase = await createServerSupabaseClient();
 
   let unitId: string | null = null;
   if (args.input.residentId) {
-    const { data: resident } = await supabase
+    const { data: resident, error: residentError } = await supabase
       .from("residents")
       .select("unit_id")
       .eq("community_id", args.communityId)
       .eq("id", args.input.residentId)
       .maybeSingle();
-    unitId = resident?.unit_id ?? null;
+    if (residentError || !resident) {
+      throw new Error("El residente seleccionado no pertenece a esta comunidad.");
+    }
+    unitId = resident.unit_id;
+  }
+
+  const { data: existingEntryId, error: existingEntryError } = await supabase
+    .from("visitor_entries")
+    .select("id")
+    .eq("community_id", args.communityId)
+    .eq("idempotency_key", args.idempotencyKey)
+    .maybeSingle();
+  if (existingEntryError) {
+    throw new Error("No fue posible verificar la operacion.");
+  }
+  if (existingEntryId) {
+    const existingEntry = await getVisitorEntryById(args.communityId, existingEntryId.id);
+    if (existingEntry) return existingEntry;
+    throw new Error("No fue posible recuperar la operacion existente.");
   }
 
   const { data: entry, error } = await supabase
@@ -631,12 +690,25 @@ export async function registerManualVehicleEntry(args: {
       vehicle_description: args.input.driverName,
       notes: args.input.notes,
       created_by_email: args.createdByEmail,
+      idempotency_key: args.idempotencyKey,
     })
     .select("*")
     .single();
 
   if (error || !entry) {
-    throw new Error(error?.message || "No fue posible registrar el vehiculo.");
+    if (error?.code === "23505") {
+      const { data: concurrentEntry } = await supabase
+        .from("visitor_entries")
+        .select("id")
+        .eq("community_id", args.communityId)
+        .eq("idempotency_key", args.idempotencyKey)
+        .maybeSingle();
+      if (concurrentEntry) {
+        const existingEntry = await getVisitorEntryById(args.communityId, concurrentEntry.id);
+        if (existingEntry) return existingEntry;
+      }
+    }
+    throw new Error("No fue posible registrar el vehiculo.");
   }
 
   await logAccessEvent({

@@ -20,12 +20,10 @@ export async function POST(
       createdByEmail: auth.sessionUser.email,
     });
     return NextResponse.json({ ok: true, entry });
-  } catch (error) {
+  } catch {
     return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : "No fue posible registrar la salida.",
-      },
-      { status: 500 },
+      { error: "No fue posible registrar la salida. Verifica el estado e intenta nuevamente." },
+      { status: 409 },
     );
   }
 }

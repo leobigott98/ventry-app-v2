@@ -4,32 +4,41 @@
 
 @layer base {
   :root {
-    --background: 223 45% 7%;
-    --foreground: 212 62% 95%;
-    --surface: 223 33% 16%;
-    --surface-foreground: 212 62% 95%;
-    --muted: 222 34% 12%;
-    --muted-foreground: 216 24% 61%;
-    --border: 219 39% 20%;
-    --primary: 190 100% 50%;
+    --background: 220 33% 96%;
+    --foreground: 222 47% 9%;
+    --surface: 0 0% 100%;
+    --surface-foreground: 222 47% 9%;
+    --muted: 222 33% 94%;
+    --muted-foreground: 220 20% 45%;
+    --border: 225 38% 89%;
+    --primary: 226 82% 44%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 220 30% 13%;
-    --secondary-foreground: 212 62% 95%;
-    --accent: 146 100% 45%;
-    --accent-foreground: 223 45% 7%;
-    --success: 146 100% 45%;
-    --success-foreground: 223 45% 7%;
-    --warning: 51 100% 50%;
-    --warning-foreground: 223 45% 7%;
-    --danger: 339 100% 62%;
+    --secondary: 225 80% 94%;
+    --secondary-foreground: 226 82% 44%;
+    --accent: 160 94% 30%;
+    --accent-foreground: 0 0% 100%;
+    --success: 160 94% 24%;
+    --success-foreground: 0 0% 100%;
+    --warning: 32 95% 36%;
+    --warning-foreground: 0 0% 100%;
+    --danger: 354 77% 44%;
     --danger-foreground: 0 0% 100%;
-    --radius-lg: 1rem;
-    --radius-md: 0.875rem;
-    --radius-sm: 0.75rem;
+    --sidebar: 222 47% 9%;
+    --sidebar-foreground: 0 0% 100%;
+    --sidebar-muted: 220 18% 70%;
+    --sidebar-accent: 226 82% 54%;
+    --radius-lg: 0.875rem;
+    --radius-md: 0.75rem;
+    --radius-sm: 0.625rem;
   }
 
   * {
     @apply border-border;
+  }
+
+  :focus-visible {
+    outline: 3px solid hsl(var(--primary) / 0.34);
+    outline-offset: 3px;
   }
 
   html {
@@ -39,9 +48,7 @@
   body {
     @apply bg-background text-foreground antialiased;
     font-family: var(--font-sans), sans-serif;
-    background-image:
-      radial-gradient(circle at top left, rgba(0, 212, 255, 0.14), transparent 24%),
-      linear-gradient(180deg, #111827 0%, #0a0e1a 100%);
+    background-image: linear-gradient(180deg, #f8f9fc 0%, #f3f5f9 100%);
   }
 
   h1,
@@ -50,13 +57,13 @@
   h4,
   h5,
   h6 {
-    font-family: var(--font-display), sans-serif;
-    letter-spacing: -0.03em;
+    font-family: var(--font-sans), sans-serif;
+    letter-spacing: -0.02em;
   }
 
   ::selection {
-    background: rgba(0, 212, 255, 0.24);
-    color: #e8f0fe;
+    background: rgba(20, 70, 204, 0.2);
+    color: #0c1221;
   }
 
   ::-webkit-scrollbar {
@@ -65,17 +72,17 @@
   }
 
   ::-webkit-scrollbar-track {
-    background: rgba(10, 14, 26, 0.75);
+    background: #f3f5f9;
   }
 
   ::-webkit-scrollbar-thumb {
-    background: rgba(30, 45, 69, 0.9);
+    background: #a8b5d1;
     border-radius: 999px;
-    border: 2px solid rgba(10, 14, 26, 0.75);
+    border: 2px solid #f3f5f9;
   }
 
   ::-webkit-scrollbar-thumb:hover {
-    background: rgba(0, 212, 255, 0.4);
+    background: #5c6b8a;
   }
 }
 
@@ -85,7 +92,7 @@
   }
 
   .app-surface {
-    @apply border border-border bg-surface/95 shadow-panel backdrop-blur;
+    @apply border border-border bg-surface shadow-panel;
   }
 
   .eyebrow {

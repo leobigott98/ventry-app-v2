@@ -35,7 +35,7 @@ export function EventCredentialCard({
       </CardHeader>
       <CardContent>
         {credential.credential_type === "qr" ? (
-          <div className="mx-auto flex w-full max-w-sm justify-center rounded-[28px] border border-border bg-white p-5">
+          <div className="mx-auto flex w-full max-w-sm justify-center rounded-xl border border-border bg-white p-5">
             {qrImageDataUrl ? (
               <img alt="QR compartido del evento" className="h-[280px] w-[280px]" src={qrImageDataUrl} />
             ) : (
@@ -45,7 +45,7 @@ export function EventCredentialCard({
             )}
           </div>
         ) : (
-          <div className="rounded-[28px] border border-primary/20 bg-primary/10 px-4 py-8 text-center">
+          <div className="rounded-xl border border-primary/20 bg-primary/10 px-4 py-8 text-center">
             <div className="text-xs font-semibold uppercase tracking-[0.25em] text-primary">
               PIN del evento
             </div>

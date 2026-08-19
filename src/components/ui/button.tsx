@@ -7,24 +7,24 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-[14px] font-medium transition-all duration-200 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background active:translate-y-px",
+  "inline-flex min-h-11 items-center justify-center gap-2 whitespace-nowrap rounded-lg font-semibold transition-all duration-200 disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background active:translate-y-px",
   {
     variants: {
       variant: {
         default:
-          "bg-gradient-to-r from-primary to-cyan-400 text-[#0A0E1A] shadow-[0_10px_24px_rgba(0,212,255,0.22)] hover:brightness-105",
+          "bg-primary text-primary-foreground shadow-[0_8px_20px_rgba(20,70,204,0.2)] hover:bg-primary/90",
         secondary:
-          "border border-border bg-secondary text-secondary-foreground hover:border-primary/35 hover:text-foreground",
+          "border border-primary/10 bg-secondary text-secondary-foreground hover:border-primary/30 hover:bg-secondary/70",
         outline:
-          "border border-primary/40 bg-primary/10 text-primary hover:bg-primary/16",
+          "border border-primary/30 bg-surface text-primary hover:bg-secondary",
         ghost:
-          "text-muted-foreground hover:bg-secondary hover:text-foreground",
+          "text-muted-foreground hover:bg-muted hover:text-foreground",
       },
       size: {
         default: "h-11 px-4 py-2 text-sm",
-        sm: "h-9 rounded-xl px-3 text-sm",
-        lg: "h-12 rounded-[16px] px-5 text-sm",
-        icon: "h-11 w-11 rounded-[14px]",
+        sm: "h-11 rounded-md px-3 text-sm",
+        lg: "h-14 rounded-lg px-6 text-base",
+        icon: "h-11 w-11 rounded-lg",
       },
     },
     defaultVariants: {

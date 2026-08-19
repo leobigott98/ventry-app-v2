@@ -4,6 +4,7 @@ import { SectionShell } from "@/components/layout/section-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getResidentsForCommunity, getUnitsForCommunity } from "@/lib/domain/community";
 import { getCommunityContextOrRedirect } from "@/lib/domain/session-context";
 
@@ -40,7 +41,7 @@ export default async function UnitsPage() {
         </Button>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="grid gap-4 md:hidden">
         {units.map((unit) => (
           <Card key={unit.id}>
             <CardHeader>
@@ -72,6 +73,57 @@ export default async function UnitsPage() {
           </Card>
         ))}
       </div>
+
+      {units.length === 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Empieza con la primera unidad</CardTitle>
+            <CardDescription>
+              Crea una unidad real para poder asignar residentes e invitaciones.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild>
+              <Link href="/app/units/new">Crear unidad</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="hidden overflow-hidden md:block">
+          <CardContent className="p-0 sm:p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Unidad</TableHead>
+                  <TableHead>Sector o torre</TableHead>
+                  <TableHead>Residentes</TableHead>
+                  <TableHead>Estado</TableHead>
+                  <TableHead className="text-right">Acciones</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {units.map((unit) => (
+                  <TableRow key={unit.id}>
+                    <TableCell className="font-semibold text-foreground">{unit.identifier}</TableCell>
+                    <TableCell className="text-muted-foreground">{unit.building || "Sin torre asignada"}</TableCell>
+                    <TableCell className="text-muted-foreground">{residentCountByUnit.get(unit.id) ?? 0}</TableCell>
+                    <TableCell>
+                      <Badge variant={unit.is_active ? "success" : "outline"}>
+                        {unit.is_active ? "Activa" : "Inactiva"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Button asChild size="sm" variant="outline">
+                        <Link href={`/app/units/${unit.id}/edit`}>Editar</Link>
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
     </SectionShell>
   );
 }

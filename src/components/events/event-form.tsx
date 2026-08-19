@@ -223,7 +223,7 @@ export function EventForm({ residents }: { residents: ResidentOption[] }) {
 
   return (
     <div className="space-y-5">
-      <section className="rounded-[24px] border border-border bg-secondary/35 p-4 sm:p-5">
+      <section className="rounded-xl border border-border bg-secondary/35 p-4 sm:p-5">
         <div className="mb-5 flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
             <CalendarDays className="h-5 w-5" />
@@ -322,7 +322,7 @@ export function EventForm({ residents }: { residents: ResidentOption[] }) {
         </div>
       </section>
 
-      <section className="rounded-[24px] border border-border bg-secondary/35 p-4 sm:p-5">
+      <section className="rounded-xl border border-border bg-secondary/35 p-4 sm:p-5">
         <div className="mb-5 flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-success/10 text-success">
             <UsersRound className="h-5 w-5" />
@@ -413,7 +413,7 @@ export function EventForm({ residents }: { residents: ResidentOption[] }) {
           </div>
         ) : (
           <button
-            className="flex w-full flex-col items-center justify-center rounded-[24px] border border-dashed border-primary/45 bg-primary/5 px-5 py-9 text-center"
+            className="flex w-full flex-col items-center justify-center rounded-xl border border-dashed border-primary/45 bg-primary/5 px-5 py-9 text-center"
             type="button"
             onClick={() => fileInputRef.current?.click()}
           >
@@ -472,7 +472,7 @@ export function EventForm({ residents }: { residents: ResidentOption[] }) {
         </div>
       </section>
 
-      <section className="rounded-[24px] border border-border bg-secondary/35 p-4 sm:p-5">
+      <section className="rounded-xl border border-border bg-secondary/35 p-4 sm:p-5">
         <h3 className="font-display text-lg font-semibold">3. Acceso compartido</h3>
         <p className="mt-1 text-sm text-muted-foreground">
           Un solo codigo funciona para todos; garita elige el nombre al registrar la entrada.

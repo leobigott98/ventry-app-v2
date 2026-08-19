@@ -131,7 +131,7 @@ export default async function AccessLogPage({
             {events.length > 0 ? (
               events.map((event) => <AccessEventCard key={event.id} event={event} />)
             ) : (
-              <div className="rounded-[28px] border border-dashed border-border bg-secondary/20 p-6 text-sm text-muted-foreground">
+              <div className="rounded-xl border border-dashed border-border bg-secondary/20 p-6 text-sm text-muted-foreground">
                 No encontramos eventos con esos filtros. Ajusta fechas, estado o busqueda para ver
                 resultados.
               </div>
@@ -150,7 +150,7 @@ export default async function AccessLogPage({
             <CardContent className="space-y-3">
               {openEntries.length > 0 ? (
                 openEntries.map((entry) => (
-                  <div key={entry.id} className="rounded-[24px] border border-border bg-secondary/90 p-4">
+                  <div key={entry.id} className="rounded-xl border border-border bg-secondary/90 p-4">
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <div className="font-semibold text-foreground">{entry.visitor_name}</div>
@@ -167,7 +167,7 @@ export default async function AccessLogPage({
                   </div>
                 ))
               ) : (
-                <div className="rounded-[24px] border border-dashed border-border bg-secondary/20 p-5 text-sm text-muted-foreground">
+                <div className="rounded-xl border border-dashed border-border bg-secondary/20 p-5 text-sm text-muted-foreground">
                   No hay visitas ni vehiculos pendientes de salida.
                 </div>
               )}
@@ -180,19 +180,19 @@ export default async function AccessLogPage({
               <CardDescription>Estados y movimientos para interpretar la bitacora sin ambiguedad.</CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 text-sm text-muted-foreground">
-              <div className="rounded-[24px] border border-border bg-secondary p-4">
+              <div className="rounded-xl border border-border bg-secondary p-4">
                 <div className="font-semibold text-foreground">{getAccessEventStatusLabel("validated")}</div>
                 <div className="mt-1">Codigo confirmado o validacion exitosa.</div>
               </div>
-              <div className="rounded-[24px] border border-border bg-secondary p-4">
+              <div className="rounded-xl border border-border bg-secondary p-4">
                 <div className="font-semibold text-foreground">{getAccessEventStatusLabel("rejected")}</div>
                 <div className="mt-1">PIN o QR no valido, vencido o fuera de ventana.</div>
               </div>
-              <div className="rounded-[24px] border border-border bg-secondary p-4">
+              <div className="rounded-xl border border-border bg-secondary p-4">
                 <div className="font-semibold text-foreground">{getAccessEventDirectionLabel("entry")}</div>
                 <div className="mt-1">Movimiento de ingreso registrado en garita.</div>
               </div>
-              <div className="rounded-[24px] border border-border bg-secondary p-4">
+              <div className="rounded-xl border border-border bg-secondary p-4">
                 <div className="font-semibold text-foreground">{getAccessEventDirectionLabel("exit")}</div>
                 <div className="mt-1">Salida confirmada para cerrar el ciclo del acceso.</div>
               </div>

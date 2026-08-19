@@ -4,6 +4,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   ClipboardList,
   KeyRound,
+  PartyPopper,
   QrCode,
   Settings,
   ShieldCheck,
@@ -45,7 +46,7 @@ type InfoItem = {
 
 function QuickActionGrid({ actions }: { actions: QuickAction[] }) {
   return (
-    <div className="grid grid-cols-2 gap-3">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
       {actions.map((action) => {
         const Icon = action.icon;
         const isAccent = action.variant === "accent";
@@ -56,17 +57,17 @@ function QuickActionGrid({ actions }: { actions: QuickAction[] }) {
             href={action.href}
             className={
               isAccent
-                ? "rounded-[24px] border border-primary/35 bg-primary/12 p-4 shadow-[0_0_0_1px_rgba(0,212,255,0.08)] transition hover:bg-primary/16"
-                : "rounded-[24px] border border-border bg-surface p-4 transition hover:border-primary/25 hover:bg-secondary"
+                ? "col-span-2 rounded-xl border border-primary bg-primary p-5 text-primary-foreground shadow-elevated transition hover:bg-primary/90 sm:col-span-3"
+                : "rounded-xl border border-border bg-surface p-4 transition last:col-span-2 hover:border-primary/25 hover:bg-muted sm:last:col-span-1"
             }
           >
-            <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-current/15 bg-black/10 text-primary">
-              <Icon className="h-5 w-5" />
+            <div className={isAccent ? "flex h-12 w-12 items-center justify-center rounded-lg bg-white/15 text-white" : "flex h-11 w-11 items-center justify-center rounded-lg border border-primary/10 bg-secondary text-primary"}>
+              <Icon aria-hidden="true" className="h-5 w-5" />
             </div>
-            <div className="mt-4 font-display text-base font-semibold text-foreground">
+            <div className={isAccent ? "mt-4 text-lg font-bold text-white" : "mt-4 text-base font-semibold text-foreground"}>
               {action.label}
             </div>
-            <p className="mt-2 text-sm leading-5 text-muted-foreground">{action.description}</p>
+            <p className={isAccent ? "mt-2 text-sm leading-5 text-white/75" : "mt-2 text-sm leading-5 text-muted-foreground"}>{action.description}</p>
           </Link>
         );
       })}
@@ -188,7 +189,7 @@ function getOperationsQuickActions(role: CommunityRole): QuickAction[] {
   if (role === "guard") {
     return [
       {
-        href: "/app/guards",
+        href: "/app/guards?action=pin",
         label: "Validar acceso",
         description: "PIN, QR y entrada manual sin pasos extra.",
         icon: ShieldCheck,
@@ -207,7 +208,7 @@ function getOperationsQuickActions(role: CommunityRole): QuickAction[] {
         icon: ClipboardList,
       },
       {
-        href: "/app/guards",
+        href: "/app/guards?action=unannounced",
         label: "No anunciado",
         description: "Registra visitas y vehiculos al momento.",
         icon: UserPlus,
@@ -317,8 +318,7 @@ export default async function DashboardPage() {
     const residentSecondaryActions: QuickAction[] = [
       { href: "/app/invitations/new", label: "Crear acceso ahora", description: "", icon: UserPlus },
       { href: "/app/invitations", label: "Ver todas mis invitaciones", description: "", icon: ClipboardList },
-      { href: "/app/invitations", label: "Revisar activas", description: "", icon: KeyRound },
-      { href: "/app/dashboard", label: "Actualizar panel", description: "", icon: ShieldCheck },
+      { href: "/app/events", label: "Gestionar eventos", description: "", icon: PartyPopper },
     ];
 
     return (
@@ -422,10 +422,10 @@ export default async function DashboardPage() {
   const secondaryActions: QuickAction[] =
     sessionUser.role === "guard"
       ? [
-          { href: "/app/guards", label: "Ir a validacion", description: "", icon: ShieldCheck },
+          { href: "/app/guards?action=pin", label: "Ir a validacion", description: "", icon: ShieldCheck },
           { href: "/app/invitations", label: "Buscar accesos", description: "", icon: KeyRound },
           { href: "/app/access-log", label: "Abrir bitacora", description: "", icon: ClipboardList },
-          { href: "/app/dashboard", label: "Actualizar panel", description: "", icon: ShieldCheck },
+          { href: "/app/events", label: "Revisar eventos", description: "", icon: PartyPopper },
         ]
       : [
           { href: "/app/residents/new", label: "Crear residente", description: "", icon: Users },

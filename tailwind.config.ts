@@ -43,10 +43,16 @@ const config: Config = {
           DEFAULT: "hsl(var(--surface))",
           foreground: "hsl(var(--surface-foreground))",
         },
+        sidebar: {
+          DEFAULT: "hsl(var(--sidebar))",
+          foreground: "hsl(var(--sidebar-foreground))",
+          muted: "hsl(var(--sidebar-muted))",
+          accent: "hsl(var(--sidebar-accent))",
+        },
       },
       fontFamily: {
         sans: ["var(--font-sans)", "sans-serif"],
-        display: ["var(--font-display)", "sans-serif"],
+        display: ["var(--font-sans)", "sans-serif"],
         mono: ["var(--font-mono)", "monospace"],
       },
       borderRadius: {
@@ -55,12 +61,13 @@ const config: Config = {
         sm: "var(--radius-sm)",
       },
       boxShadow: {
-        panel: "0 24px 64px rgba(2, 6, 23, 0.42)",
-        glow: "0 0 0 1px rgba(0, 212, 255, 0.18), 0 18px 42px rgba(0, 0, 0, 0.26)",
+        panel: "0 10px 30px rgba(12, 18, 33, 0.08)",
+        elevated: "0 18px 48px rgba(12, 18, 33, 0.12)",
+        glow: "0 0 0 1px rgba(20, 70, 204, 0.12), 0 14px 34px rgba(20, 70, 204, 0.12)",
       },
       backgroundImage: {
         "hero-grid":
-          "radial-gradient(circle at top left, rgba(0, 212, 255, 0.16), transparent 24%), radial-gradient(circle at top right, rgba(0, 230, 118, 0.12), transparent 18%), linear-gradient(180deg, rgba(17, 24, 39, 0.96), rgba(10, 14, 26, 0.98))",
+          "radial-gradient(circle at top left, rgba(20, 70, 204, 0.13), transparent 24%), radial-gradient(circle at top right, rgba(5, 150, 105, 0.09), transparent 18%), linear-gradient(180deg, #f8f9fc, #f3f5f9)",
       },
     },
   },

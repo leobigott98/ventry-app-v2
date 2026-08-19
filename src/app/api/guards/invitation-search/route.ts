@@ -21,12 +21,9 @@ export async function GET(request: NextRequest) {
   try {
     const results = await searchInvitationsForGuard(auth.context.community.id, parsed.data.q);
     return NextResponse.json({ results });
-  } catch (error) {
+  } catch {
     return NextResponse.json(
-      {
-        error:
-          error instanceof Error ? error.message : "No fue posible buscar invitaciones.",
-      },
+      { error: "No fue posible buscar invitaciones." },
       { status: 500 },
     );
   }

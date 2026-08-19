@@ -25,7 +25,7 @@ export function AccessEventCard({
   showInvitationLink = true,
 }: AccessEventCardProps) {
   return (
-    <div className="rounded-[28px] border border-border bg-surface p-4 shadow-panel">
+    <div className="rounded-xl border border-border bg-surface p-4 shadow-panel">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
           <div className="text-base font-semibold text-foreground">{event.event_label}</div>

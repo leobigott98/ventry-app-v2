@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { requireApiCommunityContext } from "@/lib/auth/api";
 import { registerUnannouncedVisitor } from "@/lib/domain/mutations";
-import { unannouncedVisitorSchema } from "@/lib/schemas/guards";
+import { idempotencyKeySchema, unannouncedVisitorSchema } from "@/lib/schemas/guards";
 
 export async function POST(request: NextRequest) {
   const auth = await requireApiCommunityContext(request, ["admin", "guard"]);
@@ -17,20 +17,28 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   }
+  const idempotencyKey = idempotencyKeySchema.safeParse(
+    request.headers.get("Idempotency-Key"),
+  );
+  if (!idempotencyKey.success) {
+    return NextResponse.json(
+      { error: idempotencyKey.error.issues[0]?.message ?? "Idempotency-Key invalida." },
+      { status: 400 },
+    );
+  }
 
   try {
     const entry = await registerUnannouncedVisitor({
       communityId: auth.context.community.id,
       input: parsed.data,
       createdByEmail: auth.sessionUser.email,
+      idempotencyKey: idempotencyKey.data,
     });
     return NextResponse.json({ ok: true, entry });
-  } catch (error) {
+  } catch {
     return NextResponse.json(
-      {
-        error: error instanceof Error ? error.message : "No fue posible registrar el visitante.",
-      },
-      { status: 500 },
+      { error: "No fue posible registrar el visitante. Verifica los datos e intenta nuevamente." },
+      { status: 409 },
     );
   }
 }

@@ -9,11 +9,13 @@ import { Button } from "@/components/ui/button";
 
 type LogoutButtonProps = Omit<ComponentProps<typeof Button>, "children" | "onClick"> & {
   label?: string;
+  labelClassName?: string;
   onLoggedOut?: () => void;
 };
 
 export function LogoutButton({
   label = "Cerrar sesion",
+  labelClassName,
   onLoggedOut,
   disabled,
   ...props
@@ -42,11 +44,11 @@ export function LogoutButton({
       type={props.type ?? "button"}
     >
       {isPending ? (
-        <LoaderCircle className="h-4 w-4 animate-spin" />
+        <LoaderCircle aria-hidden="true" className="h-4 w-4 animate-spin" />
       ) : (
-        <LogOut className="h-4 w-4" />
+        <LogOut aria-hidden="true" className="h-4 w-4" />
       )}
-      {label}
+      <span className={labelClassName}>{label}</span>
     </Button>
   );
 }

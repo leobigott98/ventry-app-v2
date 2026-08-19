@@ -4,6 +4,7 @@ import { SectionShell } from "@/components/layout/section-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { getResidentAccessMemberships } from "@/lib/domain/access";
 import { getResidentsForCommunity, getUnitsForCommunity } from "@/lib/domain/community";
 import { getCommunityContextOrRedirect } from "@/lib/domain/session-context";
@@ -39,10 +40,9 @@ export default async function ResidentsPage() {
         </Button>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-2">
-        {residents.length > 0 ? (
-          residents.map((resident) => (
-            <Card key={resident.id}>
+      <div className="grid gap-4 md:hidden">
+        {residents.map((resident) => (
+          <Card key={resident.id}>
               <CardHeader>
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -88,24 +88,91 @@ export default async function ResidentsPage() {
                   {accessByResidentId.get(resident.id) ? "Con login" : "Sin login"}
                 </Badge>
               </CardContent>
-            </Card>
-          ))
-        ) : (
-          <Card className="lg:col-span-2">
-            <CardHeader>
-              <CardTitle>Empieza con el primer residente</CardTitle>
-              <CardDescription>
-                La base de residentes es el paso previo para invitaciones y aprobaciones de acceso.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button asChild>
-                <Link href="/app/residents/new">Crear residente</Link>
-              </Button>
-            </CardContent>
           </Card>
-        )}
+        ))}
       </div>
+
+      {residents.length === 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle>Empieza con el primer residente</CardTitle>
+            <CardDescription>
+              La base de residentes es el paso previo para invitaciones y aprobaciones de acceso.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button asChild>
+              <Link href="/app/residents/new">Crear residente</Link>
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="hidden overflow-hidden md:block">
+          <CardContent className="p-0 sm:p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Residente</TableHead>
+                  <TableHead>Unidad</TableHead>
+                  <TableHead>Contacto</TableHead>
+                  <TableHead>Estado</TableHead>
+                  <TableHead>Acceso</TableHead>
+                  <TableHead className="text-right">Acciones</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {residents.map((resident) => {
+                  const accessMembership = accessByResidentId.get(resident.id);
+                  return (
+                    <TableRow key={resident.id}>
+                      <TableCell>
+                        <div className="font-semibold text-foreground">{resident.full_name}</div>
+                        <div className="mt-1 text-xs text-muted-foreground">{resident.email || "Sin correo"}</div>
+                        {resident.notes ? (
+                          <div className="mt-2 max-w-xs whitespace-normal text-xs leading-5 text-muted-foreground">
+                            {resident.notes}
+                          </div>
+                        ) : null}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        {resident.units
+                          ? `${resident.units.building ? `${resident.units.building} - ` : ""}${resident.units.identifier}`
+                          : "Sin unidad"}
+                      </TableCell>
+                      <TableCell className="text-muted-foreground">
+                        <div>{resident.phone}</div>
+                        {resident.whatsapp_phone ? <div className="mt-1 text-xs">WhatsApp {resident.whatsapp_phone}</div> : null}
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={resident.is_active ? "success" : "outline"}>
+                          {resident.is_active ? "Activo" : "Inactivo"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={accessMembership ? "success" : "outline"}>
+                          {accessMembership ? "Con login" : "Sin login"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex justify-end gap-2">
+                          <Button asChild size="sm" variant="outline">
+                            <Link href={`/app/residents/${resident.id}/edit`}>Editar</Link>
+                          </Button>
+                          <Button asChild size="sm">
+                            <Link href={`/app/residents/${resident.id}/access`}>
+                              {accessMembership ? "Actualizar acceso" : "Dar acceso"}
+                            </Link>
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
     </SectionShell>
   );
 }

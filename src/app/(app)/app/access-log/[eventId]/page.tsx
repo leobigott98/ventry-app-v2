@@ -90,12 +90,12 @@ export default async function AccessEventDetailPage({
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-3 text-sm text-muted-foreground">
-              <div className="rounded-[24px] border border-border bg-secondary p-4">
+              <div className="rounded-xl border border-border bg-secondary p-4">
                 <div className="font-semibold text-foreground">Visitante</div>
                 <div className="mt-1">{event.visitor_name || "Sin nombre registrado"}</div>
               </div>
               {event.visitor_entries ? (
-                <div className="rounded-[24px] border border-border bg-secondary p-4">
+                <div className="rounded-xl border border-border bg-secondary p-4">
                   <div className="font-semibold text-foreground">Registro de entrada</div>
                   <div className="mt-1">
                     {getEntrySourceLabel(event.visitor_entries.registration_source)} |{" "}
@@ -110,7 +110,7 @@ export default async function AccessEventDetailPage({
                 </div>
               ) : null}
               {event.notes ? (
-                <div className="rounded-[24px] border border-border bg-secondary p-4">
+                <div className="rounded-xl border border-border bg-secondary p-4">
                   <div className="font-semibold text-foreground">Notas</div>
                   <div className="mt-1">{event.notes}</div>
                 </div>
@@ -136,7 +136,7 @@ export default async function AccessEventDetailPage({
 
 function DetailItem({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-[24px] border border-border bg-secondary/90 p-4">
+    <div className="rounded-xl border border-border bg-secondary/90 p-4">
       <div className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
         {label}
       </div>

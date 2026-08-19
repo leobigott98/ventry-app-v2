@@ -13,6 +13,7 @@ const eslintConfig = [
       "dist/**",
       "node_modules/**",
       "out/**",
+      "supabase/.temp/**",
       "next-env.d.ts",
     ],
   },

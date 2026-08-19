@@ -15,7 +15,6 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { LogoutButton } from "@/components/auth/logout-button";
 import { InvitationStatusBadge } from "@/components/invitations/invitation-status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -106,6 +105,10 @@ const actionLabels = {
   vehicle: "Vehiculo",
 } as const;
 
+function isGuardAction(value: string | null): value is keyof typeof actionLabels {
+  return value === "pin" || value === "qr" || value === "unannounced" || value === "vehicle";
+}
+
 const actionCards: Array<{
   icon: typeof ShieldCheck;
   id: keyof typeof actionLabels;
@@ -168,6 +171,8 @@ export function GuardWorkspace({
   const credentialRequestInFlightRef = useRef(false);
   const entryIdempotencyKeysRef = useRef(new Map<string, string>());
   const entryRequestsInFlightRef = useRef(new Set<string>());
+  const manualIdempotencyKeysRef = useRef(new Map<string, string>());
+  const manualRequestsInFlightRef = useRef(new Set<string>());
   const [pendingEntryOperations, setPendingEntryOperations] = useState<Set<string>>(
     () => new Set(),
   );
@@ -203,6 +208,13 @@ export function GuardWorkspace({
   useEffect(() => {
     setRecentActivity(recentEvents);
   }, [recentEvents]);
+
+  useEffect(() => {
+    const requestedAction = searchParams.get("action");
+    if (isGuardAction(requestedAction)) {
+      setActiveAction(requestedAction);
+    }
+  }, [searchParams]);
 
   const stopQrScanner = useCallback((nextStatus: ScannerStatus = "idle", message?: string) => {
     scannerActiveRef.current = false;
@@ -625,74 +637,100 @@ export function GuardWorkspace({
   }
 
   async function registerExit(entryId: string) {
-    setFlash(null);
-    const response = await fetch(`/api/guards/entries/${entryId}/exit`, { method: "POST" });
-    const payload = (await response.json()) as { error?: string; entry?: OpenEntry };
-    if (!response.ok) {
-      setFlash({ variant: "error", message: payload.error ?? "No fue posible registrar la salida." });
-      return;
-    }
+    const operationKey = `exit:${entryId}`;
+    if (entryRequestsInFlightRef.current.has(operationKey)) return;
 
-    setOpenEntries((current) => current.filter((entry) => entry.id !== entryId));
-    setValidationMatch((current) => (current?.kind === "invitation" && current.openEntry?.id === entryId ? { ...current, openEntry: null } : current));
-    prependActivity(
-      "exit_registered",
-      "Salida registrada",
-      { visitorName: payload.entry?.visitor_name ?? null },
-      payload.entry?.invitation_id ?? null,
-      payload.entry?.id ?? entryId,
-    );
-    setFlash({ variant: "success", message: "Salida registrada." });
+    setFlash(null);
+    entryRequestsInFlightRef.current.add(operationKey);
+    setEntryOperationPending(operationKey, true);
+    try {
+      const response = await fetch(`/api/guards/entries/${entryId}/exit`, { method: "POST" });
+      const payload = (await response.json()) as { error?: string; entry?: OpenEntry };
+      if (!response.ok) {
+        setFlash({ variant: "error", message: payload.error ?? "No fue posible registrar la salida." });
+        return;
+      }
+
+      setOpenEntries((current) => current.filter((entry) => entry.id !== entryId));
+      setValidationMatch((current) => (current?.kind === "invitation" && current.openEntry?.id === entryId ? { ...current, openEntry: null } : current));
+      prependActivity(
+        "exit_registered",
+        "Salida registrada",
+        { visitorName: payload.entry?.visitor_name ?? null },
+        payload.entry?.invitation_id ?? null,
+        payload.entry?.id ?? entryId,
+      );
+      setFlash({ variant: "success", message: "Salida registrada." });
+    } catch {
+      setFlash({ variant: "error", message: "No fue posible conectar para registrar la salida." });
+    } finally {
+      entryRequestsInFlightRef.current.delete(operationKey);
+      setEntryOperationPending(operationKey, false);
+    }
   }
 
   async function submitManual(kind: "unannounced" | "vehicle") {
-    setFlash(null);
-    setIsSubmittingManual(true);
     const endpoint = kind === "unannounced" ? "/api/guards/unannounced" : "/api/guards/vehicle";
     const body = kind === "unannounced" ? unannouncedForm : vehicleForm;
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const payload = (await response.json()) as { error?: string; entry?: OpenEntry };
-    setIsSubmittingManual(false);
+    const operationKey = `${kind}:${JSON.stringify(body)}`;
+    if (manualRequestsInFlightRef.current.has(operationKey)) return;
 
-    if (!response.ok || !payload.entry) {
-      setFlash({ variant: "error", message: payload.error ?? "No fue posible guardar." });
-      return;
-    }
+    setFlash(null);
+    manualRequestsInFlightRef.current.add(operationKey);
+    setIsSubmittingManual(true);
+    const idempotencyKey =
+      manualIdempotencyKeysRef.current.get(operationKey) ?? crypto.randomUUID();
+    manualIdempotencyKeysRef.current.set(operationKey, idempotencyKey);
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
+        body: JSON.stringify(body),
+      });
+      const payload = (await response.json()) as { error?: string; entry?: OpenEntry };
 
-    upsertOpenEntry(payload.entry);
-    if (kind === "unannounced") {
-      setUnannouncedForm({ visitorName: "", residentId: "", accessType: "visitor", notes: "" });
-      prependActivity(
-        "unannounced_registered",
-        "Visitante no anunciado registrado",
-        { visitorName: payload.entry.visitor_name },
-        payload.entry.invitation_id,
-        payload.entry.id,
-      );
-      setFlash({ variant: "success", message: "Visitante registrado y marcado como dentro." });
-    } else {
-      setVehicleForm({ vehiclePlate: "", driverName: "", residentId: "", accessType: "visitor", notes: "" });
-      prependActivity(
-        "vehicle_registered",
-        "Vehiculo registrado manualmente",
-        {
-          vehiclePlate: payload.entry.vehicle_plate,
-          visitorName: payload.entry.visitor_name,
-        },
-        payload.entry.invitation_id,
-        payload.entry.id,
-      );
-      setFlash({ variant: "success", message: "Vehiculo registrado y marcado como dentro." });
+      if (!response.ok || !payload.entry) {
+        setFlash({ variant: "error", message: payload.error ?? "No fue posible guardar." });
+        return;
+      }
+      manualIdempotencyKeysRef.current.delete(operationKey);
+
+      upsertOpenEntry(payload.entry);
+      if (kind === "unannounced") {
+        setUnannouncedForm({ visitorName: "", residentId: "", accessType: "visitor", notes: "" });
+        prependActivity(
+          "unannounced_registered",
+          "Visitante no anunciado registrado",
+          { visitorName: payload.entry.visitor_name },
+          payload.entry.invitation_id,
+          payload.entry.id,
+        );
+        setFlash({ variant: "success", message: "Visitante registrado y marcado como dentro." });
+      } else {
+        setVehicleForm({ vehiclePlate: "", driverName: "", residentId: "", accessType: "visitor", notes: "" });
+        prependActivity(
+          "vehicle_registered",
+          "Vehiculo registrado manualmente",
+          {
+            vehiclePlate: payload.entry.vehicle_plate,
+            visitorName: payload.entry.visitor_name,
+          },
+          payload.entry.invitation_id,
+          payload.entry.id,
+        );
+        setFlash({ variant: "success", message: "Vehiculo registrado y marcado como dentro." });
+      }
+    } catch {
+      setFlash({ variant: "error", message: "No fue posible conectar para guardar." });
+    } finally {
+      manualRequestsInFlightRef.current.delete(operationKey);
+      setIsSubmittingManual(false);
     }
   }
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         {[
           ["Invitaciones activas", String(activeInvitationCount)],
           ["Accesos", String(openEntries.length)],
@@ -705,7 +743,6 @@ export function GuardWorkspace({
             </CardContent>
           </Card>
         ))}
-        <LogoutButton className="h-full min-h-24 rounded-[26px]" variant="outline" />
       </div>
 
       {flash ? (
@@ -721,7 +758,8 @@ export function GuardWorkspace({
           return (
             <button
               key={action.id}
-              className={active ? "rounded-[26px] border border-primary/30 bg-primary/12 px-5 py-5 text-left text-primary" : "rounded-[26px] border border-border bg-surface px-5 py-5 text-left"}
+              aria-pressed={active}
+              className={active ? "min-h-28 rounded-lg border border-primary/30 bg-secondary px-5 py-5 text-left text-primary shadow-panel transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40" : "min-h-28 rounded-lg border border-border bg-surface px-5 py-5 text-left transition-colors hover:border-primary/25 hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/40"}
               type="button"
               onClick={() => setActiveAction(action.id)}
             >
@@ -750,7 +788,7 @@ export function GuardWorkspace({
                 <>
                   {activeAction === "qr" ? (
                     <div className="space-y-3">
-                      <div className="overflow-hidden rounded-[28px] border border-border bg-foreground">
+                      <div className="overflow-hidden rounded-xl border border-border bg-foreground">
                         <div className="relative aspect-[4/5] min-h-72 sm:aspect-video">
                           <video
                             ref={videoRef}
@@ -774,7 +812,7 @@ export function GuardWorkspace({
                           ) : null}
                           {scannerStatus === "active" ? (
                             <div className="pointer-events-none absolute inset-0 flex items-center justify-center p-8">
-                              <div className="h-full max-h-72 w-full max-w-72 rounded-[24px] border-2 border-background/90 shadow-[0_0_0_999px_rgba(0,0,0,0.32)]" />
+                              <div className="h-full max-h-72 w-full max-w-72 rounded-xl border-2 border-background/90 shadow-[0_0_0_999px_rgba(0,0,0,0.32)]" />
                             </div>
                           ) : null}
                         </div>
@@ -828,7 +866,7 @@ export function GuardWorkspace({
                     {activeAction === "pin" ? "Validar PIN" : "Validar QR"}
                   </Button>
                   {validationMatch ? validationMatch.kind === "event" ? (
-                    <div className="space-y-4 rounded-[28px] border border-primary/30 bg-secondary/90 p-4">
+                    <div className="space-y-4 rounded-xl border border-primary/30 bg-secondary/90 p-4">
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <div className="text-xs font-bold uppercase tracking-[0.2em] text-primary">Modo evento</div>
@@ -889,7 +927,7 @@ export function GuardWorkspace({
                       </Button>
                     </div>
                   ) : (
-                    <div className="space-y-4 rounded-[28px] border border-border bg-secondary/90 p-4">
+                    <div className="space-y-4 rounded-xl border border-border bg-secondary/90 p-4">
                       <div className="flex items-start justify-between gap-3">
                         <div>
                           <div className="font-display text-xl font-semibold text-foreground">{validationMatch.invitation.visitor_name || "Acceso rapido sin nombre"}</div>
@@ -918,7 +956,20 @@ export function GuardWorkspace({
                               : "Registrar entrada"}
                           </Button>
                         ) : null}
-                        {validationMatch.openEntry ? <Button className="h-14 flex-1 text-base" type="button" variant="outline" onClick={() => void registerExit(validationMatch.openEntry!.id)}>Registrar salida</Button> : null}
+                        {validationMatch.openEntry ? (
+                          <Button
+                            aria-busy={pendingEntryOperations.has(`exit:${validationMatch.openEntry.id}`)}
+                            className="h-14 flex-1 text-base"
+                            disabled={pendingEntryOperations.has(`exit:${validationMatch.openEntry.id}`)}
+                            type="button"
+                            variant="outline"
+                            onClick={() => void registerExit(validationMatch.openEntry!.id)}
+                          >
+                            {pendingEntryOperations.has(`exit:${validationMatch.openEntry.id}`)
+                              ? "Registrando..."
+                              : "Registrar salida"}
+                          </Button>
+                        ) : null}
                         <Button asChild className="h-14 text-base" type="button" variant="ghost"><Link href={`/app/invitations/${validationMatch.invitation.id}`}>Detalle</Link></Button>
                       </div>
                     </div>
@@ -954,7 +1005,7 @@ export function GuardWorkspace({
                     <Label htmlFor="unannouncedNotes">Notas</Label>
                     <Textarea id="unannouncedNotes" value={unannouncedForm.notes} onChange={(e) => setUnannouncedForm((c) => ({ ...c, notes: e.target.value }))} placeholder="Opcional" />
                   </div>
-                  <Button className="h-14 w-full text-base" disabled={isSubmittingManual} type="button" onClick={() => void submitManual("unannounced")}>Registrar visitante</Button>
+                  <Button aria-busy={isSubmittingManual} className="h-14 w-full text-base" disabled={isSubmittingManual} type="button" onClick={() => void submitManual("unannounced")}>{isSubmittingManual ? "Registrando..." : "Registrar visitante"}</Button>
                 </div>
               ) : null}
 
@@ -992,7 +1043,7 @@ export function GuardWorkspace({
                     <Label htmlFor="vehicleNotes">Notas</Label>
                     <Textarea id="vehicleNotes" value={vehicleForm.notes} onChange={(e) => setVehicleForm((c) => ({ ...c, notes: e.target.value }))} placeholder="Opcional" />
                   </div>
-                  <Button className="h-14 w-full text-base" disabled={isSubmittingManual} type="button" onClick={() => void submitManual("vehicle")}>Registrar vehiculo</Button>
+                  <Button aria-busy={isSubmittingManual} className="h-14 w-full text-base" disabled={isSubmittingManual} type="button" onClick={() => void submitManual("vehicle")}>{isSubmittingManual ? "Registrando..." : "Registrar vehiculo"}</Button>
                 </div>
               ) : null}
             </CardContent>
@@ -1068,7 +1119,15 @@ export function GuardWorkspace({
                   <div className="mt-3 text-sm text-muted-foreground">
                     {entry.vehicle_plate ? `Placa: ${entry.vehicle_plate}` : "Sin vehiculo"} | {formatAppTime(entry.entered_at)}
                   </div>
-                  <Button className="mt-4 h-12 w-full text-base" type="button" onClick={() => void registerExit(entry.id)}>Registrar salida</Button>
+                  <Button
+                    aria-busy={pendingEntryOperations.has(`exit:${entry.id}`)}
+                    className="mt-4 h-12 w-full text-base"
+                    disabled={pendingEntryOperations.has(`exit:${entry.id}`)}
+                    type="button"
+                    onClick={() => void registerExit(entry.id)}
+                  >
+                    {pendingEntryOperations.has(`exit:${entry.id}`) ? "Registrando..." : "Registrar salida"}
+                  </Button>
                 </div>
               )) : <div className="rounded-2xl border border-dashed border-border bg-secondary/20 p-6 text-sm text-muted-foreground">No hay personas dentro ahora.</div>}
             </CardContent>
