@@ -13,6 +13,7 @@ import {
   getEventWindowLabel,
 } from "@/lib/domain/events";
 import { getCommunityContextOrRedirect } from "@/lib/domain/session-context";
+import { formatAppDate } from "@/lib/formatting";
 
 function statusVariant(status: ReturnType<typeof getEventEffectiveStatus>) {
   if (status === "active") return "success" as const;
@@ -121,7 +122,7 @@ export default async function EventsPage() {
                     <div className="flex items-start justify-between gap-3">
                       <div>
                         <div className="font-semibold">{event.name}</div>
-                        <div className="mt-1 text-sm text-muted-foreground">{event.event_date}</div>
+                        <div className="mt-1 text-sm text-muted-foreground">{formatAppDate(event.event_date, { dateStyle: "medium" })}</div>
                       </div>
                       <Badge variant={statusVariant(status)}>{getEventStatusLabel(status)}</Badge>
                     </div>

@@ -154,7 +154,7 @@ function ResidentShell({
   return (
     <div data-role-shell="resident" className="min-h-[100dvh] bg-background pb-24 lg:pb-0">
       <header className="bg-primary text-primary-foreground shadow-elevated">
-        <div className="mx-auto max-w-6xl px-4 pb-7 pt-4 sm:px-6 lg:px-8 lg:pb-5">
+        <div className="mx-auto max-w-6xl px-4 pb-5 pt-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between gap-3">
             <Brand inverse />
             <div className="flex items-center gap-2">
@@ -171,11 +171,10 @@ function ResidentShell({
               />
             </div>
           </div>
-          <div className="mt-7 lg:flex lg:items-end lg:justify-between lg:gap-8">
+          <div className="mt-5 lg:flex lg:items-end lg:justify-between lg:gap-8">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/80">Tu comunidad</p>
-              <h1 className="mt-2 text-2xl font-bold sm:text-3xl">{activeItem.label}</h1>
-              <p className="mt-1 max-w-2xl text-sm leading-6 text-white/85">{activeItem.description}</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/70">Ventry residente</p>
+              <h1 className="mt-1 text-xl font-bold sm:text-2xl">{activeItem.label}</h1>
             </div>
             <nav aria-label="Navegación de residente para escritorio" className="mt-5 hidden gap-2 lg:flex">
               {navigation.map((item) => {
@@ -201,7 +200,7 @@ function ResidentShell({
         </div>
       </header>
 
-      <main className="mx-auto w-full max-w-6xl px-4 py-5 sm:px-6 sm:py-7 lg:px-8">{children}</main>
+      <main className="mx-auto w-full max-w-6xl px-4 py-4 sm:px-6 sm:py-7 lg:px-8">{children}</main>
 
       <nav
         aria-label="Navegación principal del residente"

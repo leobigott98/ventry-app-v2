@@ -12,6 +12,7 @@ import {
   getInvitationsForCommunity,
 } from "@/lib/domain/invitations";
 import { getCommunityContextOrRedirect } from "@/lib/domain/session-context";
+import { formatAppDate } from "@/lib/formatting";
 
 export default async function InvitationsPage() {
   const { context, sessionUser } = await getCommunityContextOrRedirect({
@@ -26,7 +27,7 @@ export default async function InvitationsPage() {
   );
 
   const activeInvitations = invitations.filter(
-    (invitation) => getInvitationEffectiveStatus(invitation) === "active",
+    (invitation) => ["active", "scheduled"].includes(getInvitationEffectiveStatus(invitation)),
   );
   const historyInvitations = invitations.filter(
     (invitation) => getInvitationEffectiveStatus(invitation) !== "active",
@@ -34,7 +35,7 @@ export default async function InvitationsPage() {
 
   return (
     <SectionShell
-      eyebrow={`${activeInvitations.length} activas`}
+      eyebrow={`${activeInvitations.length} vigentes`}
       title="Invitaciones"
       description={
         sessionUser.role === "guard"
@@ -61,7 +62,7 @@ export default async function InvitationsPage() {
       <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
         <Card>
           <CardHeader>
-            <CardTitle>Activas</CardTitle>
+            <CardTitle>Vigentes</CardTitle>
             <CardDescription>
               Accesos que todavia pueden usarse dentro de su ventana horaria.
             </CardDescription>
@@ -82,7 +83,7 @@ export default async function InvitationsPage() {
                           {invitation.visitor_name || "Acceso rapido sin nombre"}
                         </div>
                         <div className="mt-1 text-sm text-muted-foreground">
-                          {invitation.residents?.full_name || "Sin residente"} | {invitation.visit_date}
+                          {invitation.residents?.full_name || "Sin residente"} · {formatAppDate(invitation.visit_date, { dateStyle: "medium" })}
                         </div>
                       </div>
                       <InvitationStatusBadge status={status} />
@@ -99,7 +100,7 @@ export default async function InvitationsPage() {
               })
             ) : (
               <div className="rounded-2xl border border-dashed border-border bg-secondary/20 p-6 text-sm text-muted-foreground">
-                No hay invitaciones activas. Crea una nueva para empezar a reemplazar llamadas y aprobaciones manuales.
+                No hay invitaciones activas o programadas. Crea una nueva cuando esperes una visita.
               </div>
             )}
           </CardContent>
@@ -128,7 +129,7 @@ export default async function InvitationsPage() {
                           {invitation.visitor_name || "Acceso rapido sin nombre"}
                         </div>
                         <div className="mt-1 text-sm text-muted-foreground">
-                          {invitation.residents?.full_name || "Sin residente"} | {invitation.visit_date}
+                          {invitation.residents?.full_name || "Sin residente"} · {formatAppDate(invitation.visit_date, { dateStyle: "medium" })}
                         </div>
                       </div>
                       <InvitationStatusBadge status={status} />

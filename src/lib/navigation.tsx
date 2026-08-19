@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   BellRing,
   ClipboardList,
+  ContactRound,
   Home,
   KeyRound,
   PartyPopper,
@@ -17,6 +18,7 @@ export type AppNavItem = {
     | "/app/dashboard"
     | "/app/invitations"
     | "/app/events"
+    | "/app/contacts"
     | "/app/access-log"
     | "/app/guards"
     | "/app/residents"
@@ -45,6 +47,14 @@ export const appNavigation: AppNavItem[] = [
     description: "Crea y administra accesos para visitantes y domicilios.",
     icon: KeyRound,
     allowedRoles: ["admin", "guard", "resident"],
+  },
+  {
+    href: "/app/contacts",
+    label: "Contactos",
+    shortLabel: "Contactos",
+    description: "Acceso preparado para tus contactos frecuentes.",
+    icon: ContactRound,
+    allowedRoles: ["resident"],
   },
   {
     href: "/app/events",

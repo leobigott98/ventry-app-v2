@@ -54,22 +54,15 @@ export function InvitationWindowForm({
     setSuccessMessage(null);
     setIsSubmitting(true);
 
-    const response = await fetch(`/api/invitations/${invitation.id}/window`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(values),
-    });
-
-    const payload = (await response.json()) as { error?: string };
-    setIsSubmitting(false);
-
-    if (!response.ok) {
-      setServerError(payload.error ?? "No fue posible actualizar la ventana.");
-      return;
-    }
-
-    setSuccessMessage("Ventana actualizada.");
-    router.refresh();
+    try {
+      const response = await fetch(`/api/invitations/${invitation.id}/window`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(values) });
+      const payload = (await response.json()) as { error?: string };
+      if (!response.ok) { setServerError(payload.error ?? "No fue posible actualizar la ventana."); return; }
+      setSuccessMessage("Ventana actualizada.");
+      router.refresh();
+    } catch {
+      setServerError("No pudimos conectar. Revisa tu conexión e inténtalo de nuevo.");
+    } finally { setIsSubmitting(false); }
   });
 
   return (
@@ -110,7 +103,7 @@ export function InvitationWindowForm({
       <FormMessage message={serverError} variant="error" />
       <FormMessage message={successMessage} />
       <Button disabled={isSubmitting} type="submit">
-        {isSubmitting ? "Actualizando..." : "Actualizar ventana"}
+        {isSubmitting ? "Actualizando…" : serverError ? "Reintentar actualización" : "Actualizar ventana"}
       </Button>
     </form>
   );

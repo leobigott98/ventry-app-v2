@@ -2,7 +2,7 @@ import type {
   InvitationRecord,
   InvitationStatus,
 } from "@/lib/domain/types";
-import { parseAppLocalDateTime } from "@/lib/formatting";
+import { formatAppDate, parseAppLocalDateTime } from "@/lib/formatting";
 
 export function getInvitationEndDate(
   invitation: Pick<InvitationRecord, "visit_date" | "window_end_date">,
@@ -17,15 +17,16 @@ export function getInvitationWindowLabel(
   >,
 ) {
   if (invitation.no_time_limit) {
-    return `Desde ${invitation.visit_date} ${invitation.window_start}, sin limite`;
+    return `Desde ${formatAppDate(invitation.visit_date, { dateStyle: "medium" })} a las ${invitation.window_start}, sin límite`;
   }
 
   const endDate = getInvitationEndDate(invitation);
+  const startLabel = `${formatAppDate(invitation.visit_date, { dateStyle: "medium" })}, ${invitation.window_start}`;
   const endLabel =
     endDate === invitation.visit_date
       ? invitation.window_end
-      : `${endDate} ${invitation.window_end}`;
-  return `${invitation.visit_date} ${invitation.window_start} - ${endLabel}`;
+      : `${formatAppDate(endDate, { dateStyle: "medium" })}, ${invitation.window_end}`;
+  return `${startLabel} – ${endLabel}`;
 }
 
 export function getInvitationEffectiveStatus(invitation: {

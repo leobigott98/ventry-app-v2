@@ -28,3 +28,13 @@ export function formatAppTime(value: string) {
     timeZone: APP_TIME_ZONE,
   });
 }
+
+export function formatAppDate(
+  value: string,
+  options: Intl.DateTimeFormatOptions = { dateStyle: "long" },
+) {
+  return parseAppLocalDateTime(value, "12:00").toLocaleDateString(APP_LOCALE, {
+    timeZone: APP_TIME_ZONE,
+    ...options,
+  });
+}

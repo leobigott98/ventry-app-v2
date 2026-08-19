@@ -2,9 +2,14 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import {
+  ChevronRight,
   ClipboardList,
+  ContactRound,
+  Clock3,
   KeyRound,
+  Mic,
   PartyPopper,
+  PhoneCall,
   QrCode,
   Settings,
   ShieldCheck,
@@ -16,13 +21,15 @@ import { SectionShell } from "@/components/layout/section-shell";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { getDashboardSummary, getRoleMembers } from "@/lib/domain/community";
+import { getDashboardSummary, getResidentById, getRoleMembers, getUnitById } from "@/lib/domain/community";
+import { getAccessLogEvents } from "@/lib/domain/access-log";
 import {
   getInvitationEffectiveStatus,
   getInvitationsForCommunity,
 } from "@/lib/domain/invitations";
 import type { CommunityRole } from "@/lib/domain/types";
 import { getCommunityContextOrRedirect } from "@/lib/domain/session-context";
+import { APP_LOCALE, APP_TIME_ZONE, formatAppDateTime } from "@/lib/formatting";
 
 type QuickAction = {
   href: string;
@@ -155,34 +162,11 @@ function SecondaryActions({ actions }: { actions: QuickAction[] }) {
   );
 }
 
-function getResidentQuickActions(activeInvitationsCount: number): QuickAction[] {
-  return [
-    {
-      href: "/app/invitations/new",
-      label: "Nueva invitacion",
-      description: "Crea un acceso y compartelo al instante.",
-      icon: UserPlus,
-      variant: "accent",
-    },
-    {
-      href: "/app/invitations/new",
-      label: "QR o PIN",
-      description: "Define el metodo mas comodo para la garita.",
-      icon: QrCode,
-    },
-    {
-      href: "/app/invitations",
-      label: "Activas",
-      description: `${activeInvitationsCount} accesos listos para usarse hoy.`,
-      icon: KeyRound,
-    },
-    {
-      href: "/app/invitations",
-      label: "Historial",
-      description: "Revisa estados, uso y revocaciones.",
-      icon: ClipboardList,
-    },
-  ];
+function getGreeting() {
+  const hour = Number(new Intl.DateTimeFormat(APP_LOCALE, { hour: "2-digit", hour12: false, timeZone: APP_TIME_ZONE }).format(new Date()));
+  if (hour < 12) return "Buenos días";
+  if (hour < 19) return "Buenas tardes";
+  return "Buenas noches";
 }
 
 function getOperationsQuickActions(role: CommunityRole): QuickAction[] {
@@ -255,96 +239,51 @@ export default async function DashboardPage() {
       redirect("/app");
     }
 
-    const invitations = await getInvitationsForCommunity(
-      context.community.id,
-      sessionUser.residentId,
-    );
+    const [invitations, resident, activity] = await Promise.all([
+      getInvitationsForCommunity(context.community.id, sessionUser.residentId),
+      getResidentById(context.community.id, sessionUser.residentId),
+      getAccessLogEvents(context.community.id, { residentId: sessionUser.residentId, limit: 5 }),
+    ]);
+    const unit = resident?.unit_id ? await getUnitById(context.community.id, resident.unit_id) : null;
     const activeInvitations = invitations.filter(
       (invitation) => getInvitationEffectiveStatus(invitation) === "active",
     );
-    const historyInvitations = invitations.filter(
-      (invitation) => getInvitationEffectiveStatus(invitation) !== "active",
-    );
-
-    const residentNotices: Notice[] = [
-      activeInvitations.length > 0
-        ? {
-            label: "Listo para hoy",
-            description: `Tienes ${activeInvitations.length} invitaciones activas que ya pueden validarse en garita.`,
-            variant: "success",
-          }
-        : {
-            label: "Sin accesos activos",
-            description: "Si esperas visita hoy, crea la invitacion ahora para evitar llamadas a la entrada.",
-            variant: "warning",
-          },
-      {
-        label: "WhatsApp friendly",
-        description:
-          "Comparte por WhatsApp cuando necesites velocidad. QR y PIN siguen el flujo mas claro para el personal de seguridad.",
-        variant: "outline",
-      },
-      historyInvitations.length > 0
-        ? {
-            label: "Bitacora personal",
-            description: `Ya tienes ${historyInvitations.length} accesos en historial para revisar uso, vencimiento o revocacion.`,
-            variant: "outline",
-          }
-        : {
-            label: "Primer uso",
-            description: "Tu historial empezara a llenarse automaticamente cuando compartas y usen el primer acceso.",
-            variant: "outline",
-          },
-    ];
-
-    const residentInfo: InfoItem[] = [
-      {
-        label: "Activas",
-        value: String(activeInvitations.length),
-        helper: "Listas para validarse sin friccion.",
-      },
-      {
-        label: "Historial",
-        value: String(historyInvitations.length),
-        helper: "Usadas, vencidas o revocadas.",
-      },
-      {
-        label: "Canal recomendado",
-        value: "WhatsApp",
-        helper: "Mas rapido para invitados sin app.",
-      },
-    ];
-
-    const residentSecondaryActions: QuickAction[] = [
-      { href: "/app/invitations/new", label: "Crear acceso ahora", description: "", icon: UserPlus },
-      { href: "/app/invitations", label: "Ver todas mis invitaciones", description: "", icon: ClipboardList },
-      { href: "/app/events", label: "Gestionar eventos", description: "", icon: PartyPopper },
-    ];
-
+    const firstName = sessionUser.fullName.trim().split(/\s+/)[0] || "residente";
+    const unitLabel = unit ? `${unit.building ? `${unit.building} · ` : ""}${unit.identifier}` : "Sin unidad asignada";
     return (
-      <SectionShell
-        eyebrow={context.community.location_label}
-        title={context.community.name}
-        description="Panel principal compacto para invitar, revisar alertas y resolver el acceso sin recorrer toda la app."
-      >
-        <QuickActionGrid actions={getResidentQuickActions(activeInvitations.length)} />
-
-        <div className="grid gap-4 xl:grid-cols-[1.08fr_0.92fr]">
-          <NoticeList
-            eyebrow="Notificaciones y alertas"
-            title="Lo importante primero"
-            description="Estados visibles para actuar rapido desde el telefono."
-            notices={residentNotices}
-          />
-          <ImportantInfoCard
-            title="Info importante"
-            description="Lectura breve del estado de tu acceso."
-            items={residentInfo}
-          />
+      <section className="mx-auto max-w-5xl space-y-4 sm:space-y-5">
+        <div className="overflow-hidden rounded-2xl bg-primary px-5 pb-8 pt-6 text-white shadow-elevated sm:px-7">
+          <p className="text-sm text-white/70">{context.community.name}</p>
+          <h2 className="mt-3 text-3xl font-extrabold leading-tight">{getGreeting()},<br />{firstName}</h2>
+          <p className="mt-2 text-sm text-white/75">{unitLabel}</p>
         </div>
 
-        <SecondaryActions actions={residentSecondaryActions} />
-      </SectionShell>
+        <Link href="/app/invitations" className="-mt-8 flex min-h-20 items-center justify-between gap-3 rounded-2xl border border-border bg-surface p-4 shadow-elevated sm:mx-4">
+          <span className="flex items-center gap-3"><span className="flex h-11 w-11 items-center justify-center rounded-full bg-emerald-50 text-emerald-700"><Clock3 className="h-5 w-5" /></span><span><span className="block font-bold">{activeInvitations.length === 1 ? "1 invitación activa" : `${activeInvitations.length} invitaciones activas`}</span><span className="mt-0.5 block text-xs text-muted-foreground">Ver accesos y su estado</span></span></span>
+          <ChevronRight className="h-5 w-5 text-muted-foreground" />
+        </Link>
+
+        <Link href="/app/invitations/new" className="flex min-h-24 items-center gap-4 rounded-2xl bg-primary p-5 text-white shadow-elevated transition hover:bg-primary/90">
+          <span className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/15"><UserPlus className="h-6 w-6" /></span>
+          <span><span className="block text-lg font-bold">Invitar una visita</span><span className="mt-1 block text-sm text-white/75">Crear invitación con QR o PIN</span></span>
+        </Link>
+
+        <div className="grid grid-cols-3 gap-3">
+          {[{ href: "/app/invitations/voice", label: "Invitar hablando", icon: Mic }, { href: "/app/contacts", label: "Contactos", icon: ContactRound }, { href: "/app/intercom", label: "Garita", icon: PhoneCall }].map((item) => <Link key={item.href} href={item.href} className="flex min-h-28 flex-col items-center justify-center gap-3 rounded-2xl border border-border bg-surface p-3 text-center text-sm font-semibold transition hover:border-primary/30 hover:bg-secondary"><span className="flex h-11 w-11 items-center justify-center rounded-full bg-secondary text-primary"><item.icon className="h-5 w-5" /></span>{item.label}</Link>)}
+        </div>
+
+        <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
+          <Card>
+            <CardHeader className="flex-row items-start justify-between gap-3"><div><CardTitle>Actividad reciente</CardTitle><CardDescription>Movimientos reales asociados a tus accesos.</CardDescription></div></CardHeader>
+            <CardContent className="space-y-3">
+              {activity.length ? activity.map((event) => <div key={event.id} className="flex items-start gap-3 rounded-xl bg-muted p-4"><span className="mt-1 h-2.5 w-2.5 shrink-0 rounded-full bg-primary" /><div><p className="text-sm font-semibold">{event.event_label}</p><p className="mt-1 text-xs text-muted-foreground">{formatAppDateTime(event.created_at, { dateStyle: "medium", timeStyle: "short" })}</p></div></div>) : <div className="rounded-xl border border-dashed border-border p-6 text-center"><p className="font-semibold">Todavía no hay actividad</p><p className="mt-2 text-sm text-muted-foreground">Las validaciones, entradas y salidas de tus invitaciones aparecerán aquí.</p></div>}
+            </CardContent>
+          </Card>
+          <Link href="/app/events" className="flex min-h-40 flex-col justify-between rounded-2xl border border-primary/20 bg-secondary p-5 transition hover:border-primary/40">
+            <span className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary text-white"><PartyPopper className="h-5 w-5" /></span><span><span className="block text-lg font-bold">Event Mode</span><span className="mt-1 block text-sm leading-5 text-muted-foreground">Crea y administra listas de invitados con un acceso compartido.</span><span className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-primary">Ir a Eventos <ChevronRight className="h-4 w-4" /></span></span>
+          </Link>
+        </div>
+      </section>
     );
   }
 

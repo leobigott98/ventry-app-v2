@@ -47,8 +47,10 @@ describe("InvitationForm", () => {
     render(<InvitationForm residents={[resident]} />);
 
     expect(screen.getByText("Ana Perez")).toBeInTheDocument();
-    await user.type(screen.getByLabelText("Nombre del visitante"), "Carlos Rojas");
-    await user.click(screen.getByRole("button", { name: "Crear invitacion" }));
+    await user.type(screen.getByLabelText(/Quién va a visitarte/), "Carlos Rojas");
+    await user.click(screen.getByRole("button", { name: /Continuar/ }));
+    await user.click(screen.getByRole("button", { name: /Continuar/ }));
+    await user.click(screen.getByRole("button", { name: "Crear invitación" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
     expect(fetchMock).toHaveBeenCalledWith(
@@ -79,12 +81,14 @@ describe("InvitationForm", () => {
 
     render(<InvitationForm residents={[resident]} />);
 
-    await user.type(screen.getByLabelText("Nombre del visitante"), "Carlos Rojas");
-    const submitButton = screen.getByRole("button", { name: "Crear invitacion" });
+    await user.type(screen.getByLabelText(/Quién va a visitarte/), "Carlos Rojas");
+    await user.click(screen.getByRole("button", { name: /Continuar/ }));
+    await user.click(screen.getByRole("button", { name: /Continuar/ }));
+    const submitButton = screen.getByRole("button", { name: "Crear invitación" });
     await user.click(submitButton);
 
-    expect(screen.getByRole("button", { name: "Creando invitacion..." })).toBeDisabled();
-    await user.click(screen.getByRole("button", { name: "Creando invitacion..." }));
+    expect(screen.getByRole("button", { name: "Creando…" })).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Creando…" }));
     expect(fetchMock).toHaveBeenCalledOnce();
 
     resolveResponse?.(

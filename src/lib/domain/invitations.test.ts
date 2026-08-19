@@ -83,7 +83,7 @@ describe("getInvitationWindowLabel", () => {
         window_end_date: null,
         no_time_limit: false,
       }),
-    ).toBe("2026-08-17 09:00 - 11:00");
+    ).toBe("17 ago. 2026, 09:00 – 11:00");
   });
 
   it("incluye la fecha final en ventanas de varios dias", () => {
@@ -95,7 +95,7 @@ describe("getInvitationWindowLabel", () => {
         window_end_date: "2026-08-18",
         no_time_limit: false,
       }),
-    ).toBe("2026-08-17 22:00 - 2026-08-18 06:00");
+    ).toBe("17 ago. 2026, 22:00 – 18 ago. 2026, 06:00");
   });
 
   it("explica una invitacion sin limite", () => {
@@ -107,6 +107,6 @@ describe("getInvitationWindowLabel", () => {
         window_end_date: null,
         no_time_limit: true,
       }),
-    ).toBe("Desde 2026-08-17 09:00, sin limite");
+    ).toBe("Desde 17 ago. 2026 a las 09:00, sin límite");
   });
 });

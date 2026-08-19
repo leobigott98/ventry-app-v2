@@ -21,7 +21,7 @@ import {
 } from "@/lib/domain/invitations";
 import { getInvitationAccessEvents } from "@/lib/domain/access-log";
 import { getCommunityContextOrRedirect } from "@/lib/domain/session-context";
-import { formatAppDateTime } from "@/lib/formatting";
+import { formatAppDate, formatAppDateTime } from "@/lib/formatting";
 
 function getBaseUrl(requestHeaders: Headers) {
   const host = requestHeaders.get("x-forwarded-host") || requestHeaders.get("host");
@@ -101,10 +101,11 @@ export default async function InvitationDetailPage({
 
   const shareUrl = `${baseUrl}/invite/${invitation.share_token}`;
   const shareText = buildInvitationShareText(invitation, shareUrl);
+  const canModify = status === "active" || status === "scheduled";
 
   return (
     <SectionShell
-      eyebrow={invitation.visit_date}
+      eyebrow={formatAppDate(invitation.visit_date, { dateStyle: "long" })}
       title={invitation.visitor_name || "Detalle de invitacion"}
       description="Consulta el acceso, comparte por WhatsApp y revisa el historial de acciones de esta invitacion."
     >
@@ -158,7 +159,7 @@ export default async function InvitationDetailPage({
                     shareText={shareText}
                   />
                 ) : null}
-                {sessionUser.role !== "guard" && status === "active" ? (
+                {sessionUser.role !== "guard" && canModify ? (
                   <RevokeInvitationButton invitationId={invitation.id} />
                 ) : null}
                 <Button asChild type="button" variant="ghost">
@@ -170,7 +171,7 @@ export default async function InvitationDetailPage({
 
           <CredentialCard credential={credential} qrImageDataUrl={qrImageDataUrl} />
 
-          {sessionUser.role !== "guard" && status === "active" ? (
+          {sessionUser.role !== "guard" && canModify ? (
             <Card>
               <CardHeader>
                 <CardTitle>Modificar ventana</CardTitle>
