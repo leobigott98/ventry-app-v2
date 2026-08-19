@@ -11,6 +11,7 @@ import type {
   AccessLogEvent,
   AccessLogFilters,
 } from "@/lib/domain/access-log-utils";
+import { normalizePagination } from "@/lib/pagination";
 
 export type { AccessLogEvent, AccessLogFilters } from "@/lib/domain/access-log-utils";
 export {
@@ -121,16 +122,18 @@ async function findUnitIdsForQuery(communityId: string, query: string) {
   return (data ?? []).map((unit) => unit.id);
 }
 
-export async function getAccessLogEvents(communityId: string, filters: AccessLogFilters = {}) {
+async function queryAccessLogEvents(communityId: string, filters: AccessLogFilters = {}, page = 1, pageSize?: number) {
   const supabase = await createServerSupabaseClient();
+  const pagination = normalizePagination(page, pageSize ?? filters.limit, { defaultPageSize: 60, maxPageSize: 100 });
   let query = supabase
     .from("access_events")
     .select(
       "*, residents(id, full_name, phone, whatsapp_phone, email), units(id, identifier, building), visitor_entries(id, registration_source, entry_status, entered_at, exited_at, vehicle_plate, vehicle_description), invitations(id, visit_date, window_start, window_end, status)",
+      { count: "exact" },
     )
     .eq("community_id", communityId)
     .order("created_at", { ascending: false })
-    .limit(filters.limit ?? 60);
+    .order("id", { ascending: false });
 
   if (filters.residentId) {
     query = query.eq("resident_id", filters.residentId);
@@ -185,13 +188,22 @@ export async function getAccessLogEvents(communityId: string, filters: AccessLog
     query = query.or(orFilters.join(","));
   }
 
-  const { data, error } = await query;
+  const { data, error, count } = await query.range(pagination.from, pagination.to);
 
   if (error) {
     throw new Error(error.message);
   }
 
-  return ((data ?? []) as AccessEventRelationRecord[]).map(mapEventRecord);
+  const total = count ?? 0;
+  return { items: ((data ?? []) as AccessEventRelationRecord[]).map(mapEventRecord), page: pagination.page, pageSize: pagination.pageSize, total, totalPages: Math.max(Math.ceil(total / pagination.pageSize), 1) };
+}
+
+export async function getAccessLogEvents(communityId: string, filters: AccessLogFilters = {}) {
+  return (await queryAccessLogEvents(communityId, filters, 1, filters.limit)).items;
+}
+
+export async function getPaginatedAccessLogEvents(communityId: string, filters: AccessLogFilters = {}, page = 1, pageSize = 20) {
+  return queryAccessLogEvents(communityId, filters, page, pageSize);
 }
 
 export async function getRecentAccessEvents(communityId: string, limit = 12) {
@@ -221,20 +233,28 @@ export async function getInvitationAccessEvents(
   invitationId: string,
   limit = 12,
 ) {
+  return (await getInvitationAccessEventsPage(communityId, invitationId, 1, limit)).items;
+}
+
+export async function getInvitationAccessEventsPage(communityId: string, invitationId: string, page = 1, pageSize = 5) {
   const supabase = await createServerSupabaseClient();
-  const { data, error } = await supabase
+  const pagination = normalizePagination(page, pageSize, { defaultPageSize: 5, maxPageSize: 20 });
+  const { data, error, count } = await supabase
     .from("access_events")
     .select(
       "*, residents(id, full_name, phone, whatsapp_phone, email), units(id, identifier, building), visitor_entries(id, registration_source, entry_status, entered_at, exited_at, vehicle_plate, vehicle_description), invitations(id, visit_date, window_start, window_end, status)",
+      { count: "exact" },
     )
     .eq("community_id", communityId)
     .eq("invitation_id", invitationId)
     .order("created_at", { ascending: false })
-    .limit(limit);
+    .order("id", { ascending: false })
+    .range(pagination.from, pagination.to);
 
   if (error) {
     throw new Error(error.message);
   }
 
-  return ((data ?? []) as AccessEventRelationRecord[]).map(mapEventRecord);
+  const total = count ?? 0;
+  return { items: ((data ?? []) as AccessEventRelationRecord[]).map(mapEventRecord), page: pagination.page, pageSize: pagination.pageSize, total, totalPages: Math.max(Math.ceil(total / pagination.pageSize), 1) };
 }

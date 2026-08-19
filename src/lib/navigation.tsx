@@ -3,6 +3,7 @@ import {
   BellRing,
   ClipboardList,
   ContactRound,
+  Clock3,
   Home,
   KeyRound,
   PartyPopper,
@@ -19,6 +20,7 @@ export type AppNavItem = {
     | "/app/invitations"
     | "/app/events"
     | "/app/contacts"
+    | "/app/resident-settings"
     | "/app/access-log"
     | "/app/guards"
     | "/app/residents"
@@ -106,6 +108,42 @@ export const appNavigation: AppNavItem[] = [
   },
 ];
 
+export const residentNavigation: AppNavItem[] = [
+  {
+    href: "/app/dashboard",
+    label: "Inicio",
+    shortLabel: "Inicio",
+    description: "Acciones principales del residente.",
+    icon: Home,
+    allowedRoles: ["resident"],
+  },
+  {
+    href: "/app/contacts",
+    label: "Contactos",
+    shortLabel: "Contactos",
+    description: "Visitantes frecuentes derivados del historial.",
+    icon: ContactRound,
+    allowedRoles: ["resident"],
+  },
+  {
+    href: "/app/invitations",
+    label: "Visitas",
+    shortLabel: "Visitas",
+    description: "Invitaciones vigentes e historial.",
+    icon: Clock3,
+    allowedRoles: ["resident"],
+  },
+  {
+    href: "/app/resident-settings",
+    label: "Ajustes",
+    shortLabel: "Ajustes",
+    description: "Cuenta y opciones del residente.",
+    icon: Settings,
+    allowedRoles: ["resident"],
+  },
+];
+
 export function getNavigationForRole(role: CommunityRole) {
+  if (role === "resident") return residentNavigation;
   return appNavigation.filter((item) => item.allowedRoles.includes(role));
 }

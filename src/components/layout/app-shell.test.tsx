@@ -48,17 +48,17 @@ describe("AppShell navigation and responsive role layouts", () => {
     const destinationLinks = within(bottomNavigation).getAllByRole("link");
 
     expect(shell).toBeInTheDocument();
-    expect(bottomNavigation).toHaveClass("lg:hidden");
     expect(destinationLinks).toHaveLength(4);
-    expect(destinationLinks.length).toBeLessThanOrEqual(4);
-    expect(within(bottomNavigation).getByRole("link", { name: "Eventos" })).toHaveAttribute(
+    expect(destinationLinks.map((link) => link.textContent)).toEqual(["Inicio", "Contactos", "Visitas", "Ajustes"]);
+    expect(within(bottomNavigation).getByRole("link", { name: "Visitas" })).toHaveAttribute(
       "href",
-      "/app/events",
+      "/app/invitations",
     );
     expect(within(bottomNavigation).getByRole("link", { name: "Contactos" })).toHaveAttribute(
       "href",
       "/app/contacts",
     );
+    expect(within(bottomNavigation).getByRole("link", { name: "Ajustes" })).toHaveAttribute("href", "/app/resident-settings");
     expect(screen.queryByRole("link", { name: "Bitacora" })).not.toBeInTheDocument();
   });
 

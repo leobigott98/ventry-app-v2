@@ -1,9 +1,28 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  classifyInvitations,
   getInvitationEffectiveStatus,
   getInvitationWindowLabel,
 } from "@/lib/domain/invitation-utils";
+
+describe("classifyInvitations", () => {
+  it("mantiene scheduled solo en vigentes y no repite IDs entre colecciones", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-19T12:00:00.000Z"));
+    const invitations = [
+      { id: "scheduled", status: "active" as const, visit_date: "2026-08-21", window_start: "09:00", window_end: "10:00" },
+      { id: "active", status: "active" as const, visit_date: "2026-08-19", window_start: "07:00", window_end: "18:00" },
+      { id: "used", status: "used" as const, visit_date: "2026-08-18", window_start: "09:00", window_end: "10:00" },
+      { id: "revoked", status: "revoked" as const, visit_date: "2026-08-18", window_start: "09:00", window_end: "10:00" },
+    ];
+    const result = classifyInvitations(invitations);
+    expect(result.current.map((item) => item.id)).toEqual(["scheduled", "active"]);
+    expect(result.history.map((item) => item.id)).toEqual(["used", "revoked"]);
+    expect(result.current.map((item) => item.id).filter((id) => result.history.some((item) => item.id === id))).toEqual([]);
+    vi.useRealTimers();
+  });
+});
 
 describe("getInvitationEffectiveStatus", () => {
   afterEach(() => {

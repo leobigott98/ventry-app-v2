@@ -1,26 +1,21 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
-import { DM_Sans, IBM_Plex_Mono, Syne } from "next/font/google";
-import { Viewport } from 'next'
+import { JetBrains_Mono, Plus_Jakarta_Sans } from "next/font/google";
+import type { Viewport } from "next";
 
 import "@/app/globals.css";
 
 import { cn } from "@/lib/utils";
 
-const dmSans = DM_Sans({
+const jakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
   variable: "--font-sans",
+  weight: ["400", "500", "600", "700", "800"],
 });
 
-const syne = Syne({
+const jetbrainsMono = JetBrains_Mono({
   subsets: ["latin"],
-  variable: "--font-display",
-  weight: ["400", "600", "700", "800"],
-});
-
-const plexMono = IBM_Plex_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500"],
+  weight: ["400", "600"],
   variable: "--font-mono",
 });
 
@@ -30,9 +25,10 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  width: 'device-width',
+  width: "device-width",
   initialScale: 1,
-}
+  viewportFit: "cover",
+};
 
 export default function RootLayout({
   children,
@@ -44,9 +40,8 @@ export default function RootLayout({
       <body
         className={cn(
           "min-h-screen bg-background font-sans text-foreground",
-          dmSans.variable,
-          syne.variable,
-          plexMono.variable,
+          jakarta.variable,
+          jetbrainsMono.variable,
         )}
       >
         {children}

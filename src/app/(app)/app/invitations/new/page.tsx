@@ -8,62 +8,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { getResidentsForCommunity } from "@/lib/domain/community";
 import { getCommunityContextOrRedirect } from "@/lib/domain/session-context";
 
-export default async function NewInvitationPage() {
-  const { context, sessionUser } = await getCommunityContextOrRedirect({
-    allowedRoles: ["admin", "resident"],
-  });
-  if (sessionUser.role === "resident" && !sessionUser.residentId) {
-    redirect("/app");
-  }
-  const residents = (await getResidentsForCommunity(context.community.id)).filter(
-    (resident) => resident.is_active,
-  );
-  const availableResidents =
-    sessionUser.role === "resident"
-      ? residents.filter((resident) => resident.id === sessionUser.residentId)
-      : residents;
+function single(value: string | string[] | undefined) { return Array.isArray(value) ? value[0] ?? "" : value ?? ""; }
 
-  return (
-    <SectionShell
-      eyebrow="Flujo rapido"
-      title="Nueva invitacion"
-      description="Completa lo minimo necesario y comparte el acceso enseguida. Ventry prioriza rapidez y claridad en la garita."
-    >
-      {availableResidents.length > 0 ? (
-        <Card>
-          <CardHeader>
-            <CardTitle>Crear acceso</CardTitle>
-            <CardDescription>
-              Elige residente, tipo de acceso y la ventana horaria. El PIN o QR se genera automaticamente.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <InvitationForm residents={availableResidents} />
-          </CardContent>
-        </Card>
-      ) : (
-        <Card>
-          <CardHeader>
-            <CardTitle>
-              {sessionUser.role === "resident"
-                ? "Tu usuario aun no tiene un residente vinculado"
-                : "Primero agrega un residente"}
-            </CardTitle>
-            <CardDescription>
-              {sessionUser.role === "resident"
-                ? "Pide a la administracion que habilite tu acceso de residente para poder crear invitaciones."
-                : "Para crear invitaciones necesitas al menos un residente activo relacionado con una unidad."}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {sessionUser.role === "admin" ? (
-              <Button asChild>
-                <Link href="/app/residents/new">Crear residente</Link>
-              </Button>
-            ) : null}
-          </CardContent>
-        </Card>
-      )}
-    </SectionShell>
-  );
+export default async function NewInvitationPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  const { context, sessionUser } = await getCommunityContextOrRedirect({ allowedRoles: ["admin", "resident"] });
+  if (sessionUser.role === "resident" && !sessionUser.residentId) redirect("/app");
+  const params = await searchParams;
+  const residents = (await getResidentsForCommunity(context.community.id)).filter((resident) => resident.is_active);
+  const availableResidents = sessionUser.role === "resident" ? residents.filter((resident) => resident.id === sessionUser.residentId) : residents;
+
+  if (availableResidents.length === 0) return <SectionShell title={sessionUser.role === "resident" ? "Tu usuario aún no tiene un residente vinculado" : "Primero agrega un residente"} description={sessionUser.role === "resident" ? "Pide a la administración que habilite tu acceso para crear invitaciones." : "Necesitas al menos un residente activo."}>{sessionUser.role === "admin" ? <Button asChild><Link href="/app/residents/new">Crear residente</Link></Button> : null}</SectionShell>;
+
+  if (sessionUser.role === "resident") return <InvitationForm defaultVisitorName={single(params.visitorName).slice(0, 120)} residentMode residents={availableResidents} />;
+
+  return <SectionShell eyebrow="Flujo rápido" title="Nueva invitación" description="Crea una credencial real para un residente."><Card><CardHeader><CardTitle>Crear acceso</CardTitle><CardDescription>Completa los tres pasos y revisa antes de confirmar.</CardDescription></CardHeader><CardContent><InvitationForm defaultVisitorName={single(params.visitorName).slice(0, 120)} residents={availableResidents} /></CardContent></Card></SectionShell>;
 }

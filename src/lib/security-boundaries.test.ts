@@ -96,4 +96,15 @@ describe("authentication and credential boundaries", () => {
 
     expect(guardRoutes).not.toContain("error instanceof Error ? error.message");
   });
+
+  it("keeps paginated invitation and access-log queries scoped before applying ranges", () => {
+    const invitations = read("src/lib/domain/invitations.ts");
+    const accessLog = read("src/lib/domain/access-log.ts");
+    expect(invitations).toContain('.eq("community_id", communityId)');
+    expect(invitations).toContain('.eq("resident_id", residentId)');
+    expect(invitations).toContain(".range(from, to)");
+    expect(accessLog).toContain('.eq("community_id", communityId)');
+    expect(accessLog).toContain('query = query.eq("resident_id", filters.residentId)');
+    expect(accessLog).toContain(".range(pagination.from, pagination.to)");
+  });
 });

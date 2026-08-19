@@ -79,3 +79,14 @@ export function getInvitationStatusVariant(status: InvitationStatus) {
     case "revoked": return "outline" as const;
   }
 }
+
+export function classifyInvitations<T extends Parameters<typeof getInvitationEffectiveStatus>[0]>(invitations: T[]) {
+  const current: T[] = [];
+  const history: T[] = [];
+  for (const invitation of invitations) {
+    const status = getInvitationEffectiveStatus(invitation);
+    if (status === "active" || status === "scheduled") current.push(invitation);
+    else history.push(invitation);
+  }
+  return { current, history };
+}

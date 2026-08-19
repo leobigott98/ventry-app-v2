@@ -8,10 +8,12 @@ import { Button } from "@/components/ui/button";
  type ShareInvitationActionsProps = {
   invitationId: string;
   shareText: string;
+  mode?: "all" | "whatsapp" | "secondary";
 };
 
 export function ShareInvitationActions({
   invitationId,
+  mode = "all",
   shareText,
 }: ShareInvitationActionsProps) {
   const [isSharing, setIsSharing] = useState(false);
@@ -64,20 +66,20 @@ export function ShareInvitationActions({
   return (
     <div className="space-y-2">
       <div className="flex flex-col gap-3 sm:flex-row">
-        <Button disabled={isSharing} type="button" onClick={handleWhatsAppShare}>
+        {mode !== "secondary" ? <Button className={mode === "whatsapp" ? "h-14 w-full rounded-2xl bg-[#21cf70] text-base text-white shadow-[0_8px_18px_rgba(5,150,105,0.24)] hover:bg-[#19bd63]" : undefined} disabled={isSharing} type="button" onClick={handleWhatsAppShare}>
           <Share2 className="h-4 w-4" />
-          WhatsApp
-        </Button>
-        {typeof navigator !== "undefined" && "share" in navigator ? (
+          {mode === "whatsapp" ? "Compartir por WhatsApp" : "WhatsApp"}
+        </Button> : null}
+        {mode !== "whatsapp" && typeof navigator !== "undefined" && "share" in navigator ? (
           <Button disabled={isSharing} type="button" variant="outline" onClick={handleNativeShare}>
             <Share2 className="h-4 w-4" />
             Compartir
           </Button>
         ) : null}
-        <Button disabled={isSharing} type="button" variant="ghost" onClick={handleCopyShare}>
+        {mode !== "whatsapp" ? <Button disabled={isSharing} type="button" variant="ghost" onClick={handleCopyShare}>
           <Copy className="h-4 w-4" />
           Copiar
-        </Button>
+        </Button> : null}
       </div>
       {copyMessage ? <div className="text-sm text-muted-foreground">{copyMessage}</div> : null}
     </div>

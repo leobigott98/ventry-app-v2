@@ -140,94 +140,56 @@ function MobileNavigation({
   );
 }
 
+export function ResidentBottomNav({ navigation, pathname }: { navigation: AppNavItem[]; pathname: string }) {
+  return <nav
+    aria-label="Navegación principal del residente"
+    className="fixed bottom-0 left-1/2 z-50 w-full max-w-3xl -translate-x-1/2 border-t border-border bg-surface/95 px-2 pb-[max(env(safe-area-inset-bottom),0.35rem)] pt-1.5 shadow-[0_-8px_24px_rgba(12,18,33,0.06)] backdrop-blur"
+    data-testid="resident-bottom-navigation"
+  >
+    <div className="grid grid-cols-4">
+      {navigation.map((item) => {
+        const Icon = item.icon;
+        const active = itemIsActive(pathname, item.href);
+        return (
+          <Link
+            key={item.href}
+            aria-current={active ? "page" : undefined}
+            className={cn(
+              "flex min-h-[3.75rem] flex-col items-center justify-center gap-0.5 px-1 py-1 text-[11px] font-semibold transition-colors",
+              active ? "text-primary" : "text-muted-foreground hover:text-foreground",
+            )}
+            href={item.href}
+          >
+            <Icon aria-hidden="true" className="h-5 w-5" />
+            <span>{item.shortLabel}</span>
+          </Link>
+        );
+      })}
+    </div>
+  </nav>;
+}
+
 function ResidentShell({
-  activeItem,
   children,
-  currentUser,
   navigation,
   pathname,
-}: AppShellProps & {
-  activeItem: AppNavItem;
+}: Pick<AppShellProps, "children"> & {
   navigation: AppNavItem[];
   pathname: string;
 }) {
+  const focusedFlow =
+    pathname === "/app/invitations/new" ||
+    pathname === "/app/invitations/voice" ||
+    pathname === "/app/intercom" ||
+    /^\/app\/invitations\/[^/]+$/.test(pathname);
+
   return (
-    <div data-role-shell="resident" className="min-h-[100dvh] bg-background pb-24 lg:pb-0">
-      <header className="bg-primary text-primary-foreground shadow-elevated">
-        <div className="mx-auto max-w-6xl px-4 pb-5 pt-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between gap-3">
-            <Brand inverse />
-            <div className="flex items-center gap-2">
-              <div className="hidden text-right sm:block">
-                <div className="text-sm font-semibold">{currentUser.fullName}</div>
-                <div className="text-xs text-white/80">{roleLabels[currentUser.role]}</div>
-              </div>
-              <LogoutButton
-                aria-label="Cerrar sesión"
-                className="border-white/25 bg-white/10 px-3 text-white hover:bg-white/20"
-                label="Salir"
-                size="sm"
-                variant="outline"
-              />
-            </div>
-          </div>
-          <div className="mt-5 lg:flex lg:items-end lg:justify-between lg:gap-8">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-white/70">Ventry residente</p>
-              <h1 className="mt-1 text-xl font-bold sm:text-2xl">{activeItem.label}</h1>
-            </div>
-            <nav aria-label="Navegación de residente para escritorio" className="mt-5 hidden gap-2 lg:flex">
-              {navigation.map((item) => {
-                const Icon = item.icon;
-                const active = itemIsActive(pathname, item.href);
-                return (
-                  <Link
-                    key={item.href}
-                    aria-current={active ? "page" : undefined}
-                    className={cn(
-                      "flex min-h-11 items-center gap-2 rounded-md px-4 text-sm font-semibold transition-colors focus-visible:outline-white",
-                      active ? "bg-white text-primary" : "bg-white/10 text-white hover:bg-white/20",
-                    )}
-                    href={item.href}
-                  >
-                    <Icon aria-hidden="true" className="h-4 w-4" />
-                    {item.label}
-                  </Link>
-                );
-              })}
-            </nav>
-          </div>
-        </div>
-      </header>
+    <div className="min-h-[100dvh] bg-[#e7eaf1]" data-role-shell="resident">
+      <div className={cn("relative mx-auto min-h-[100dvh] w-full max-w-3xl overflow-x-clip bg-background shadow-[0_0_50px_rgba(12,18,33,0.10)]", !focusedFlow && "pb-[calc(4.5rem+env(safe-area-inset-bottom))]")}>
+        <main>{children}</main>
+      </div>
 
-      <main className="mx-auto w-full max-w-6xl px-4 py-4 sm:px-6 sm:py-7 lg:px-8">{children}</main>
-
-      <nav
-        aria-label="Navegación principal del residente"
-        className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-surface/95 px-2 pb-[calc(env(safe-area-inset-bottom)+0.5rem)] pt-2 shadow-[0_-10px_30px_rgba(12,18,33,0.1)] backdrop-blur lg:hidden"
-        data-testid="resident-bottom-navigation"
-      >
-        <div className="mx-auto grid max-w-xl grid-flow-col auto-cols-fr gap-1">
-          {navigation.slice(0, 4).map((item) => {
-            const Icon = item.icon;
-            const active = itemIsActive(pathname, item.href);
-            return (
-              <Link
-                key={item.href}
-                aria-current={active ? "page" : undefined}
-                className={cn(
-                  "flex min-h-14 flex-col items-center justify-center gap-1 rounded-md px-2 py-1.5 text-xs font-semibold",
-                  active ? "bg-secondary text-primary" : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                )}
-                href={item.href}
-              >
-                <Icon aria-hidden="true" className="h-5 w-5" />
-                <span>{item.shortLabel}</span>
-              </Link>
-            );
-          })}
-        </div>
-      </nav>
+      {!focusedFlow ? <ResidentBottomNav navigation={navigation} pathname={pathname} /> : null}
     </div>
   );
 }
@@ -367,8 +329,6 @@ export function AppShell({ children, currentUser }: AppShellProps) {
   if (currentUser.role === "resident") {
     return (
       <ResidentShell
-        activeItem={activeItem}
-        currentUser={currentUser}
         navigation={navigation}
         pathname={pathname}
       >

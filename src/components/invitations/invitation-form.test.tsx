@@ -32,6 +32,7 @@ const resident: ResidentRecord & { units: { identifier: string; building: string
 describe("InvitationForm", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.stubGlobal("scrollTo", vi.fn());
   });
 
   it("envia una invitacion valida y navega al detalle devuelto por la API", async () => {
@@ -46,7 +47,7 @@ describe("InvitationForm", () => {
 
     render(<InvitationForm residents={[resident]} />);
 
-    expect(screen.getByText("Ana Perez")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Residente")).not.toBeInTheDocument();
     await user.type(screen.getByLabelText(/Quién va a visitarte/), "Carlos Rojas");
     await user.click(screen.getByRole("button", { name: /Continuar/ }));
     await user.click(screen.getByRole("button", { name: /Continuar/ }));

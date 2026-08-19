@@ -39,7 +39,7 @@ export function getDefaultAppRouteForRole(role: CommunityRole) {
     case "guard":
       return "/app/guards";
     case "resident":
-      return "/app/invitations";
+      return "/app/dashboard";
   }
 }
 

@@ -6,7 +6,7 @@ describe("acceso por rol", () => {
   it.each([
     ["admin", "/app/dashboard"],
     ["guard", "/app/guards"],
-    ["resident", "/app/invitations"],
+    ["resident", "/app/dashboard"],
   ] as const)("envia %s a su ruta inicial", (role, route) => {
     expect(getDefaultAppRouteForRole(role)).toBe(route);
   });

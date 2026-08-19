@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { getUnitsForCommunity, getResidentsForCommunity } from "@/lib/domain/community";
 import {
   formatUnitLabel,
-  getAccessLogEvents,
+  getPaginatedAccessLogEvents,
   getAccessEventDirectionLabel,
   getAccessEventStatusLabel,
 } from "@/lib/domain/access-log";
@@ -21,6 +21,12 @@ function getSingleValue(value: string | string[] | undefined) {
   }
 
   return value ?? "";
+}
+
+function pageUrl(values: Record<string, string>, page: number) {
+  const params = new URLSearchParams(values);
+  if (page > 1) params.set("page", String(page)); else params.delete("page");
+  return `/app/access-log?${params.toString()}`;
 }
 
 function formatTime(value: string) {
@@ -51,10 +57,11 @@ export default async function AccessLogPage({
     dateTo: getSingleValue(params.dateTo),
   };
 
-  const [residents, units, events, openEntries] = await Promise.all([
+  const requestedPage = Math.max(Number.parseInt(getSingleValue(params.page), 10) || 1, 1);
+  const [residents, units, eventResult, openEntries] = await Promise.all([
     getResidentsForCommunity(context.community.id),
     getUnitsForCommunity(context.community.id),
-    getAccessLogEvents(context.community.id, {
+    getPaginatedAccessLogEvents(context.community.id, {
       query: values.query || undefined,
       residentId: values.residentId || undefined,
       unitId: values.unitId || undefined,
@@ -63,9 +70,10 @@ export default async function AccessLogPage({
       direction: (values.direction || undefined) as AccessEventDirection | undefined,
       dateFrom: values.dateFrom || undefined,
       dateTo: values.dateTo || undefined,
-    }),
+    }, requestedPage, 20),
     getOpenEntriesForCommunity(context.community.id),
   ]);
+  const events = eventResult.items;
 
   const entriesCount = events.filter((event) => event.event_direction === "entry").length;
   const exitsCount = events.filter((event) => event.event_direction === "exit").length;
@@ -93,7 +101,7 @@ export default async function AccessLogPage({
         <Card>
           <CardContent className="p-5">
             <div className="text-sm text-muted-foreground">Eventos mostrados</div>
-            <div className="mt-2 font-display text-3xl font-semibold text-foreground">{events.length}</div>
+            <div className="mt-2 font-display text-3xl font-semibold text-foreground">{eventResult.total}</div>
           </CardContent>
         </Card>
         <Card>
@@ -201,6 +209,12 @@ export default async function AccessLogPage({
           </Card>
         </div>
       </div>
+
+      <nav aria-label="Paginación de bitácora" className="flex items-center justify-between gap-3">
+        <Link aria-disabled={eventResult.page <= 1} className={`inline-flex min-h-11 items-center rounded-xl border border-border px-4 text-sm font-semibold ${eventResult.page <= 1 ? "pointer-events-none opacity-45" : "bg-surface"}`} href={pageUrl(values, eventResult.page - 1)}>Anterior</Link>
+        <span className="text-sm text-muted-foreground">Página {eventResult.page} de {eventResult.totalPages}</span>
+        <Link aria-disabled={eventResult.page >= eventResult.totalPages} className={`inline-flex min-h-11 items-center rounded-xl border border-border px-4 text-sm font-semibold ${eventResult.page >= eventResult.totalPages ? "pointer-events-none opacity-45" : "bg-surface"}`} href={pageUrl(values, eventResult.page + 1)}>Siguiente</Link>
+      </nav>
     </div>
   );
 }
