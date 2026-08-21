@@ -38,7 +38,7 @@ export function ResidentDashboard({
         notifications={notifications}
         unitLabel={unitLabel}
       />
-      <div className="relative -mt-8 space-y-4 px-4 pb-7 sm:px-6">
+      <div className="relative -mt-8 space-y-4 px-4 pb-7 sm:px-6 md:-mt-5 md:px-8 md:pb-10 xl:px-10">
         <Link
           className="flex min-h-[5.4rem] items-center justify-between gap-3 rounded-[1.15rem] border border-border bg-surface px-4 py-3 shadow-[0_10px_24px_rgba(12,18,33,0.10)]"
           href="/app/invitations?status=current"
@@ -57,10 +57,11 @@ export function ResidentDashboard({
           <ChevronRight aria-hidden="true" className="h-5 w-5 text-muted-foreground" />
         </Link>
 
-        <Link
-          className="flex min-h-[6.7rem] items-center gap-4 rounded-[1.15rem] bg-primary p-5 text-white shadow-[0_12px_26px_rgba(20,70,204,0.18)] transition hover:bg-primary/90"
-          href="/app/invitations/new"
-        >
+        <div className="grid gap-4 xl:grid-cols-[minmax(22rem,1.2fr)_minmax(20rem,0.8fr)]">
+          <Link
+            className="flex min-h-[6.7rem] items-center gap-4 rounded-[1.15rem] bg-primary p-5 text-white shadow-[0_12px_26px_rgba(20,70,204,0.18)] transition hover:bg-primary/90"
+            href="/app/invitations/new"
+          >
           <span className="flex h-14 w-14 shrink-0 items-center justify-center rounded-[1rem] bg-white/15">
             <UserPlus aria-hidden="true" className="h-7 w-7" />
           </span>
@@ -68,9 +69,9 @@ export function ResidentDashboard({
             <span className="block text-[1.15rem] font-bold">Invitar una visita</span>
             <span className="mt-1 block text-[15px] text-white/75">Crear invitación con QR o PIN</span>
           </span>
-        </Link>
+          </Link>
 
-        <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-2 gap-3">
           {[
             { href: "/app/invitations/voice", label: <>Invitar<br />hablando</>, icon: Mic },
             { href: "/app/intercom", label: <>Llamar<br />a la garita</>, icon: PhoneCall },
@@ -86,9 +87,10 @@ export function ResidentDashboard({
               {item.label}
             </Link>
           ))}
+          </div>
         </div>
 
-        <div className="pt-1">
+        <div className="pt-1 xl:max-w-4xl">
           <div className="flex min-h-11 items-center justify-between gap-3">
             <h2 className="text-lg font-bold">Contactos frecuentes</h2>
             <Link className="text-sm font-bold text-primary" href="/app/contacts">Ver todos</Link>

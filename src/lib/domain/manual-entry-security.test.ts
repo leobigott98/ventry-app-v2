@@ -95,4 +95,31 @@ describe("manual entry tenant boundaries", () => {
     expect(updateQuery.eq).toHaveBeenCalledWith("community_id", "community-a");
     expect(getVisitorEntryById).toHaveBeenCalledWith("community-a", "entry-1");
   });
+
+  it("allows the real exit of an event guest without revalidating the event entry window", async () => {
+    const entry = {
+      id: "entry-1", community_id: "community-a", entry_status: "inside",
+      event_id: "event-1", event_guest_id: "guest-1", invitation_id: null,
+      resident_id: "resident-1", unit_id: "unit-1", visitor_name: "Carlos Rojas",
+      access_type: "visitor", registration_source: "event", notes: null, vehicle_plate: null,
+    };
+    const visitorQuery = {
+      update: vi.fn(), eq: vi.fn(), select: vi.fn(),
+      maybeSingle: vi.fn().mockResolvedValue({ data: entry, error: null }),
+    };
+    visitorQuery.update.mockReturnValue(visitorQuery);
+    visitorQuery.eq.mockReturnValue(visitorQuery);
+    visitorQuery.select.mockReturnValue(visitorQuery);
+    const sideEffectQuery = { update: vi.fn(), eq: vi.fn(), insert: vi.fn() };
+    sideEffectQuery.update.mockReturnValue(sideEffectQuery);
+    sideEffectQuery.eq.mockReturnValue({ error: null });
+    sideEffectQuery.insert.mockResolvedValue({ error: null });
+    const from = vi.fn((table: string) => table === "visitor_entries" ? visitorQuery : sideEffectQuery);
+    vi.mocked(createServerSupabaseClient).mockResolvedValue({ from } as never);
+    vi.mocked(getVisitorEntryById).mockResolvedValue({ ...entry, entry_status: "exited" } as never);
+
+    await expect(registerEntryExit({ communityId: "community-a", entryId: "entry-1", createdByEmail: "guard@example.com" })).resolves.toEqual(expect.objectContaining({ entry_status: "exited" }));
+    expect(from).not.toHaveBeenCalledWith("resident_events");
+    expect(from).toHaveBeenCalledWith("event_guests");
+  });
 });

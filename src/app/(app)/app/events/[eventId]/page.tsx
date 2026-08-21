@@ -6,13 +6,14 @@ import QRCode from "qrcode";
 import { EventCredentialCard } from "@/components/events/event-credential-card";
 import { RevokeEventButton } from "@/components/events/revoke-event-button";
 import { ShareEventActions } from "@/components/events/share-event-actions";
-import { SectionShell } from "@/components/layout/section-shell";
+import { ResidentPageHeader } from "@/components/resident/resident-header";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   buildEventShareText,
   getEventById,
   getEventEffectiveStatus,
+  getEventPlannedExitLabel,
   getEventStatusLabel,
   getEventWindowLabel,
 } from "@/lib/domain/events";
@@ -62,12 +63,9 @@ export default async function EventDetailPage({
   const exited = event.event_guests.filter((guest) => guest.attendance_status === "exited").length;
 
   return (
-    <SectionShell
-      eyebrow={getEventWindowLabel(event)}
-      title={event.name}
-      description="Comparte el acceso, revisa la lista y sigue la llegada de tus invitados en tiempo real."
-    >
-      <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
+    <section className="min-h-[100dvh]">
+      <ResidentPageHeader backHref="/app/events" subtitle={`${getEventStatusLabel(status)} · ${getEventWindowLabel(event)}`} title={event.name} />
+      <div className="grid gap-4 px-4 py-5 sm:px-6 md:px-8 md:py-6 xl:grid-cols-[1.05fr_0.95fr] xl:px-10">
         <div className="space-y-4">
           <Card className="border-primary/25">
             <CardHeader>
@@ -107,6 +105,7 @@ export default async function EventDetailPage({
                   {event.notes}
                 </div>
               ) : null}
+              {getEventPlannedExitLabel(event) ? <div className="rounded-2xl border border-border bg-secondary/35 p-4 text-sm"><span className="text-muted-foreground">Salida prevista</span><div className="mt-1 font-semibold">{getEventPlannedExitLabel(event)}</div><p className="mt-1 text-xs text-muted-foreground">Informativa; no extiende la vigencia de entrada.</p></div> : null}
               {sessionUser.role !== "guard" ? (
                 <div className="space-y-3">
                   <ShareEventActions eventId={event.id} shareText={shareText} />
@@ -183,6 +182,6 @@ export default async function EventDetailPage({
           </Card>
         </div>
       </div>
-    </SectionShell>
+    </section>
   );
 }

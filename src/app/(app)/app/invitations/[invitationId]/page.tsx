@@ -12,9 +12,9 @@ import { ShareInvitationActions } from "@/components/invitations/share-invitatio
 import { SectionShell } from "@/components/layout/section-shell";
 import { ResidentPageHeader } from "@/components/resident/resident-header";
 import { getInvitationAccessEventsPage } from "@/lib/domain/access-log";
-import { buildInvitationShareText, getInvitationAccessTypeLabel, getInvitationById, getInvitationEffectiveStatus, getInvitationEventsPage, getInvitationStatusLabel, getInvitationWindowLabel, getPaginatedInvitations } from "@/lib/domain/invitations";
+import { buildInvitationShareText, getInvitationAccessTypeLabel, getInvitationById, getInvitationEffectiveStatus, getInvitationEventsPage, getInvitationStatusLabel, getInvitationWindowLabel } from "@/lib/domain/invitations";
 import { getCommunityContextOrRedirect } from "@/lib/domain/session-context";
-import { formatAppDate, formatAppDateTime } from "@/lib/formatting";
+import { formatAppDateTime } from "@/lib/formatting";
 
 function getBaseUrl(requestHeaders: Headers) { const host = requestHeaders.get("x-forwarded-host") || requestHeaders.get("host"); const proto = requestHeaders.get("x-forwarded-proto") || "http"; return host ? `${proto}://${host}` : ""; }
 function integer(value: string | string[] | undefined) { const parsed = Number.parseInt(Array.isArray(value) ? value[0] ?? "" : value ?? "", 10); return Number.isFinite(parsed) && parsed > 0 ? parsed : 1; }
@@ -34,21 +34,17 @@ export default async function InvitationDetailPage({ params, searchParams }: { p
   if (!invitation) notFound();
   const eventPage = integer(query.eventPage);
   const movementPage = integer(query.movementPage);
-  const [eventResult, movementResult, switcher] = await Promise.all([
+  const [eventResult, movementResult] = await Promise.all([
     getInvitationEventsPage(invitation.id, eventPage, 5),
     getInvitationAccessEventsPage(context.community.id, invitation.id, movementPage, 5),
-    getPaginatedInvitations(context.community.id, sessionUser.role === "resident" ? sessionUser.residentId : null, { page: 1, pageSize: 3 }),
   ]);
   const status = getInvitationEffectiveStatus(invitation);
   const canModify = status === "active" || status === "scheduled";
   const requestHeaders = await headers();
   const shareText = buildInvitationShareText(invitation, `${getBaseUrl(requestHeaders)}/invite/${invitation.share_token}`);
   const qrImageDataUrl = invitation.access_credentials?.credential_type === "qr" && invitation.access_credentials.qr_payload ? await QRCode.toDataURL(invitation.access_credentials.qr_payload, { margin: 1, width: 280, color: { dark: "#0c1221", light: "#ffffff" } }) : null;
-  const switcherItems = switcher.items.some((item) => item.id === invitation.id) ? switcher.items : [invitation, ...switcher.items.slice(0, 2)];
 
   const body = <div className="space-y-4">
-    <div className="space-y-2">{switcherItems.map((item) => { const selected = item.id === invitation.id; return <Link aria-current={selected ? "true" : undefined} className={`flex min-h-[4.7rem] items-center justify-between gap-3 rounded-2xl border-2 bg-surface p-4 ${selected ? "border-primary bg-secondary/45" : "border-border"}`} href={`/app/invitations/${item.id}`} key={item.id}><span className="min-w-0"><span className="block truncate font-bold">{item.visitor_name || "Acceso sin nombre"}</span><span className="mt-1 block truncate text-sm text-muted-foreground">{getInvitationAccessTypeLabel(item.access_type)} · {formatAppDate(item.visit_date, { dateStyle: "medium" })}</span></span><InvitationStatusBadge status={getInvitationEffectiveStatus(item)} /></Link>; })}</div>
-
     <section className="rounded-2xl bg-surface p-5 shadow-[0_6px_20px_rgba(12,18,33,0.05)]">
       <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">Acceso Ventry</p><h2 className="mt-2 text-xl font-bold">{invitation.visitor_name || "Acceso rápido"}</h2></div><InvitationStatusBadge status={status} /></div>
       {invitation.access_credentials?.credential_type === "qr" ? <div className="mx-auto mt-5 flex w-fit justify-center rounded-2xl border-2 border-border bg-white p-3">{qrImageDataUrl ? <Image alt="QR de acceso" className="h-44 w-44" height={176} src={qrImageDataUrl} unoptimized width={176} /> : <div className="flex h-44 w-44 items-center justify-center text-sm text-muted-foreground">QR no disponible</div>}</div> : invitation.access_credentials ? <div className="mt-5 rounded-2xl bg-muted px-4 py-5 text-center"><p className="text-sm text-muted-foreground">#&nbsp; PIN de entrada</p><p className="mt-3 font-mono text-[2.35rem] font-semibold tracking-[0.24em]">{invitation.access_credentials.credential_value}</p></div> : <div className="mt-5 rounded-2xl bg-muted p-5 text-center text-sm text-muted-foreground">Credencial no disponible.</div>}
@@ -63,7 +59,7 @@ export default async function InvitationDetailPage({ params, searchParams }: { p
     <details className="rounded-2xl bg-surface px-4"><summary className="flex min-h-14 cursor-pointer list-none items-center justify-between font-bold"><span>Movimientos en garita</span><span className="text-xs font-medium text-muted-foreground">{movementResult.total}</span></summary><div className="space-y-3 border-t border-border py-4">{movementResult.items.length ? movementResult.items.map((event) => <AccessEventCard event={event} key={event.id} showEventLink={sessionUser.role !== "resident"} showInvitationLink={false} />) : <p className="py-4 text-sm text-muted-foreground">Sin movimientos registrados.</p>}<Pager current={movementResult.page} href={(page) => detailHref(invitation.id, eventPage, page)} total={movementResult.totalPages} /></div></details>
   </div>;
 
-  if (sessionUser.role === "resident") return <section className="min-h-[100dvh] pb-28"><ResidentPageHeader backHref="/app/invitations" subtitle={`${getInvitationStatusLabel(status)} · ${getInvitationAccessTypeLabel(invitation.access_type)}`} title="Mis invitaciones" /><div className="space-y-4 px-3 py-4 sm:px-6">{body}</div>{canModify ? <div className="fixed bottom-0 left-1/2 z-50 w-full max-w-3xl -translate-x-1/2 border-t border-border bg-surface p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)]"><ShareInvitationActions invitationId={invitation.id} mode="whatsapp" shareText={shareText} /></div> : null}</section>;
+  if (sessionUser.role === "resident") return <section className="min-h-[100dvh] pb-28 md:pb-0"><ResidentPageHeader backHref="/app/invitations" subtitle={`${getInvitationStatusLabel(status)} · ${getInvitationAccessTypeLabel(invitation.access_type)}`} title={invitation.visitor_name || "Detalle de invitación"} /><div className="space-y-4 px-3 py-4 sm:px-6 md:max-w-3xl md:px-8 md:py-6 xl:px-10">{body}</div>{canModify ? <div className="fixed inset-x-0 bottom-0 z-50 w-full border-t border-border bg-surface p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] md:sticky md:inset-auto md:max-w-3xl md:px-8 xl:px-10"><ShareInvitationActions invitationId={invitation.id} mode="whatsapp" shareText={shareText} /></div> : null}</section>;
   return <SectionShell eyebrow={getInvitationStatusLabel(status)} title={invitation.visitor_name || "Detalle de invitación"} description="Credencial, ventana e historial del acceso.">{body}</SectionShell>;
 }
 

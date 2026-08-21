@@ -2,7 +2,7 @@ import type {
   EventStatus,
   ResidentEventRecord,
 } from "@/lib/domain/types";
-import { parseAppLocalDateTime } from "@/lib/formatting";
+import { formatAppDate, parseAppLocalDateTime } from "@/lib/formatting";
 
 export function getEventEffectiveStatus(
   event: Pick<
@@ -35,6 +35,13 @@ export function getEventWindowLabel(
   const end =
     event.window_end_date === event.event_date
       ? event.window_end
-      : `${event.window_end_date} ${event.window_end}`;
-  return `${event.event_date} ${event.window_start} - ${end}`;
+      : `${formatAppDate(event.window_end_date, { dateStyle: "medium" })} · ${event.window_end}`;
+  return `${formatAppDate(event.event_date, { dateStyle: "medium" })} · ${event.window_start} – ${end}`;
+}
+
+export function getEventPlannedExitLabel(
+  event: Pick<ResidentEventRecord, "planned_exit_date" | "planned_exit_time">,
+) {
+  if (!event.planned_exit_date || !event.planned_exit_time) return null;
+  return `${formatAppDate(event.planned_exit_date, { dateStyle: "medium" })} · ${event.planned_exit_time}`;
 }

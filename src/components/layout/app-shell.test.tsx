@@ -45,9 +45,12 @@ describe("AppShell navigation and responsive role layouts", () => {
 
     const shell = container.querySelector('[data-role-shell="resident"]');
     const bottomNavigation = screen.getByTestId("resident-bottom-navigation");
+    const sidebar = screen.getByTestId("resident-sidebar");
     const destinationLinks = within(bottomNavigation).getAllByRole("link");
 
     expect(shell).toBeInTheDocument();
+    expect(shell).toHaveClass("md:grid-cols-[5.5rem_minmax(0,1fr)]");
+    expect(shell).toHaveClass("xl:grid-cols-[17.5rem_minmax(0,1fr)]");
     expect(destinationLinks).toHaveLength(4);
     expect(destinationLinks.map((link) => link.textContent)).toEqual(["Inicio", "Contactos", "Visitas", "Ajustes"]);
     expect(within(bottomNavigation).getByRole("link", { name: "Visitas" })).toHaveAttribute(
@@ -60,6 +63,13 @@ describe("AppShell navigation and responsive role layouts", () => {
     );
     expect(within(bottomNavigation).getByRole("link", { name: "Ajustes" })).toHaveAttribute("href", "/app/resident-settings");
     expect(screen.queryByRole("link", { name: "Bitacora" })).not.toBeInTheDocument();
+    expect(within(sidebar).getAllByRole("link").map((link) => link.getAttribute("title"))).toEqual([
+      null,
+      "Inicio",
+      "Contactos",
+      "Visitas",
+      "Ajustes",
+    ]);
   });
 
   it("renders the guard tablet workspace with operational routes and no admin routes", () => {

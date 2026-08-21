@@ -292,6 +292,8 @@ export type ResidentEventRecord = {
   window_start: string;
   window_end_date: string;
   window_end: string;
+  planned_exit_date: string | null;
+  planned_exit_time: string | null;
   status: Exclude<EventStatus, "scheduled" | "expired">;
   notes: string | null;
   share_token: string;

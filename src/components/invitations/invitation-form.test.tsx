@@ -35,7 +35,7 @@ describe("InvitationForm", () => {
     vi.stubGlobal("scrollTo", vi.fn());
   });
 
-  it("envia una invitacion valida y navega al detalle devuelto por la API", async () => {
+  it("solo crea al confirmar despues de elegir explicitamente la credencial", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({ ok: true, invitationId: "invitation-1", redirectTo: "/app/invitations/invitation-1" }),
@@ -51,6 +51,13 @@ describe("InvitationForm", () => {
     await user.type(screen.getByLabelText(/Quién va a visitarte/), "Carlos Rojas");
     await user.click(screen.getByRole("button", { name: /Continuar/ }));
     await user.click(screen.getByRole("button", { name: /Continuar/ }));
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    const createButton = screen.getByRole("button", { name: "Crear invitación" });
+    expect(createButton).toBeDisabled();
+    await user.click(screen.getByRole("radio", { name: "PIN" }));
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(createButton).toBeEnabled();
     await user.click(screen.getByRole("button", { name: "Crear invitación" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
@@ -85,8 +92,9 @@ describe("InvitationForm", () => {
     await user.type(screen.getByLabelText(/Quién va a visitarte/), "Carlos Rojas");
     await user.click(screen.getByRole("button", { name: /Continuar/ }));
     await user.click(screen.getByRole("button", { name: /Continuar/ }));
+    await user.click(screen.getByRole("radio", { name: "QR" }));
     const submitButton = screen.getByRole("button", { name: "Crear invitación" });
-    await user.click(submitButton);
+    await Promise.all([user.click(submitButton), user.click(submitButton)]);
 
     expect(screen.getByRole("button", { name: "Creando…" })).toBeDisabled();
     await user.click(screen.getByRole("button", { name: "Creando…" }));
@@ -101,5 +109,31 @@ describe("InvitationForm", () => {
     await waitFor(() => {
       expect(navigation.push).toHaveBeenCalledWith("/app/invitations/invitation-1");
     });
+  });
+
+  it("no envia con Enter, al avanzar, al elegir credencial ni al volver al ultimo paso", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+
+    render(<InvitationForm residents={[resident]} />);
+
+    const visitorInput = screen.getByLabelText(/Quién va a visitarte/);
+    await user.type(visitorInput, "Carlos Rojas{enter}");
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: /Continuar/ }));
+    await user.keyboard("{Enter}");
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(screen.getByRole("heading", { name: "Revisa antes de confirmar" })).toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("radio", { name: "QR" }));
+    await user.keyboard("{Enter}");
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    await user.click(screen.getByRole("button", { name: "Atrás" }));
+    await user.click(screen.getByRole("button", { name: /Continuar/ }));
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

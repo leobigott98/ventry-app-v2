@@ -62,15 +62,31 @@ insert into public.access_credentials (
 insert into public.resident_events (
   id, community_id, resident_id, name, event_date, window_start,
   window_end_date, window_end, status, share_token
-) values (
+) values
+(
   '31000000-0000-4000-8000-000000003001',
   '31000000-0000-4000-8000-000000000001',
   '31000000-0000-4000-8000-000000000101', 'Active event',
   current_date - 1, '00:00', current_date + 1, '23:59', 'active', 'event-share'
+),
+(
+  '31000000-0000-4000-8000-000000003002',
+  '31000000-0000-4000-8000-000000000001',
+  '31000000-0000-4000-8000-000000000101', 'Scheduled event',
+  current_date + 1, '00:00', current_date + 2, '23:59', 'active', 'scheduled-event-share'
+),
+(
+  '31000000-0000-4000-8000-000000003003',
+  '31000000-0000-4000-8000-000000000001',
+  '31000000-0000-4000-8000-000000000101', 'Expired event',
+  current_date - 2, '00:00', current_date - 1, '23:59', 'active', 'expired-event-share'
 );
 
 insert into public.event_credentials (event_id, credential_type, credential_value)
-values ('31000000-0000-4000-8000-000000003001', 'pin', '55555555');
+values
+  ('31000000-0000-4000-8000-000000003001', 'pin', '55555555'),
+  ('31000000-0000-4000-8000-000000003002', 'pin', '77777777'),
+  ('31000000-0000-4000-8000-000000003003', 'pin', '88888888');
 
 insert into public.event_guests (id, event_id, full_name)
 values (
@@ -154,6 +170,22 @@ begin
   );
   if v_result ->> 'status' <> 'active' then
     raise exception 'community timezone was not used to evaluate the access window';
+  end if;
+
+  v_result := public.validate_access_credential(
+    '31000000-0000-4000-8000-000000000001', 'pin', '77777777',
+    'scheduled-event-device-1', '10.0.0.31'
+  );
+  if v_result ->> 'status' <> 'scheduled' then
+    raise exception 'event entry was not rejected before valid-from';
+  end if;
+
+  v_result := public.validate_access_credential(
+    '31000000-0000-4000-8000-000000000001', 'pin', '88888888',
+    'expired-event-device-01', '10.0.0.32'
+  );
+  if v_result ->> 'status' <> 'expired' then
+    raise exception 'event entry was not rejected after valid-until';
   end if;
 
   v_result := public.validate_access_credential(

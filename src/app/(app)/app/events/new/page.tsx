@@ -1,8 +1,7 @@
 import { redirect } from "next/navigation";
 
 import { EventForm } from "@/components/events/event-form";
-import { SectionShell } from "@/components/layout/section-shell";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { ResidentPageHeader } from "@/components/resident/resident-header";
 import { getResidentsForCommunity } from "@/lib/domain/community";
 import { getCommunityContextOrRedirect } from "@/lib/domain/session-context";
 
@@ -19,29 +18,7 @@ export default async function NewEventPage() {
       ? residents.filter((resident) => resident.id === sessionUser.residentId)
       : residents;
 
-  return (
-    <SectionShell
-      eyebrow="Modo evento"
-      title="Nuevo evento"
-      description="Arma la lista desde el telefono o importa un CSV. Al terminar tendras un unico acceso facil de compartir."
-    >
-      <Card>
-        <CardHeader>
-          <CardTitle>Prepara el acceso de tu evento</CardTitle>
-          <CardDescription>
-            Puedes registrar hasta 500 invitados. Cada nombre se marca individualmente en garita.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          {available.length ? (
-            <EventForm residents={available} />
-          ) : (
-            <div className="rounded-2xl border border-dashed border-border p-6 text-sm text-muted-foreground">
-              Necesitas un residente activo y vinculado antes de crear un evento.
-            </div>
-          )}
-        </CardContent>
-      </Card>
-    </SectionShell>
-  );
+  if (available.length) return <EventForm residents={available} />;
+
+  return <section className="min-h-[100dvh]"><ResidentPageHeader backHref="/app/events" title="Nuevo evento" /><div className="max-w-2xl px-5 py-8 sm:px-7 md:px-8 xl:px-10"><div className="rounded-2xl border border-dashed border-border bg-surface p-6 text-sm text-muted-foreground">Necesitas un residente activo y vinculado antes de crear un evento.</div></div></section>;
 }

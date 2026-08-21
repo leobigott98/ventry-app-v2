@@ -12,6 +12,7 @@ import type {
 import type { CreateEventInput } from "@/lib/schemas/events";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
 import {
+  getEventPlannedExitLabel,
   getEventWindowLabel,
 } from "@/lib/domain/event-utils";
 import {
@@ -22,6 +23,7 @@ import {
 
 export {
   getEventEffectiveStatus,
+  getEventPlannedExitLabel,
   getEventStatusLabel,
   getEventWindowLabel,
 } from "@/lib/domain/event-utils";
@@ -51,7 +53,7 @@ type GuardEventMatch = ResidentEventRecord & {
 
 export type PublicEventRecord = Pick<
   ResidentEventRecord,
-  "name" | "event_date" | "window_start" | "window_end_date" | "window_end" | "status"
+  "name" | "event_date" | "window_start" | "window_end_date" | "window_end" | "planned_exit_date" | "planned_exit_time" | "status"
 > & {
   residents: Pick<ResidentRecord, "full_name"> | null;
   units: Pick<UnitRecord, "identifier"> | null;
@@ -91,7 +93,8 @@ export function buildEventShareText(event: EventDetailRecord, shareUrl: string) 
   const credential = event.event_credentials;
   return [
     `Estas invitado(a) a ${event.name}`,
-    `Fecha y hora: ${getEventWindowLabel(event)}`,
+    `Vigencia de entrada: ${getEventWindowLabel(event)}`,
+    getEventPlannedExitLabel(event) ? `Salida prevista: ${getEventPlannedExitLabel(event)}` : null,
     `Anfitrion: ${event.residents?.full_name ?? "Residente"}`,
     credential?.credential_type === "pin"
       ? `PIN compartido del evento: ${credential.credential_value}`
@@ -197,6 +200,8 @@ export async function getEventByShareToken(shareToken: string) {
     window_start: string;
     window_end_date: string;
     window_end: string;
+    planned_exit_date: string | null;
+    planned_exit_time: string | null;
     status: ResidentEventRecord["status"];
     resident_name: string;
     unit_identifier: string | null;
@@ -212,6 +217,8 @@ export async function getEventByShareToken(shareToken: string) {
     window_start: dto.window_start,
     window_end_date: dto.window_end_date,
     window_end: dto.window_end,
+    planned_exit_date: dto.planned_exit_date,
+    planned_exit_time: dto.planned_exit_time,
     status: dto.status,
     residents: { full_name: dto.resident_name },
     units: dto.unit_identifier ? { identifier: dto.unit_identifier } : null,
@@ -251,6 +258,8 @@ export async function createResidentEvent(communityId: string, input: CreateEven
       window_start: input.windowStart,
       window_end_date: input.windowEndDate,
       window_end: input.windowEnd,
+      planned_exit_date: input.plannedExitDate,
+      planned_exit_time: input.plannedExitTime,
       notes: input.notes,
       share_token: createOpaqueShareToken(),
     })

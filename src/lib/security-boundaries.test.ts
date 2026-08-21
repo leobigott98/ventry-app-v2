@@ -107,4 +107,20 @@ describe("authentication and credential boundaries", () => {
     expect(accessLog).toContain('query = query.eq("resident_id", filters.residentId)');
     expect(accessLog).toContain(".range(pagination.from, pagination.to)");
   });
+
+  it("loads an invitation detail directly without querying unrelated invitations", () => {
+    const detailPage = read("src/app/(app)/app/invitations/[invitationId]/page.tsx");
+    expect(detailPage).toContain("getInvitationById");
+    expect(detailPage).not.toContain("getPaginatedInvitations");
+    expect(detailPage).not.toContain("switcherItems");
+  });
+
+  it("keeps planned event exit nullable, ordered and outside entry-window authorization", () => {
+    const migration = read("supabase/migrations/202608200001_event_planned_exit.sql");
+    const credentialMigration = read("supabase/migrations/202608180002_credential_security_atomic_access.sql");
+    expect(migration).toContain("resident_events_planned_exit_pair_check");
+    expect(migration).toContain("resident_events_planned_exit_after_window_check");
+    expect(credentialMigration).toContain("now() < v_start_at or now() > v_end_at");
+    expect(credentialMigration).not.toContain("planned_exit_date");
+  });
 });

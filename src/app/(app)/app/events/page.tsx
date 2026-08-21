@@ -2,7 +2,7 @@ import { CalendarPlus, PartyPopper, UsersRound } from "lucide-react";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import { SectionShell } from "@/components/layout/section-shell";
+import { ResidentPageHeader } from "@/components/resident/resident-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,11 +35,9 @@ export default async function EventsPage() {
   const past = events.filter((event) => !["scheduled", "active"].includes(getEventEffectiveStatus(event)));
 
   return (
-    <SectionShell
-      eyebrow={`${active.length} eventos activos`}
-      title="Eventos y fiestas"
-      description="Una lista completa, un solo QR o PIN y un registro individual de cada invitado en garita."
-    >
+    <section className="min-h-[100dvh]">
+      <ResidentPageHeader backHref="/app/dashboard" subtitle={`${active.length} ${active.length === 1 ? "evento vigente" : "eventos vigentes"}`} title="Eventos y fiestas" />
+      <div className="space-y-5 px-4 py-5 sm:px-6 md:px-8 md:py-6 xl:px-10">
       {sessionUser.role !== "guard" ? (
         <Card className="overflow-hidden border-primary/25 bg-[linear-gradient(135deg,rgba(0,212,255,0.13),rgba(0,230,118,0.06))]">
           <CardContent className="flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
@@ -137,6 +135,7 @@ export default async function EventsPage() {
           </CardContent>
         </Card>
       </div>
-    </SectionShell>
+      </div>
+    </section>
   );
 }

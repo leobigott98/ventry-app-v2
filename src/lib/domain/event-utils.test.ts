@@ -19,4 +19,16 @@ describe("getEventEffectiveStatus", () => {
       }),
     ).toBe("active");
   });
+
+  it("classifies before and after the inclusive entry window", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-17T13:00:00.000Z"));
+    const base = { status: "active" as const, event_date: "2026-08-17", window_end_date: "2026-08-17" };
+
+    expect(getEventEffectiveStatus({ ...base, window_start: "09:01", window_end: "10:00" })).toBe("scheduled");
+    expect(getEventEffectiveStatus({ ...base, window_start: "09:00", window_end: "09:00" })).toBe("active");
+
+    vi.setSystemTime(new Date("2026-08-17T14:00:01.000Z"));
+    expect(getEventEffectiveStatus({ ...base, window_start: "09:00", window_end: "10:00" })).toBe("expired");
+  });
 });

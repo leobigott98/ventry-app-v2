@@ -44,7 +44,7 @@ export function InvitationForm({ defaultVisitorName = "", residentMode = false, 
   const defaults = useMemo(() => getDefaultWindow(), []);
   const { register, watch, trigger, handleSubmit, formState: { errors } } = useForm<CreateInvitationInput>({
     resolver: zodResolver(createInvitationSchema), mode: "onTouched",
-    defaultValues: { residentId: residents[0]?.id ?? "", visitorName: defaultVisitorName, accessType: "visitor", credentialType: "pin", visitDate: defaults.date, windowStart: defaults.start, windowEndDate: defaults.endDate, windowEnd: defaults.end, noTimeLimit: false, notes: "" },
+    defaultValues: { residentId: residents[0]?.id ?? "", visitorName: defaultVisitorName, accessType: "visitor", visitDate: defaults.date, windowStart: defaults.start, windowEndDate: defaults.endDate, windowEnd: defaults.end, noTimeLimit: false, notes: "" },
   });
   const values = watch();
   const singleResident = residents.length === 1;
@@ -60,7 +60,8 @@ export function InvitationForm({ defaultVisitorName = "", residentMode = false, 
     if (await trigger(fields, { shouldFocus: true })) setStep((current) => Math.min(current + 1, 3));
   }
 
-  const onSubmit = handleSubmit(async (formValues) => {
+  const submitInvitation = handleSubmit(async (formValues) => {
+    if (step !== 3 || !formValues.credentialType) return;
     if (submittingRef.current) return;
     submittingRef.current = true;
     setServerError(null);
@@ -75,7 +76,7 @@ export function InvitationForm({ defaultVisitorName = "", residentMode = false, 
     finally { submittingRef.current = false; setIsSubmitting(false); }
   });
 
-  return <form className={cn("min-h-[100dvh]", residentMode && "bg-background")} onSubmit={onSubmit}>
+  return <form className={cn("min-h-[100dvh]", residentMode && "bg-background")} onSubmit={(event) => event.preventDefault()}>
     {residentMode ? <ResidentPageHeader backHref="/app/invitations" progress={{ current: step, total: 3 }} title="Nueva invitación" /> : null}
     <div className={cn("mx-auto max-w-2xl px-5 pb-40 pt-7 sm:px-7", !residentMode && "px-0 pt-0 sm:px-0")}>
       {step === 1 ? <div className="space-y-7">
@@ -94,15 +95,15 @@ export function InvitationForm({ defaultVisitorName = "", residentMode = false, 
       {step === 3 ? <div>
         <h2 className="text-xl font-bold">Revisa antes de confirmar</h2>
         <div className="mt-5 rounded-2xl bg-surface px-5 py-3"><dl className="divide-y divide-border text-[15px]"><div className="flex justify-between gap-4 py-4"><dt className="text-muted-foreground">Visitante</dt><dd className="text-right font-bold">{values.visitorName || "Delivery sin nombre"}</dd></div><div className="flex justify-between gap-4 py-4"><dt className="text-muted-foreground">Fecha</dt><dd className="text-right font-bold">{formatAppDate(values.visitDate, { dateStyle: "long" })}</dd></div><div className="flex justify-between gap-4 py-4"><dt className="text-muted-foreground">Horario</dt><dd className="text-right font-bold">{values.noTimeLimit ? `Desde ${values.windowStart}` : `${values.windowStart} – ${values.windowEnd}`}</dd></div><div className="flex justify-between gap-4 py-4"><dt className="text-muted-foreground">Tipo</dt><dd className="text-right font-bold">{invitationAccessTypeOptions.find((item) => item.value === values.accessType)?.label}</dd></div></dl></div>
-        <fieldset className="mt-5"><legend className="font-bold">Credencial</legend><p className="mt-1 text-sm text-muted-foreground">Se generará solamente la opción seleccionada.</p><div className="mt-3 grid grid-cols-2 gap-3">{credentialTypeOptions.map((option) => <label className={cn("cursor-pointer rounded-2xl border-2 p-4", values.credentialType === option.value ? "border-primary bg-secondary/55" : "border-border bg-surface")} key={option.value}><input className="mr-2 accent-[#1446cc]" type="radio" value={option.value} {...register("credentialType")} /><span className="font-bold">{option.value === "pin" ? "PIN" : "QR"}</span></label>)}</div></fieldset>
+        <fieldset className="mt-5"><legend className="font-bold">Credencial</legend><p className="mt-1 text-sm text-muted-foreground">Elige cómo recibirá el acceso. No se crea nada hasta confirmar.</p><div className="mt-3 grid grid-cols-2 gap-3">{credentialTypeOptions.map((option) => <label className={cn("cursor-pointer rounded-2xl border-2 p-4", values.credentialType === option.value ? "border-primary bg-secondary/55" : "border-border bg-surface")} key={option.value}><input className="mr-2 accent-[#1446cc]" type="radio" value={option.value} {...register("credentialType")} /><span className="font-bold">{option.value === "pin" ? "PIN" : "QR"}</span></label>)}</div><ErrorText message={errors.credentialType?.message} /></fieldset>
         <details className="group mt-5 rounded-2xl bg-surface px-4 py-1"><summary className="flex min-h-12 cursor-pointer list-none items-center justify-between font-semibold">Agregar nota para garita <ChevronDown className="h-5 w-5 transition group-open:rotate-180" /></summary><div className="border-t border-border py-4"><Textarea id="notes" placeholder="Placa, motivo o referencia útil" {...register("notes")} /><ErrorText message={errors.notes?.message} /></div></details>
         <div className="mt-5 rounded-2xl bg-secondary p-4 text-sm leading-6 text-muted-foreground">La credencial será válida únicamente durante la ventana indicada y podrá revocarse desde el detalle.</div>
       </div> : null}
       <FormMessage message={serverError} variant="error" />
     </div>
 
-    <div className={cn("border-t border-border bg-surface p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)]", residentMode ? "fixed bottom-0 left-1/2 z-50 w-full max-w-3xl -translate-x-1/2" : "sticky bottom-0")}>
-      {step < 3 ? <Button className="h-14 w-full rounded-2xl text-base" disabled={isSubmitting} onClick={() => void next()} type="button">Continuar</Button> : <Button className="h-14 w-full rounded-2xl text-base" disabled={isSubmitting} type="submit"><CheckCircle2 className="h-5 w-5" /> {isSubmitting ? "Creando…" : "Crear invitación"}</Button>}
+    <div className={cn("border-t border-border bg-surface p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)]", residentMode ? "fixed inset-x-0 bottom-0 z-50 w-full md:sticky md:inset-auto md:mx-auto md:max-w-2xl" : "sticky bottom-0")}>
+      {step < 3 ? <Button className="h-14 w-full rounded-2xl text-base" disabled={isSubmitting} onClick={() => void next()} type="button">Continuar</Button> : <Button className="h-14 w-full rounded-2xl text-base" disabled={isSubmitting || !values.credentialType} onClick={() => void submitInvitation()} type="button"><CheckCircle2 className="h-5 w-5" /> {isSubmitting ? "Creando…" : "Crear invitación"}</Button>}
       {step > 1 ? <button className="mt-2 min-h-11 w-full font-semibold text-muted-foreground" disabled={isSubmitting} onClick={() => setStep((current) => current - 1)} type="button">Atrás</button> : null}
     </div>
   </form>;

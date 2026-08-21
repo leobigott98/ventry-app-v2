@@ -8,6 +8,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import {
   getEventByShareToken,
   getEventEffectiveStatus,
+  getEventPlannedExitLabel,
   getEventStatusLabel,
   getEventWindowLabel,
 } from "@/lib/domain/events";
@@ -34,15 +35,23 @@ export default async function SharedEventPage({
       : null;
 
   return (
-    <main className="mx-auto min-h-[100dvh] max-w-2xl px-4 py-6 sm:py-10">
-      <div className="space-y-4">
+    <main className="min-h-[100dvh] bg-background">
+      <header className="bg-primary px-5 pb-8 pt-[calc(env(safe-area-inset-top)+1.25rem)] text-white sm:px-7 md:pb-7 md:pt-7">
+        <div className="mx-auto max-w-4xl">
+          <div className="flex min-h-11 items-center gap-2 font-bold"><ShieldCheck className="h-5 w-5" /> Ventry</div>
+          <p className="mt-4 text-sm font-semibold uppercase tracking-[0.16em] text-white/65">Invitación a evento</p>
+          <h1 className="mt-2 text-3xl font-extrabold tracking-tight">{event.name}</h1>
+          <p className="mt-2 text-white/70">Acceso compartido por {event.residents?.full_name ?? "un residente"}</p>
+        </div>
+      </header>
+      <div className="mx-auto max-w-2xl space-y-4 px-4 py-5 sm:py-8">
         <Card className="overflow-hidden border-primary/25">
           <div className="h-1 bg-gradient-to-r from-primary via-cyan-300 to-success" />
           <CardHeader>
             <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="mb-2 text-xs font-bold uppercase tracking-[0.22em] text-primary">Invitacion a evento</div>
-                <CardTitle className="text-2xl">{event.name}</CardTitle>
+                <div className="mb-2 text-xs font-bold uppercase tracking-[0.22em] text-primary">Vigencia de entrada</div>
+                <CardTitle className="text-2xl">{getEventWindowLabel(event)}</CardTitle>
                 <CardDescription className="mt-1">
                   Anfitrion: {event.residents?.full_name ?? "Residente"}
                 </CardDescription>
@@ -56,10 +65,11 @@ export default async function SharedEventPage({
             <div className="flex gap-3 rounded-2xl border border-border bg-secondary/45 p-4">
               <CalendarDays className="h-5 w-5 shrink-0 text-primary" />
               <div>
-                <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Horario de acceso</div>
+              <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Válido desde · válido hasta</div>
                 <div className="mt-1 text-sm font-semibold">{getEventWindowLabel(event)}</div>
               </div>
             </div>
+            {getEventPlannedExitLabel(event) ? <div className="rounded-2xl border border-border bg-secondary/45 p-4"><div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Salida prevista</div><div className="mt-1 text-sm font-semibold">{getEventPlannedExitLabel(event)}</div><div className="mt-1 text-xs text-muted-foreground">No amplía la vigencia de entrada.</div></div> : null}
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-2xl border border-border bg-secondary/45 p-4">
                 <UsersRound className="h-5 w-5 text-primary" />

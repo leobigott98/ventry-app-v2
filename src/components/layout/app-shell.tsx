@@ -143,7 +143,7 @@ function MobileNavigation({
 export function ResidentBottomNav({ navigation, pathname }: { navigation: AppNavItem[]; pathname: string }) {
   return <nav
     aria-label="Navegación principal del residente"
-    className="fixed bottom-0 left-1/2 z-50 w-full max-w-3xl -translate-x-1/2 border-t border-border bg-surface/95 px-2 pb-[max(env(safe-area-inset-bottom),0.35rem)] pt-1.5 shadow-[0_-8px_24px_rgba(12,18,33,0.06)] backdrop-blur"
+    className="fixed inset-x-0 bottom-0 z-50 w-full border-t border-border bg-surface/95 px-2 pb-[max(env(safe-area-inset-bottom),0.35rem)] pt-1.5 shadow-[0_-8px_24px_rgba(12,18,33,0.06)] backdrop-blur md:hidden"
     data-testid="resident-bottom-navigation"
   >
     <div className="grid grid-cols-4">
@@ -171,22 +171,53 @@ export function ResidentBottomNav({ navigation, pathname }: { navigation: AppNav
 
 function ResidentShell({
   children,
+  currentUser,
   navigation,
   pathname,
-}: Pick<AppShellProps, "children"> & {
+}: AppShellProps & {
   navigation: AppNavItem[];
   pathname: string;
 }) {
   const focusedFlow =
     pathname === "/app/invitations/new" ||
+    pathname === "/app/events/new" ||
     pathname === "/app/invitations/voice" ||
     pathname === "/app/intercom" ||
     /^\/app\/invitations\/[^/]+$/.test(pathname);
 
   return (
-    <div className="min-h-[100dvh] bg-[#e7eaf1]" data-role-shell="resident">
-      <div className={cn("relative mx-auto min-h-[100dvh] w-full max-w-3xl overflow-x-clip bg-background shadow-[0_0_50px_rgba(12,18,33,0.10)]", !focusedFlow && "pb-[calc(4.5rem+env(safe-area-inset-bottom))]")}>
-        <main>{children}</main>
+    <div
+      className="min-h-[100dvh] bg-background md:grid md:grid-cols-[5.5rem_minmax(0,1fr)] xl:grid-cols-[17.5rem_minmax(0,1fr)]"
+      data-role-shell="resident"
+    >
+      <aside
+        className="sticky top-0 hidden h-[100dvh] flex-col overflow-y-auto bg-sidebar px-3 py-4 text-sidebar-foreground md:flex xl:px-4"
+        data-testid="resident-sidebar"
+      >
+        <Brand compact inverse />
+        <SidebarNavigation compact navigation={navigation} pathname={pathname} />
+        <div className="mt-5 border-t border-white/10 pt-4 md:flex md:justify-center xl:block">
+          <div className="mb-3 hidden items-center gap-3 xl:flex">
+            <UserInitials currentUser={currentUser} />
+            <div className="min-w-0">
+              <div className="truncate text-sm font-semibold text-white">{currentUser.fullName}</div>
+              <div className="truncate text-xs text-sidebar-muted">{roleLabels[currentUser.role]}</div>
+            </div>
+          </div>
+          <LogoutButton
+            aria-label="Cerrar sesión"
+            className="w-12 border-white/15 bg-white/10 px-0 text-white hover:bg-white/15 focus-visible:ring-white/70 focus-visible:ring-offset-sidebar xl:w-full xl:px-4"
+            label="Salir"
+            labelClassName="hidden xl:inline"
+            variant="outline"
+          />
+        </div>
+      </aside>
+
+      <div className="min-w-0 overflow-x-clip">
+        <main className={cn("min-h-[100dvh]", !focusedFlow && "pb-[calc(4.5rem+env(safe-area-inset-bottom))] md:pb-0")}>
+          {children}
+        </main>
       </div>
 
       {!focusedFlow ? <ResidentBottomNav navigation={navigation} pathname={pathname} /> : null}
@@ -329,6 +360,7 @@ export function AppShell({ children, currentUser }: AppShellProps) {
   if (currentUser.role === "resident") {
     return (
       <ResidentShell
+        currentUser={currentUser}
         navigation={navigation}
         pathname={pathname}
       >

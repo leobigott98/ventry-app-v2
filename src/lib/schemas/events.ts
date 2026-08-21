@@ -5,6 +5,12 @@ import { nullableOptionalText } from "@/lib/schemas/community";
 
 const eventDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Selecciona una fecha valida.");
 const eventTime = z.string().regex(/^\d{2}:\d{2}$/, "Selecciona una hora valida.");
+const optionalEventDate = z
+  .union([eventDate, z.literal(""), z.null(), z.undefined()])
+  .transform((value) => value || null);
+const optionalEventTime = z
+  .union([eventTime, z.literal(""), z.null(), z.undefined()])
+  .transform((value) => value || null);
 
 export const eventGuestSchema = z.object({
   fullName: z.string().trim().min(2, "Cada invitado necesita un nombre.").max(120),
@@ -20,6 +26,8 @@ export const createEventSchema = z
     windowStart: eventTime,
     windowEndDate: eventDate,
     windowEnd: eventTime,
+    plannedExitDate: optionalEventDate,
+    plannedExitTime: optionalEventTime,
     credentialType: z.enum(
       credentialTypeOptions.map((option) => option.value) as [string, ...string[]],
     ),
@@ -35,6 +43,25 @@ export const createEventSchema = z
         path: ["windowEnd"],
         message: "La fecha y hora final deben ser posteriores al inicio.",
       });
+    }
+
+    const hasPlannedExitDate = Boolean(input.plannedExitDate);
+    const hasPlannedExitTime = Boolean(input.plannedExitTime);
+    if (hasPlannedExitDate !== hasPlannedExitTime) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: [hasPlannedExitDate ? "plannedExitTime" : "plannedExitDate"],
+        message: "Completa la fecha y la hora de salida prevista.",
+      });
+    } else if (input.plannedExitDate && input.plannedExitTime) {
+      const plannedExit = new Date(`${input.plannedExitDate}T${input.plannedExitTime}:00`);
+      if (Number.isNaN(plannedExit.valueOf()) || plannedExit < end) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["plannedExitTime"],
+          message: "La salida prevista debe ser igual o posterior al fin de la vigencia.",
+        });
+      }
     }
 
     const seen = new Set<string>();
