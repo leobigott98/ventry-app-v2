@@ -8,6 +8,7 @@ type CredentialValidationResult = {
   retryAfterSeconds?: number | null;
   kind?: "invitation" | "event" | null;
   resourceId?: string | null;
+  eventGuestId?: string | null;
   status: InvitationStatus | EventStatus | "not_found" | "rate_limited";
   credentialRef: string;
 };
@@ -20,6 +21,20 @@ export async function findAccessByCredential(
   origin: string,
 ) {
   const supabase = await createServerSupabaseClient();
+  const { data: individualData, error: individualError } = await supabase.rpc("validate_event_guest_credential", {
+    p_community_id: communityId,
+    p_credential_type: credentialType,
+    p_credential_value: credentialValue.trim(),
+    p_device_id: deviceId,
+    p_origin: origin,
+  });
+  if (individualError) throw new Error("No fue posible validar el codigo.");
+  const individual = individualData as CredentialValidationResult | null;
+  if (individual?.rateLimited) return { match: null, rateLimited: true, retryAfterSeconds: individual.retryAfterSeconds ?? 900 };
+  if (individual?.resourceId && individual.eventGuestId) {
+    const match = await getEventValidationMatch(communityId, individual.resourceId, individual.status as EventStatus, individual.eventGuestId);
+    return { match, rateLimited: false, retryAfterSeconds: null };
+  }
   const { data, error } = await supabase.rpc("validate_access_credential", {
     p_community_id: communityId,
     p_credential_type: credentialType,

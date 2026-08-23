@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, FileSpreadsheet, Plus, Trash2, Upload, UserRoundPlus } from "lucide-react";
+import { CheckCircle2, FileSpreadsheet, Pencil, Plus, Trash2, Upload, UserRoundPlus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 
@@ -11,7 +11,8 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import type { ResidentRecord, UnitRecord } from "@/lib/domain/types";
-import { formatAppDate } from "@/lib/formatting";
+import { EVENT_DRAFT_TRANSFER_KEY, parseEventDraftTransfer } from "@/lib/event-draft-transfer";
+import { APP_TIME_ZONE, formatAppDate, getTimeZoneNowParts } from "@/lib/formatting";
 import { createEventSchema, type EventGuestInput } from "@/lib/schemas/events";
 import { cn } from "@/lib/utils";
 
@@ -20,15 +21,16 @@ type CredentialChoice = "pin" | "qr" | "";
 type FieldErrors = Partial<Record<"residentId" | "name" | "eventDate" | "windowStart" | "windowEndDate" | "windowEnd" | "plannedExitDate" | "plannedExitTime" | "guests" | "credentialType", string>>;
 
 function pad(value: number) { return String(value).padStart(2, "0"); }
-function dateValue(date: Date) { return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`; }
-function timeValue(date: Date) { return `${pad(date.getHours())}:${pad(date.getMinutes())}`; }
-function defaultWindow() {
-  const start = new Date();
-  start.setMinutes(0, 0, 0);
-  start.setHours(start.getHours() + 1);
+function defaultWindow(timeZone: string) {
+  const now = getTimeZoneNowParts(timeZone);
+  const [year, month, day] = now.date.split("-").map(Number);
+  const [hour] = now.time.split(":").map(Number);
+  const start = new Date(Date.UTC(year, month - 1, day, hour + 1));
   const end = new Date(start);
-  end.setHours(end.getHours() + 5);
-  return { eventDate: dateValue(start), windowStart: timeValue(start), windowEndDate: dateValue(end), windowEnd: timeValue(end) };
+  end.setUTCHours(end.getUTCHours() + 5);
+  const date = (value: Date) => `${value.getUTCFullYear()}-${pad(value.getUTCMonth() + 1)}-${pad(value.getUTCDate())}`;
+  const time = (value: Date) => `${pad(value.getUTCHours())}:${pad(value.getUTCMinutes())}`;
+  return { eventDate: date(start), windowStart: time(start), windowEndDate: date(end), windowEnd: time(end) };
 }
 
 function parseCsvLine(line: string) {
@@ -58,11 +60,15 @@ export function guestsFromCsv(csv: string) {
   const nameIndex = headers.findIndex((header) => ["nombre", "name", "invitado", "guest", "nombre completo", "full name"].includes(header));
   const phoneIndex = headers.findIndex((header) => ["telefono", "phone", "celular", "whatsapp"].includes(header));
   const notesIndex = headers.findIndex((header) => ["notas", "notes", "nota", "observaciones"].includes(header));
+  const companionsIndex = headers.findIndex((header) => ["acompanantes", "acompañantes", "companions"].includes(header));
+  const maxCompanionsIndex = headers.findIndex((header) => ["max_acompanantes", "max acompañantes", "max_companions"].includes(header));
   const hasHeader = nameIndex >= 0;
   return (hasHeader ? rows.slice(1) : rows).map((row) => ({
     fullName: row[hasHeader ? nameIndex : 0]?.trim() ?? "",
     phone: (hasHeader ? row[phoneIndex] : row[1])?.trim() || null,
     notes: (hasHeader ? row[notesIndex] : row[2])?.trim() || null,
+    allowsCompanions: hasHeader && companionsIndex >= 0 ? ["si","sí","true","1","yes"].includes(normalizeHeader(row[companionsIndex] ?? "")) : undefined,
+    maxCompanions: hasHeader && maxCompanionsIndex >= 0 && row[maxCompanionsIndex] ? Math.min(Math.max(Number.parseInt(row[maxCompanionsIndex], 10) || 0, 0), 5) : undefined,
   })).filter((guest) => guest.fullName.length >= 2).slice(0, 500);
 }
 
@@ -70,20 +76,22 @@ function ErrorText({ message }: { message?: string }) {
   return message ? <p className="text-sm font-medium text-danger" role="alert">{message}</p> : null;
 }
 
-export function EventForm({ residents }: { residents: ResidentOption[] }) {
+export function EventForm({ residents, timeZone = APP_TIME_ZONE }: { residents: ResidentOption[]; timeZone?: string }) {
   const router = useRouter();
-  const defaults = useMemo(defaultWindow, []);
+  const defaults = useMemo(() => defaultWindow(timeZone), [timeZone]);
   const headingRef = useRef<HTMLHeadingElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const submittingRef = useRef(false);
+  const creationKeyRef = useRef<string | null>(null);
+  const transferredDraftReadRef = useRef(false);
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({
     residentId: residents[0]?.id ?? "", name: "", eventDate: defaults.eventDate,
     windowStart: defaults.windowStart, windowEndDate: defaults.windowEndDate, windowEnd: defaults.windowEnd,
-    includePlannedExit: false, plannedExitDate: "", plannedExitTime: "", credentialType: "" as CredentialChoice, notes: "",
+    includePlannedExit: false, plannedExitDate: "", plannedExitTime: "", credentialType: "" as CredentialChoice, notes: "", allowsCompanions: false, maxCompanions: 0,
   });
   const [guests, setGuests] = useState<EventGuestInput[]>([]);
-  const [draftGuest, setDraftGuest] = useState({ fullName: "", phone: "", notes: "" });
+  const [draftGuest, setDraftGuest] = useState({ fullName: "", phone: "", notes: "", allowsCompanions: false, maxCompanions: 0 });
   const [guestMode, setGuestMode] = useState<"manual" | "csv">("manual");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [error, setError] = useState<string | null>(null);
@@ -94,6 +102,16 @@ export function EventForm({ residents }: { residents: ResidentOption[] }) {
     window.scrollTo({ top: 0, behavior: "auto" });
     headingRef.current?.focus();
   }, [step]);
+
+  useEffect(() => {
+    if (transferredDraftReadRef.current) return;
+    transferredDraftReadRef.current = true;
+    const transferredGuests = parseEventDraftTransfer(sessionStorage.getItem(EVENT_DRAFT_TRANSFER_KEY));
+    sessionStorage.removeItem(EVENT_DRAFT_TRANSFER_KEY);
+    if (!transferredGuests?.length) return;
+    setGuests(transferredGuests);
+    setCsvMessage(`${transferredGuests.length} personas transferidas. Revisa la lista antes de crear el evento.`);
+  }, []);
 
   function validateCurrentStep() {
     const nextErrors: FieldErrors = {};
@@ -136,9 +154,25 @@ export function EventForm({ residents }: { residents: ResidentOption[] }) {
     const duplicate = guests.some((guest) => guest.fullName.toLocaleLowerCase() === fullName.toLocaleLowerCase() && (guest.phone ?? "") === draftGuest.phone.trim());
     if (duplicate) { setFieldErrors({ guests: "Ese invitado ya está en la lista." }); return; }
     if (guests.length >= 500) { setFieldErrors({ guests: "El límite es de 500 invitados." }); return; }
-    setGuests((current) => [...current, { fullName, phone: draftGuest.phone.trim() || null, notes: draftGuest.notes.trim() || null }]);
-    setDraftGuest({ fullName: "", phone: "", notes: "" });
+    setGuests((current) => [...current, { fullName, phone: draftGuest.phone.trim() || null, notes: draftGuest.notes.trim() || null, allowsCompanions: draftGuest.allowsCompanions, maxCompanions: draftGuest.allowsCompanions ? Math.max(draftGuest.maxCompanions, 1) : 0 }]);
+    setDraftGuest({ fullName: "", phone: "", notes: "", allowsCompanions: form.allowsCompanions, maxCompanions: form.maxCompanions });
     setFieldErrors({}); setError(null);
+  }
+
+  function editGuest(index: number) {
+    const guest = guests[index];
+    if (!guest) return;
+    setGuestMode("manual");
+    setDraftGuest({
+      fullName: guest.fullName,
+      phone: guest.phone ?? "",
+      notes: guest.notes ?? "",
+      allowsCompanions: guest.allowsCompanions ?? form.allowsCompanions,
+      maxCompanions: guest.maxCompanions ?? form.maxCompanions,
+    });
+    setGuests((current) => current.filter((_, itemIndex) => itemIndex !== index));
+    setFieldErrors({});
+    setError(null);
   }
 
   async function importCsv(event: ChangeEvent<HTMLInputElement>) {
@@ -167,9 +201,11 @@ export function EventForm({ residents }: { residents: ResidentOption[] }) {
       windowEndDate: form.windowEndDate, windowEnd: form.windowEnd,
       plannedExitDate: form.includePlannedExit ? form.plannedExitDate : null,
       plannedExitTime: form.includePlannedExit ? form.plannedExitTime : null,
-      credentialType: form.credentialType, notes: form.notes, guests,
+      credentialType: form.credentialType, notes: form.notes, allowsCompanions: form.allowsCompanions, maxCompanions: form.maxCompanions, guests,
+      idempotencyKey: creationKeyRef.current ?? crypto.randomUUID(),
     });
     if (!parsed.success) { setError(parsed.error.issues.map((issue) => issue.message).join(" ")); return; }
+    creationKeyRef.current = parsed.data.idempotencyKey;
     submittingRef.current = true; setIsSubmitting(true); setError(null);
     try {
       const response = await fetch("/api/events", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(parsed.data) });
@@ -204,14 +240,15 @@ export function EventForm({ residents }: { residents: ResidentOption[] }) {
         </div> : null}
 
         {step === 3 ? <div className="mt-6 space-y-4">
+          <div className="rounded-2xl border border-border bg-surface p-4"><label className="flex min-h-11 items-center gap-3 font-bold"><input className="h-5 w-5 accent-[#1446cc]" checked={form.allowsCompanions} onChange={(event) => { const enabled=event.target.checked; setForm((current) => ({ ...current, allowsCompanions: enabled, maxCompanions: enabled ? Math.max(current.maxCompanions,1) : 0 })); setDraftGuest((current) => ({ ...current, allowsCompanions: enabled, maxCompanions: enabled ? Math.max(current.maxCompanions,1) : 0 })); }} type="checkbox" />Permitir acompañantes por defecto</label>{form.allowsCompanions ? <div className="mt-3 space-y-2"><Label htmlFor="eventMaxCompanions">Máximo por invitado (1–5)</Label><Input className="h-12" id="eventMaxCompanions" max={5} min={1} type="number" value={form.maxCompanions} onChange={(event) => { const value=Math.min(Math.max(Number(event.target.value)||1,1),5); setForm((current) => ({ ...current,maxCompanions:value })); setDraftGuest((current) => ({...current,maxCompanions:value})); }} /></div> : null}</div>
           <div className="grid grid-cols-2 rounded-2xl border border-border bg-surface p-1"><button aria-pressed={guestMode === "manual"} className={cn("flex min-h-12 items-center justify-center gap-2 rounded-xl text-sm font-semibold", guestMode === "manual" ? "bg-secondary text-primary" : "text-muted-foreground")} onClick={() => setGuestMode("manual")} type="button"><UserRoundPlus className="h-4 w-4" /> Manual</button><button aria-pressed={guestMode === "csv"} className={cn("flex min-h-12 items-center justify-center gap-2 rounded-xl text-sm font-semibold", guestMode === "csv" ? "bg-secondary text-primary" : "text-muted-foreground")} onClick={() => setGuestMode("csv")} type="button"><FileSpreadsheet className="h-4 w-4" /> Importar CSV</button></div>
-          {guestMode === "manual" ? <div className="space-y-3 rounded-2xl bg-surface p-4"><div className="space-y-2"><Label htmlFor="guestName">Nombre completo</Label><Input id="guestName" className="h-14 text-base" value={draftGuest.fullName} onChange={(event) => setDraftGuest((current) => ({ ...current, fullName: event.target.value }))} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addGuest(); } }} /></div><div className="grid gap-3 sm:grid-cols-2"><div className="space-y-2"><Label htmlFor="guestPhone">Teléfono (opcional)</Label><Input id="guestPhone" className="h-14 text-base" value={draftGuest.phone} onChange={(event) => setDraftGuest((current) => ({ ...current, phone: event.target.value }))} /></div><div className="space-y-2"><Label htmlFor="guestNotes">Nota (opcional)</Label><Input id="guestNotes" className="h-14 text-base" value={draftGuest.notes} onChange={(event) => setDraftGuest((current) => ({ ...current, notes: event.target.value }))} /></div></div><Button className="h-14 w-full" onClick={addGuest} type="button" variant="outline"><Plus className="h-5 w-5" /> Agregar a la lista</Button></div> : <button className="flex min-h-44 w-full flex-col items-center justify-center rounded-2xl border border-dashed border-primary/40 bg-primary/5 p-6 text-center" onClick={() => fileInputRef.current?.click()} type="button"><Upload className="h-8 w-8 text-primary" /><span className="mt-3 font-bold">Seleccionar archivo CSV</span><span className="mt-1 text-sm text-muted-foreground">Columnas: nombre, teléfono y notas.</span><input ref={fileInputRef} accept=".csv,text/csv" className="hidden" onChange={importCsv} type="file" /></button>}
+          {guestMode === "manual" ? <div className="space-y-3 rounded-2xl bg-surface p-4"><div className="space-y-2"><Label htmlFor="guestName">Nombre completo</Label><Input id="guestName" className="h-14 text-base" value={draftGuest.fullName} onChange={(event) => setDraftGuest((current) => ({ ...current, fullName: event.target.value }))} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addGuest(); } }} /></div><div className="grid gap-3 sm:grid-cols-2"><div className="space-y-2"><Label htmlFor="guestPhone">Teléfono (opcional)</Label><Input id="guestPhone" className="h-14 text-base" value={draftGuest.phone} onChange={(event) => setDraftGuest((current) => ({ ...current, phone: event.target.value }))} /></div><div className="space-y-2"><Label htmlFor="guestNotes">Nota (opcional)</Label><Input id="guestNotes" className="h-14 text-base" value={draftGuest.notes} onChange={(event) => setDraftGuest((current) => ({ ...current, notes: event.target.value }))} /></div></div><label className="flex min-h-11 items-center gap-3 text-sm font-semibold"><input className="h-5 w-5 accent-[#1446cc]" checked={draftGuest.allowsCompanions} onChange={(event) => setDraftGuest((current) => ({ ...current, allowsCompanions:event.target.checked,maxCompanions:event.target.checked?Math.max(current.maxCompanions,1):0 }))} type="checkbox" />Permitir acompañantes para esta persona</label>{draftGuest.allowsCompanions ? <Input aria-label="Máximo de acompañantes para esta persona" className="h-12" max={5} min={1} type="number" value={draftGuest.maxCompanions} onChange={(event) => setDraftGuest((current) => ({...current,maxCompanions:Math.min(Math.max(Number(event.target.value)||1,1),5)}))} /> : null}<Button className="h-14 w-full" onClick={addGuest} type="button" variant="outline"><Plus className="h-5 w-5" /> Agregar a la lista</Button></div> : <button className="flex min-h-44 w-full flex-col items-center justify-center rounded-2xl border border-dashed border-primary/40 bg-primary/5 p-6 text-center" onClick={() => fileInputRef.current?.click()} type="button"><Upload className="h-8 w-8 text-primary" /><span className="mt-3 font-bold">Seleccionar archivo CSV</span><span className="mt-1 text-sm text-muted-foreground">Columnas: nombre, teléfono, notas, acompañantes y max_acompanantes.</span><input ref={fileInputRef} accept=".csv,text/csv" className="hidden" onChange={importCsv} type="file" /></button>}
           {csvMessage ? <p className="rounded-2xl bg-[#e8f7f2] p-3 text-sm text-success">{csvMessage}</p> : null}<ErrorText message={fieldErrors.guests} />
-          <div className="space-y-2">{guests.map((guest, index) => <div className="flex items-center gap-3 rounded-2xl bg-surface p-3" key={`${guest.fullName}-${guest.phone ?? ""}-${index}`}><span className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary text-sm font-bold text-primary">{index + 1}</span><span className="min-w-0 flex-1"><span className="block truncate font-semibold">{guest.fullName}</span><span className="block truncate text-xs text-muted-foreground">{[guest.phone, guest.notes].filter(Boolean).join(" · ") || "Sin datos adicionales"}</span></span><Button aria-label={`Quitar a ${guest.fullName}`} onClick={() => setGuests((current) => current.filter((_, item) => item !== index))} size="icon" type="button" variant="ghost"><Trash2 className="h-4 w-4" /></Button></div>)}</div>
+          <div className="space-y-2">{guests.map((guest, index) => <div className="flex items-center gap-3 rounded-2xl bg-surface p-3" key={`${guest.fullName}-${guest.phone ?? ""}-${index}`}><span className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary text-sm font-bold text-primary">{index + 1}</span><span className="min-w-0 flex-1"><span className="block truncate font-semibold">{guest.fullName}</span><span className="block truncate text-xs text-muted-foreground">{[guest.phone, guest.notes, guest.allowsCompanions ? `hasta ${guest.maxCompanions} acompañantes` : null].filter(Boolean).join(" · ") || "Sin datos adicionales"}</span></span><Button aria-label={`Editar a ${guest.fullName}`} onClick={() => editGuest(index)} size="icon" type="button" variant="ghost"><Pencil className="h-4 w-4" /></Button><Button aria-label={`Quitar a ${guest.fullName}`} onClick={() => setGuests((current) => current.filter((_, item) => item !== index))} size="icon" type="button" variant="ghost"><Trash2 className="h-4 w-4" /></Button></div>)}</div>
         </div> : null}
 
         {step === 4 ? <div className="mt-6 space-y-5">
-          <fieldset><legend className="font-bold">Elige el acceso compartido</legend><p className="mt-1 text-sm text-muted-foreground">La selección no crea el evento; confirma con el botón final.</p><div className="mt-3 grid grid-cols-2 gap-3">{(["qr", "pin"] as const).map((type) => <label className={cn("cursor-pointer rounded-2xl border-2 p-4", form.credentialType === type ? "border-primary bg-secondary" : "border-border bg-surface")} key={type}><input className="mr-2 accent-[#1446cc]" name="eventCredential" onChange={() => setForm((current) => ({ ...current, credentialType: type }))} type="radio" checked={form.credentialType === type} /><span className="font-bold">{type === "qr" ? "QR compartido" : "PIN compartido"}</span></label>)}</div><ErrorText message={fieldErrors.credentialType} /></fieldset>
+          <fieldset><legend className="font-bold">Elige el tipo de acceso individual</legend><p className="mt-1 text-sm text-muted-foreground">Cada persona recibirá su propia credencial. La selección no crea el evento.</p><div className="mt-3 grid grid-cols-2 gap-3">{(["qr", "pin"] as const).map((type) => <label className={cn("cursor-pointer rounded-2xl border-2 p-4", form.credentialType === type ? "border-primary bg-secondary" : "border-border bg-surface")} key={type}><input className="mr-2 accent-[#1446cc]" name="eventCredential" onChange={() => setForm((current) => ({ ...current, credentialType: type }))} type="radio" checked={form.credentialType === type} /><span className="font-bold">{type === "qr" ? "QR individual" : "PIN individual"}</span></label>)}</div><ErrorText message={fieldErrors.credentialType} /></fieldset>
           <EventSummary form={form} guestCount={guests.length} plannedExitLabel={plannedExitLabel} />
         </div> : null}
 

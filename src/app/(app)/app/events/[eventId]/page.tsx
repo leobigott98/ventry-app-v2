@@ -4,6 +4,7 @@ import { notFound, redirect } from "next/navigation";
 import QRCode from "qrcode";
 
 import { EventCredentialCard } from "@/components/events/event-credential-card";
+import { EventGuestList } from "@/components/events/event-guest-list";
 import { RevokeEventButton } from "@/components/events/revoke-event-button";
 import { ShareEventActions } from "@/components/events/share-event-actions";
 import { ResidentPageHeader } from "@/components/resident/resident-header";
@@ -11,6 +12,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   buildEventShareText,
+  buildEventGuestShareText,
   getEventById,
   getEventEffectiveStatus,
   getEventPlannedExitLabel,
@@ -58,6 +60,12 @@ export default async function EventDetailPage({
       : null;
   const shareUrl = `${origin}/event/${event.share_token}`;
   const shareText = buildEventShareText(event, shareUrl);
+  const credentialsByGuest = new Map(event.event_guest_credentials.map((item) => [item.event_guest_id, item]));
+  const guestItems = event.event_guests.map((guest) => {
+    const guestCredential = credentialsByGuest.get(guest.id) ?? null;
+    const guestShareUrl = guestCredential ? `${origin}/event/guest/${guestCredential.share_token}` : null;
+    return { guest, credential: guestCredential, shareUrl: guestShareUrl, shareText: guestCredential && guestShareUrl ? buildEventGuestShareText(event, guest, guestCredential, guestShareUrl) : null };
+  });
   const pending = event.event_guests.filter((guest) => guest.attendance_status === "pending").length;
   const inside = event.event_guests.filter((guest) => guest.attendance_status === "inside").length;
   const exited = event.event_guests.filter((guest) => guest.attendance_status === "exited").length;
@@ -106,16 +114,16 @@ export default async function EventDetailPage({
                 </div>
               ) : null}
               {getEventPlannedExitLabel(event) ? <div className="rounded-2xl border border-border bg-secondary/35 p-4 text-sm"><span className="text-muted-foreground">Salida prevista</span><div className="mt-1 font-semibold">{getEventPlannedExitLabel(event)}</div><p className="mt-1 text-xs text-muted-foreground">Informativa; no extiende la vigencia de entrada.</p></div> : null}
-              {sessionUser.role !== "guard" ? (
+              {sessionUser.role !== "guard" && event.credential_mode === "shared" ? (
                 <div className="space-y-3">
                   <ShareEventActions eventId={event.id} shareText={shareText} />
-                  {status === "active" ? <RevokeEventButton eventId={event.id} /> : null}
                 </div>
               ) : null}
             </CardContent>
           </Card>
 
-          <EventCredentialCard credential={credential} qrImageDataUrl={qrImageDataUrl} />
+          {event.credential_mode === "shared" ? <EventCredentialCard credential={credential} qrImageDataUrl={qrImageDataUrl} /> : <div className="rounded-2xl bg-secondary p-4 text-sm text-muted-foreground">Cada invitado tiene una credencial personal. Comparte desde su fila; no se envia ningun mensaje automaticamente.</div>}
+          {sessionUser.role !== "guard" && status === "active" ? <RevokeEventButton eventId={event.id} /> : null}
         </div>
 
         <div className="space-y-4">
@@ -129,36 +137,7 @@ export default async function EventDetailPage({
                 <Badge variant="outline">{event.event_guests.length}</Badge>
               </div>
             </CardHeader>
-            <CardContent className="max-h-[680px] space-y-2 overflow-y-auto">
-              {event.event_guests.map((guest, index) => (
-                <div key={guest.id} className="flex items-center gap-3 rounded-2xl border border-border bg-secondary/35 p-3">
-                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">
-                    {index + 1}
-                  </div>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate font-semibold">{guest.full_name}</div>
-                    <div className="truncate text-xs text-muted-foreground">
-                      {guest.phone || guest.notes || "Sin datos adicionales"}
-                    </div>
-                  </div>
-                  <Badge
-                    variant={
-                      guest.attendance_status === "pending"
-                        ? "outline"
-                        : guest.attendance_status === "inside"
-                          ? "warning"
-                          : "success"
-                    }
-                  >
-                    {guest.attendance_status === "pending"
-                      ? "Pendiente"
-                      : guest.attendance_status === "inside"
-                        ? "Dentro"
-                        : "Salio"}
-                  </Badge>
-                </div>
-              ))}
-            </CardContent>
+            <CardContent><EventGuestList eventId={event.id} items={guestItems} /></CardContent>
           </Card>
 
           <Card>

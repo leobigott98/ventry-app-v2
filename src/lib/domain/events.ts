@@ -4,10 +4,12 @@ import type {
   EventActivityRecord,
   EventCredentialRecord,
   EventGuestRecord,
+  EventGuestCredentialRecord,
   ResidentEventRecord,
   ResidentRecord,
   UnitRecord,
   VisitorEntryRecord,
+  EventStatus,
 } from "@/lib/domain/types";
 import type { CreateEventInput } from "@/lib/schemas/events";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
@@ -15,11 +17,6 @@ import {
   getEventPlannedExitLabel,
   getEventWindowLabel,
 } from "@/lib/domain/event-utils";
-import {
-  createNumericPin,
-  createOpaqueQrCredential,
-  createOpaqueShareToken,
-} from "@/lib/security/credentials";
 
 export {
   getEventEffectiveStatus,
@@ -43,6 +40,7 @@ export type EventListItem = ResidentEventRecord & {
 
 export type EventDetailRecord = EventListItem & {
   event_activity: EventActivityRecord[];
+  event_guest_credentials: EventGuestCredentialRecord[];
 };
 
 type GuardEventMatch = ResidentEventRecord & {
@@ -64,29 +62,22 @@ export type PublicEventRecord = Pick<
   guest_count: number;
 };
 
+export type PublicEventGuestRecord = Pick<ResidentEventRecord, "event_date" | "window_start" | "window_end_date" | "window_end" | "planned_exit_date" | "planned_exit_time"> & {
+  event_name: string;
+  guest_name: string;
+  resident_name: string;
+  unit_identifier: string | null;
+  attendance_status: EventGuestRecord["attendance_status"];
+  allows_companions: boolean;
+  max_companions: number;
+  credential_type: "pin" | "qr";
+  credential_value: string;
+  qr_payload: string | null;
+  status: EventStatus;
+};
+
 function normalizeOne<T>(value: T | T[] | null | undefined) {
   return Array.isArray(value) ? value[0] ?? null : value ?? null;
-}
-
-async function storeEventCredential(args: {
-  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>;
-  communityId: string;
-  eventId: string;
-  credentialType: "pin" | "qr";
-}) {
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const credentialValue =
-      args.credentialType === "pin" ? createNumericPin(8) : createOpaqueQrCredential();
-    const { error } = await args.supabase.rpc("store_event_credential", {
-      p_community_id: args.communityId,
-      p_event_id: args.eventId,
-      p_credential_type: args.credentialType,
-      p_credential_value: credentialValue,
-    });
-    if (!error) return;
-    if (error.code !== "23505") throw new Error("No fue posible proteger la credencial.");
-  }
-  throw new Error("No fue posible generar una credencial unica. Intenta nuevamente.");
 }
 
 export function buildEventShareText(event: EventDetailRecord, shareUrl: string) {
@@ -122,6 +113,7 @@ function normalizeEvent(
     event_activity: [...(event.event_activity ?? [])].sort((a, b) =>
       b.created_at.localeCompare(a.created_at),
     ),
+    event_guest_credentials: [],
   };
 }
 
@@ -165,6 +157,11 @@ export async function getEventById(
   if (!data) return null;
 
   const event = normalizeEvent(data as never);
+  if (event.credential_mode === "individual") {
+    const { data: guestCredentials, error: guestCredentialError } = await supabase.rpc("get_event_guest_credentials", { p_event_id: event.id });
+    if (guestCredentialError) throw new Error(guestCredentialError.message);
+    return { ...event, event_guest_credentials: (guestCredentials ?? []) as EventGuestCredentialRecord[] };
+  }
   if (!event.event_credentials) return event;
 
   const { data: visibleCredential, error: credentialError } = await supabase.rpc(
@@ -236,71 +233,34 @@ export async function getEventByShareToken(shareToken: string) {
 
 export async function createResidentEvent(communityId: string, input: CreateEventInput) {
   const supabase = await createServerSupabaseClient();
-  const { data: resident, error: residentError } = await supabase
-    .from("residents")
-    .select("id, unit_id")
-    .eq("community_id", communityId)
-    .eq("id", input.residentId)
-    .eq("is_active", true)
-    .maybeSingle();
-  if (residentError || !resident) {
-    throw new Error(residentError?.message ?? "No fue posible encontrar un residente activo.");
-  }
-
-  const { data: event, error: eventError } = await supabase
-    .from("resident_events")
-    .insert({
-      community_id: communityId,
-      resident_id: input.residentId,
-      unit_id: resident.unit_id,
-      name: input.name,
-      event_date: input.eventDate,
-      window_start: input.windowStart,
-      window_end_date: input.windowEndDate,
-      window_end: input.windowEnd,
-      planned_exit_date: input.plannedExitDate,
-      planned_exit_time: input.plannedExitTime,
-      notes: input.notes,
-      share_token: createOpaqueShareToken(),
-    })
-    .select("*")
-    .single();
-  if (eventError || !event) {
-    throw new Error(eventError?.message ?? "No fue posible crear el evento.");
-  }
-
-  try {
-    await storeEventCredential({
-      supabase,
-      communityId,
-      eventId: event.id,
-      credentialType: input.credentialType as "pin" | "qr",
-    });
-  } catch (error) {
-    await supabase.from("resident_events").delete().eq("id", event.id);
-    throw error;
-  }
-
-  const { error: guestsError } = await supabase.from("event_guests").insert(
-    input.guests.map((guest) => ({
-      event_id: event.id,
-      full_name: guest.fullName,
-      phone: guest.phone,
-      notes: guest.notes,
-    })),
-  );
-  if (guestsError) {
-    await supabase.from("resident_events").delete().eq("id", event.id);
-    throw new Error(guestsError.message);
-  }
-
-  await supabase.from("event_activity").insert({
-    event_id: event.id,
-    activity_type: "created",
-    activity_label: "Evento creado",
-    payload: { guestCount: input.guests.length, credentialType: input.credentialType },
+  const guests = input.guests.map((guest) => ({ ...guest, allowsCompanions: guest.allowsCompanions ?? input.allowsCompanions, maxCompanions: guest.maxCompanions ?? input.maxCompanions }));
+  const { data: eventId, error } = await supabase.rpc("create_individual_resident_event", {
+    p_community_id: communityId, p_resident_id: input.residentId, p_name: input.name,
+    p_event_date: input.eventDate, p_window_start: input.windowStart,
+    p_window_end_date: input.windowEndDate, p_window_end: input.windowEnd,
+    p_planned_exit_date: input.plannedExitDate, p_planned_exit_time: input.plannedExitTime,
+    p_notes: input.notes, p_credential_type: input.credentialType, p_guests: guests,
+    p_idempotency_key: input.idempotencyKey,
   });
-  return event as ResidentEventRecord;
+  if (error || !eventId) throw new Error(error?.message ?? "No fue posible crear el evento.");
+  return { id: String(eventId) } as ResidentEventRecord;
+}
+
+export function buildEventGuestShareText(event: EventDetailRecord, guest: EventGuestRecord, credential: EventGuestCredentialRecord, shareUrl: string) {
+  return [`Acceso Ventry para ${guest.full_name}`, `Evento: ${event.name}`, `Vigencia de entrada: ${getEventWindowLabel(event)}`, credential.credential_type === "pin" ? `PIN: ${credential.credential_value}` : "Abre tu enlace para mostrar el QR al llegar.", guest.allows_companions ? `Acompanantes permitidos: hasta ${guest.max_companions}` : null, `Acceso personal: ${shareUrl}`].filter(Boolean).join("\n");
+}
+
+export async function getEventGuestByShareToken(shareToken: string) {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase.rpc("get_public_event_guest", { p_share_token: shareToken });
+  if (error) throw new Error(error.message);
+  return data ? data as PublicEventGuestRecord : null;
+}
+
+export async function logEventGuestShare(eventId: string, eventGuestId: string, channel: "whatsapp" | "native" | "copy") {
+  const supabase = await createServerSupabaseClient();
+  const { error } = await supabase.rpc("mark_event_guest_credential_shared", { p_event_id: eventId, p_event_guest_id: eventGuestId, p_channel: channel });
+  if (error) throw new Error(error.message);
 }
 
 export async function logEventShare(eventId: string, channel: "whatsapp" | "native" | "copy") {
@@ -341,7 +301,8 @@ export async function revokeResidentEvent(
 export async function getEventValidationMatch(
   communityId: string,
   eventId: string,
-  effectiveStatus: "scheduled" | "active" | "expired" | "revoked",
+  effectiveStatus: "scheduled" | "active" | "expired" | "revoked" | "used",
+  identifiedGuestId?: string | null,
 ) {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase
@@ -366,7 +327,7 @@ export async function getEventValidationMatch(
     units: normalizeOne(raw.units),
     event_guests: [...(raw.event_guests ?? [])].sort((a, b) => a.full_name.localeCompare(b.full_name)),
   };
-  return { kind: "event" as const, event: { ...event, effective_status: effectiveStatus } };
+  return { kind: "event" as const, event: { ...event, effective_status: effectiveStatus, identified_guest_id: identifiedGuestId ?? null } };
 }
 
 export async function registerEventGuestEntry(args: {
@@ -374,12 +335,14 @@ export async function registerEventGuestEntry(args: {
   eventId: string;
   eventGuestId: string;
   idempotencyKey: string;
+  companionCount: number;
 }) {
   const supabase = await createServerSupabaseClient();
   const { data: entryId, error } = await supabase.rpc("register_event_guest_entry", {
     p_community_id: args.communityId,
     p_event_id: args.eventId,
     p_event_guest_id: args.eventGuestId,
+    p_companion_count: args.companionCount,
     p_idempotency_key: args.idempotencyKey,
   });
   if (error || !entryId) {

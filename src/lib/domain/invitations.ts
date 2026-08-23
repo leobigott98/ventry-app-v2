@@ -3,6 +3,7 @@ import { cache } from "react";
 import type {
   AccessCredentialRecord,
   InvitationEventRecord,
+  InvitationGroupRecord,
   InvitationRecord,
   ResidentRecord,
   UnitRecord,
@@ -42,6 +43,12 @@ export type InvitationDetailRecord = InvitationRecord & {
   invitation_events: InvitationEventRecord[];
 };
 
+export type InvitationGroupDetailRecord = InvitationGroupRecord & {
+  residents: Pick<ResidentRecord, "id" | "full_name" | "phone" | "whatsapp_phone" | "email"> | null;
+  units: Pick<UnitRecord, "id" | "identifier" | "building"> | null;
+  invitations: InvitationDetailRecord[];
+};
+
 export type InvitationListFilter = "all" | "current" | "used" | "expired" | "revoked";
 
 export type InvitationListQuery = {
@@ -76,6 +83,8 @@ export type PublicInvitationRecord = Pick<
     AccessCredentialRecord,
     "credential_type" | "credential_value" | "qr_payload"
   > | null;
+  group_size: number | null;
+  group_position: number | null;
 };
 
 function normalizeCredential(
@@ -102,10 +111,6 @@ function currentWindowFilter(date: string, time: string) {
   return `no_time_limit.eq.true,window_end_date.gt.${date},and(window_end_date.eq.${date},window_end.gte.${time}),and(window_end_date.is.null,visit_date.gt.${date}),and(window_end_date.is.null,visit_date.eq.${date},window_end.gte.${time})`;
 }
 
-function expiredWindowFilter(date: string, time: string) {
-  return `window_end_date.lt.${date},and(window_end_date.eq.${date},window_end.lt.${time}),and(window_end_date.is.null,visit_date.lt.${date}),and(window_end_date.is.null,visit_date.eq.${date},window_end.lt.${time})`;
-}
-
 function normalizeInvitationRows(data: unknown) {
   return ((data ?? []) as Array<Omit<InvitationListItem, "access_credentials"> & { access_credentials: AccessCredentialRecord[] | AccessCredentialRecord | null }>).map((invitation) => ({
     ...invitation,
@@ -119,32 +124,54 @@ export async function getPaginatedInvitations(
   filters: InvitationListQuery = {},
 ) {
   const supabase = await createServerSupabaseClient();
-  const { page, pageSize, from, to } = normalizePagination(filters.page, filters.pageSize, { defaultPageSize: 10, maxPageSize: 25 });
+  const { page, pageSize } = normalizePagination(filters.page, filters.pageSize, { defaultPageSize: 10, maxPageSize: 25 });
   const status = filters.status ?? "all";
-  const now = getAppLocalNowParts();
-  let query = supabase
-    .from("invitations")
-    .select(invitationListSelect, { count: "exact" })
-    .eq("community_id", communityId);
-
+  const { data: cardData, error: cardError } = await supabase.rpc("get_invitation_card_ids", {
+    p_community_id: communityId, p_resident_id: residentId ?? null,
+    p_query: filters.query?.trim().slice(0,80) ?? "", p_status: status,
+    p_date_from: filters.dateFrom || null, p_date_to: filters.dateTo || null,
+    p_page: page, p_page_size: pageSize,
+  });
+  if (cardError) throw new Error(cardError.message);
+  const cards = cardData as { ids?: string[]; total?: number; page?: number; pageSize?: number } | null;
+  const ids = cards?.ids ?? [];
+  const total = Number(cards?.total ?? 0);
+  if (!ids.length) return { items: [], page, pageSize, total, totalPages: Math.max(Math.ceil(total/pageSize),1) };
+  let query = supabase.from("invitations").select(invitationListSelect).eq("community_id", communityId).in("id", ids);
   if (residentId) query = query.eq("resident_id", residentId);
-  const textQuery = filters.query?.trim().slice(0, 80);
-  if (textQuery) query = query.ilike("visitor_name", `%${textQuery}%`);
-  if (filters.dateFrom) query = query.gte("visit_date", filters.dateFrom);
-  if (filters.dateTo) query = query.lte("visit_date", filters.dateTo);
-
-  if (status === "current") query = query.eq("status", "active").or(currentWindowFilter(now.date, now.time));
-  if (status === "used") query = query.eq("status", "used");
-  if (status === "revoked") query = query.eq("status", "revoked");
-  if (status === "expired") query = query.eq("status", "active").eq("no_time_limit", false).or(expiredWindowFilter(now.date, now.time));
-
-  const { data, error, count } = await query
-    .order("created_at", { ascending: false })
-    .order("id", { ascending: false })
-    .range(from, to);
+  const { data, error } = await query;
   if (error) throw new Error(error.message);
-  const total = count ?? 0;
-  return { items: normalizeInvitationRows(data), page, pageSize, total, totalPages: Math.max(Math.ceil(total / pageSize), 1) };
+  const order = new Map(ids.map((id,index)=>[id,index]));
+  const items = normalizeInvitationRows(data).sort((left,right)=>(order.get(left.id)??0)-(order.get(right.id)??0));
+  return { items, page, pageSize, total, totalPages: Math.max(Math.ceil(total / pageSize), 1) };
+}
+
+export type InvitationGroupSummary = { total: number; current: number; used: number; expired: number; revoked: number };
+export async function getInvitationGroupSummaries(communityId: string, groupIds: string[], residentId?: string | null) {
+  const ids = [...new Set(groupIds.filter(Boolean))].slice(0, 25);
+  if (!ids.length) return new Map<string, InvitationGroupSummary>();
+  const supabase = await createServerSupabaseClient();
+  let query = supabase.from("invitations").select("id, group_id, status, visit_date, window_start, window_end, window_end_date, no_time_limit").eq("community_id", communityId).in("group_id", ids);
+  if (residentId) query = query.eq("resident_id", residentId);
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  const summaries = new Map<string, InvitationGroupSummary>();
+  for (const item of data ?? []) if (item.group_id) { const summary=summaries.get(item.group_id)??{total:0,current:0,used:0,expired:0,revoked:0}; const effective=getInvitationEffectiveStatus(item as InvitationRecord); summary.total+=1; if(effective==="active"||effective==="scheduled")summary.current+=1;else summary[effective]+=1; summaries.set(item.group_id,summary); }
+  return summaries;
+}
+
+export async function getInvitationGroupById(communityId: string, groupId: string, residentId?: string | null) {
+  const supabase = await createServerSupabaseClient();
+  let query = supabase.from("invitation_groups").select("*, residents(id, full_name, phone, whatsapp_phone, email), units(id, identifier, building)").eq("community_id", communityId).eq("id", groupId);
+  if (residentId) query = query.eq("resident_id", residentId);
+  const { data, error } = await query.maybeSingle();
+  if (error) throw new Error(error.message);
+  if (!data) return null;
+  const { data: members, error: membersError } = await supabase.from("invitations").select("id").eq("community_id", communityId).eq("group_id", groupId).order("created_at").order("id");
+  if (membersError) throw new Error(membersError.message);
+  const invitations = (await Promise.all((members ?? []).map((member) => getInvitationById(communityId, member.id, residentId)))).filter((item): item is InvitationDetailRecord => item !== null);
+  const raw = data as InvitationGroupRecord & { residents: InvitationGroupDetailRecord["residents"] | InvitationGroupDetailRecord["residents"][]; units: InvitationGroupDetailRecord["units"] | InvitationGroupDetailRecord["units"][] };
+  return { ...raw, residents: Array.isArray(raw.residents) ? raw.residents[0] ?? null : raw.residents, units: Array.isArray(raw.units) ? raw.units[0] ?? null : raw.units, invitations } satisfies InvitationGroupDetailRecord;
 }
 
 export async function getFrequentVisitorContacts(communityId: string, residentId: string, limit = 12) {
@@ -256,7 +283,7 @@ export async function getInvitationById(
   communityId: string,
   invitationId: string,
   residentId?: string | null,
-) {
+): Promise<InvitationDetailRecord | null> {
   const supabase = await createServerSupabaseClient();
   let query = supabase
     .from("invitations")
@@ -288,7 +315,7 @@ export async function getInvitationById(
     ...invitation,
     access_credentials: normalizeCredential(invitation.access_credentials),
     invitation_events: [],
-  };
+  } as InvitationDetailRecord;
 
   if (!normalizedInvitation.access_credentials) return normalizedInvitation;
 
@@ -354,6 +381,8 @@ export async function getInvitationByShareToken(shareToken: string) {
     credential_type: AccessCredentialRecord["credential_type"] | null;
     credential_value: string | null;
     qr_payload: string | null;
+    group_size: number | null;
+    group_position: number | null;
   };
 
   return {
@@ -377,5 +406,7 @@ export async function getInvitationByShareToken(shareToken: string) {
             qr_payload: dto.qr_payload,
           }
         : null,
+    group_size: dto.group_size ? Number(dto.group_size) : null,
+    group_position: dto.group_position ? Number(dto.group_position) : null,
   } satisfies PublicInvitationRecord;
 }

@@ -53,6 +53,7 @@ export default async function SharedInvitationPage({
             </div>
           </CardHeader>
           <CardContent className="space-y-3 text-sm text-muted-foreground">
+            {invitation.group_size ? <div className="rounded-xl bg-secondary p-3 text-foreground">Esta es tu credencial individual dentro de una invitacion para {invitation.group_size} personas{invitation.group_position ? ` · acceso ${invitation.group_position} de ${invitation.group_size}` : ""}. No se muestran datos de las demas personas.</div> : null}
             <div>
               Residente: <span className="text-foreground">{invitation.residents?.full_name || "Sin residente"}</span>
             </div>

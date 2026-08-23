@@ -16,10 +16,13 @@ export const eventGuestSchema = z.object({
   fullName: z.string().trim().min(2, "Cada invitado necesita un nombre.").max(120),
   phone: nullableOptionalText,
   notes: nullableOptionalText,
+  allowsCompanions: z.boolean().optional(),
+  maxCompanions: z.number().int().min(0).max(5).optional(),
 });
 
 export const createEventSchema = z
   .object({
+    idempotencyKey: z.string().uuid("La clave de reintento no es valida."),
     residentId: z.string().uuid("Selecciona un residente."),
     name: z.string().trim().min(2, "Escribe el nombre del evento.").max(120),
     eventDate,
@@ -32,6 +35,8 @@ export const createEventSchema = z
       credentialTypeOptions.map((option) => option.value) as [string, ...string[]],
     ),
     notes: nullableOptionalText,
+    allowsCompanions: z.boolean().default(false),
+    maxCompanions: z.number().int().min(0).max(5).default(0),
     guests: z.array(eventGuestSchema).min(1, "Agrega al menos un invitado.").max(500),
   })
   .superRefine((input, ctx) => {
@@ -75,12 +80,23 @@ export const createEventSchema = z
         });
       }
       seen.add(key);
+
+      const allowsCompanions = guest.allowsCompanions ?? input.allowsCompanions;
+      const maxCompanions = guest.maxCompanions ?? input.maxCompanions;
+      if ((!allowsCompanions && maxCompanions !== 0) || (allowsCompanions && (maxCompanions < 1 || maxCompanions > 5))) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["guests", index, "maxCompanions"], message: "Configura entre 1 y 5 acompanantes, o desactivalos." });
+      }
     });
+
+    if ((!input.allowsCompanions && input.maxCompanions !== 0) || (input.allowsCompanions && input.maxCompanions < 1)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["maxCompanions"], message: "Configura entre 1 y 5 acompanantes, o desactivalos." });
+    }
   });
 
 export const registerEventGuestSchema = z.object({
   eventId: z.string().uuid("Evento invalido."),
   eventGuestId: z.string().uuid("Invitado invalido."),
+  companionCount: z.number().int().min(0).max(5).default(0),
 });
 
 export type CreateEventInput = z.infer<typeof createEventSchema>;

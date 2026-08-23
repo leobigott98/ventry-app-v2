@@ -21,6 +21,22 @@ type OpenEntryRecord = VisitorEntryRecord & {
   units: Pick<UnitRecord, "id" | "identifier" | "building"> | null;
 };
 
+export type GuardUpcomingAccessItem = {
+  kind: "event" | "group"; id: string; label: string; access_date: string;
+  window_start: string; window_end_date: string; window_end: string;
+  host_name: string; unit_identifier: string | null; unit_building: string | null;
+  pending_count: number; inside_count: number; exited_count: number;
+  start_at: string; end_at: string; timing_status: "active" | "next";
+};
+
+export async function getGuardUpcomingAccess(communityId: string, options: { query?: string; status?: "all" | "active" | "next"; page?: number; pageSize?: number } = {}) {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase.rpc("get_guard_upcoming_access", { p_community_id: communityId, p_query: options.query?.trim().slice(0,80) ?? "", p_status: options.status ?? "all", p_page: options.page ?? 1, p_page_size: Math.min(Math.max(options.pageSize ?? 3,1),20) });
+  if (error) throw new Error(error.message);
+  const result = data as { items?: GuardUpcomingAccessItem[]; total?: number; page?: number; pageSize?: number } | null;
+  return { items: result?.items ?? [], total: Number(result?.total ?? 0), page: Number(result?.page ?? 1), pageSize: Number(result?.pageSize ?? options.pageSize ?? 3) };
+}
+
 export async function getRecentGuardInvitations(communityId: string) {
   const supabase = await createServerSupabaseClient();
   const { data, error } = await supabase

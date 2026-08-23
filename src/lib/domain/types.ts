@@ -200,6 +200,8 @@ export type InvitationRecord = {
   resident_id: string;
   unit_id: string | null;
   visitor_name: string | null;
+  visitor_phone: string | null;
+  group_id: string | null;
   access_type: InvitationAccessType;
   visit_date: string;
   window_start: string;
@@ -210,6 +212,23 @@ export type InvitationRecord = {
   notes: string | null;
   share_token: string;
   revoked_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type InvitationGroupRecord = {
+  id: string;
+  community_id: string;
+  resident_id: string;
+  unit_id: string | null;
+  access_type: InvitationAccessType;
+  visit_date: string;
+  window_start: string;
+  window_end: string;
+  window_end_date: string | null;
+  no_time_limit: boolean;
+  notes: string | null;
+  credential_type: CredentialType;
   created_at: string;
   updated_at: string;
 };
@@ -249,6 +268,7 @@ export type VisitorEntryRecord = {
   entry_status: "inside" | "exited";
   entered_at: string;
   exited_at: string | null;
+  companion_count: number;
   created_by_email: string;
   created_at: string;
   updated_at: string;
@@ -295,6 +315,7 @@ export type ResidentEventRecord = {
   planned_exit_date: string | null;
   planned_exit_time: string | null;
   status: Exclude<EventStatus, "scheduled" | "expired">;
+  credential_mode: "shared" | "individual";
   notes: string | null;
   share_token: string;
   revoked_at: string | null;
@@ -308,11 +329,26 @@ export type EventGuestRecord = {
   full_name: string;
   phone: string | null;
   notes: string | null;
+  allows_companions: boolean;
+  max_companions: number;
+  credential_shared_at: string | null;
   attendance_status: EventAttendanceStatus;
   checked_in_at: string | null;
   checked_out_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type EventGuestCredentialRecord = {
+  id: string;
+  event_id: string;
+  event_guest_id: string;
+  credential_type: CredentialType;
+  credential_value: string;
+  qr_payload: string | null;
+  credential_audit_id: string;
+  share_token: string;
+  created_at: string;
 };
 
 export type EventCredentialRecord = {

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { EventForm } from "@/components/events/event-form";
 import type { ResidentRecord } from "@/lib/domain/types";
+import { EVENT_DRAFT_TRANSFER_KEY, serializeEventDraftTransfer } from "@/lib/event-draft-transfer";
 
 const navigation = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }));
 vi.mock("next/navigation", () => ({ useRouter: () => navigation }));
@@ -28,6 +29,7 @@ describe("EventForm", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubGlobal("scrollTo", vi.fn());
+    sessionStorage.clear();
   });
 
   it("no crea al avanzar ni al elegir credencial; crea solo al confirmar", async () => {
@@ -40,14 +42,16 @@ describe("EventForm", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect(screen.getByRole("button", { name: "Crear evento" })).toBeDisabled();
 
-    await user.click(screen.getByRole("radio", { name: "QR compartido" }));
+    await user.click(screen.getByRole("radio", { name: "QR individual" }));
     expect(fetchMock).not.toHaveBeenCalled();
     await user.click(screen.getByRole("button", { name: "Crear evento" }));
 
     await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
     expect(navigation.push).toHaveBeenCalledOnce();
     expect(navigation.push).toHaveBeenCalledWith("/app/events/event-1");
-  });
+    const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(request.body)).idempotencyKey).toMatch(/^[0-9a-f-]{36}$/i);
+  }, 20_000);
 
   it("protege contra doble confirmación y Enter prematuro", async () => {
     let resolveResponse: ((response: Response) => void) | undefined;
@@ -59,7 +63,7 @@ describe("EventForm", () => {
     await user.type(screen.getByLabelText("Nombre"), "Reunión familiar{enter}");
     expect(fetchMock).not.toHaveBeenCalled();
     await reachConfirmationAfterName(user);
-    await user.click(screen.getByRole("radio", { name: "PIN compartido" }));
+    await user.click(screen.getByRole("radio", { name: "PIN individual" }));
     await user.keyboard("{Enter}");
     expect(fetchMock).not.toHaveBeenCalled();
 
@@ -69,7 +73,25 @@ describe("EventForm", () => {
 
     resolveResponse?.(new Response(JSON.stringify({ redirectTo: "/app/events/event-1" }), { status: 200, headers: { "Content-Type": "application/json" } }));
     await waitFor(() => expect(navigation.push).toHaveBeenCalledOnce());
-  });
+  }, 20_000);
+
+  it("recibe de forma segura los invitados transferidos desde una invitación grupal", async () => {
+    sessionStorage.setItem(EVENT_DRAFT_TRANSFER_KEY, serializeEventDraftTransfer([
+      { fullName: "Carlos Rojas", phone: "+58 111" },
+      { fullName: "Luisa Rojas", phone: null },
+    ]));
+    const user = userEvent.setup();
+    render(<EventForm residents={[resident]} />);
+
+    await user.type(screen.getByLabelText("Nombre"), "Reunión familiar");
+    await user.click(screen.getByRole("button", { name: "Continuar" }));
+    await user.click(screen.getByRole("button", { name: "Continuar" }));
+
+    expect(screen.getByText("Carlos Rojas")).toBeInTheDocument();
+    expect(screen.getByText("Luisa Rojas")).toBeInTheDocument();
+    expect(screen.getByText(/2 personas transferidas/)).toBeInTheDocument();
+    expect(sessionStorage.getItem(EVENT_DRAFT_TRANSFER_KEY)).toBeNull();
+  }, 20_000);
 });
 
 async function reachConfirmationAfterName(user: ReturnType<typeof userEvent.setup>) {

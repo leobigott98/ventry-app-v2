@@ -42,6 +42,7 @@ import type {
 } from "@/lib/domain/types";
 import { formatAppTime } from "@/lib/formatting";
 import { normalizeQrCredential } from "@/lib/qr-credentials";
+import { cn } from "@/lib/utils";
 import type { IScannerControls } from "@zxing/browser";
 
 type ResidentOption = ResidentRecord & {
@@ -72,7 +73,8 @@ type GuardEvent = ResidentEventRecord & {
   residents: { full_name: string } | null;
   units: { identifier: string; building: string | null } | null;
   event_guests: EventGuestRecord[];
-  effective_status: "scheduled" | "active" | "expired" | "revoked";
+  effective_status: "scheduled" | "active" | "expired" | "revoked" | "used";
+  identified_guest_id: string | null;
 };
 
 type ValidationMatch =
@@ -158,6 +160,7 @@ export function GuardWorkspace({
   const [validationMatch, setValidationMatch] = useState<ValidationMatch | null>(null);
   const [validationError, setValidationError] = useState<string | null>(null);
   const [eventGuestQuery, setEventGuestQuery] = useState("");
+  const [companionCounts, setCompanionCounts] = useState<Record<string, number>>({});
   const [isValidating, setIsValidating] = useState(false);
   const [scannerStatus, setScannerStatus] = useState<ScannerStatus>("idle");
   const [scannerMessage, setScannerMessage] = useState(
@@ -169,6 +172,8 @@ export function GuardWorkspace({
   const scannerActiveRef = useRef(false);
   const validationInFlightRef = useRef(false);
   const credentialRequestInFlightRef = useRef(false);
+  const validateCredentialRef = useRef(validateCredential);
+  validateCredentialRef.current = validateCredential;
   const entryIdempotencyKeysRef = useRef(new Map<string, string>());
   const entryRequestsInFlightRef = useRef(new Set<string>());
   const manualIdempotencyKeysRef = useRef(new Map<string, string>());
@@ -241,16 +246,17 @@ export function GuardWorkspace({
   }, [activeAction, stopQrScanner]);
 
   useEffect(() => {
+    const videoElement = videoRef.current;
     return () => {
       scannerActiveRef.current = false;
       scannerControlsRef.current?.stop();
       scannerControlsRef.current = null;
 
-      if (videoRef.current) {
-        if (videoRef.current.srcObject instanceof MediaStream) {
-          videoRef.current.srcObject.getTracks().forEach((track) => track.stop());
+      if (videoElement) {
+        if (videoElement.srcObject instanceof MediaStream) {
+          videoElement.srcObject.getTracks().forEach((track) => track.stop());
         }
-        videoRef.current.srcObject = null;
+        videoElement.srcObject = null;
       }
     };
   }, []);
@@ -302,7 +308,7 @@ export function GuardWorkspace({
     setScannerStatus("detected");
     setScannerMessage("QR abierto desde la camara del telefono. Validando invitacion...");
 
-    void validateCredential("qr", credential).finally(() => {
+    void validateCredentialRef.current("qr", credential).finally(() => {
       validationInFlightRef.current = false;
     });
   }, [searchParams]);
@@ -535,7 +541,7 @@ export function GuardWorkspace({
     }
   }
 
-  async function registerEventGuest(eventId: string, eventGuestId: string) {
+  async function registerEventGuest(eventId: string, eventGuestId: string, companionCount = 0) {
     const operationKey = `event:${eventId}:${eventGuestId}`;
     if (entryRequestsInFlightRef.current.has(operationKey)) return;
 
@@ -549,7 +555,7 @@ export function GuardWorkspace({
       const response = await fetch("/api/guards/event-entries", {
         method: "POST",
         headers: { "Content-Type": "application/json", "Idempotency-Key": idempotencyKey },
-        body: JSON.stringify({ eventId, eventGuestId }),
+        body: JSON.stringify({ eventId, eventGuestId, companionCount }),
       });
       const payload = (await response.json()) as { error?: string; entry?: OpenEntry };
       if (!response.ok || !payload.entry) {
@@ -773,7 +779,7 @@ export function GuardWorkspace({
 
       <div className="grid gap-4 xl:grid-cols-[1.05fr_0.95fr]">
         <div className="space-y-4">
-          <Card>
+          <Card id="guard-validation">
             <CardHeader>
               <CardTitle>{actionLabels[activeAction]}</CardTitle>
               <CardDescription>
@@ -889,18 +895,21 @@ export function GuardWorkspace({
                           placeholder="Buscar nombre en la lista..."
                         />
                       </div>
-                      <div className="max-h-80 space-y-2 overflow-y-auto">
-                        {validationMatch.event.event_guests
+                      {validationMatch.event.identified_guest_id ? <p className="text-sm font-bold text-primary">Persona identificada por la credencial</p> : null}
+                      <div className="max-h-96 space-y-2 overflow-y-auto">
+                        {[...validationMatch.event.event_guests]
                           .filter((guest) => guest.full_name.toLocaleLowerCase().includes(eventGuestQuery.trim().toLocaleLowerCase()))
+                          .sort((left, right) => Number(right.id === validationMatch.event.identified_guest_id) - Number(left.id === validationMatch.event.identified_guest_id))
                           .slice(0, 60)
                           .map((guest) => {
                             const operationKey = `event:${validationMatch.event.id}:${guest.id}`;
                             const isRegistering = pendingEntryOperations.has(operationKey);
                             return (
-                            <div key={guest.id} className="flex items-center gap-3 rounded-2xl border border-border bg-surface p-3">
+                            <div key={guest.id} className={cn("rounded-2xl border bg-surface p-3", guest.id === validationMatch.event.identified_guest_id ? "border-2 border-primary" : "border-border")}>
+                              <div className="flex items-center gap-3">
                               <div className="min-w-0 flex-1">
                                 <div className="truncate font-semibold">{guest.full_name}</div>
-                                <div className="truncate text-xs text-muted-foreground">{guest.phone || guest.notes || "Invitado del evento"}</div>
+                                <div className="truncate text-xs text-muted-foreground">{guest.phone || guest.notes || "Invitado del evento"}{guest.allows_companions ? ` · hasta ${guest.max_companions} acompanantes` : ""}</div>
                               </div>
                               {guest.attendance_status === "pending" && validationMatch.event.effective_status === "active" ? (
                                 <Button
@@ -908,7 +917,7 @@ export function GuardWorkspace({
                                   className="h-11 shrink-0"
                                   disabled={isRegistering}
                                   type="button"
-                                  onClick={() => void registerEventGuest(validationMatch.event.id, guest.id)}
+                                  onClick={() => void registerEventGuest(validationMatch.event.id, guest.id, companionCounts[guest.id] ?? 0)}
                                 >
                                   {isRegistering ? <LoaderCircle aria-hidden="true" className="h-4 w-4 animate-spin" /> : null}
                                   {isRegistering ? "Registrando..." : "Registrar"}
@@ -918,6 +927,8 @@ export function GuardWorkspace({
                                   {guest.attendance_status === "inside" ? "Dentro" : "Salio"}
                                 </Badge>
                               )}
+                              </div>
+                              {guest.attendance_status === "pending" && guest.allows_companions && validationMatch.event.effective_status === "active" ? <label className="mt-3 flex items-center justify-between gap-3 border-t border-border pt-3 text-sm font-semibold"><span>Acompanantes ({(companionCounts[guest.id] ?? 0) + 1} personas en total)</span><select aria-label={`Acompanantes de ${guest.full_name}`} className="h-11 rounded-xl border border-border bg-surface px-3" value={companionCounts[guest.id] ?? 0} onChange={(event) => setCompanionCounts((current) => ({ ...current, [guest.id]: Number(event.target.value) }))}>{Array.from({length:guest.max_companions+1},(_,count)=><option key={count} value={count}>{count}</option>)}</select></label> : null}
                             </div>
                             );
                           })}

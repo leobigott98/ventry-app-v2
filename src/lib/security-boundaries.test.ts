@@ -102,7 +102,8 @@ describe("authentication and credential boundaries", () => {
     const accessLog = read("src/lib/domain/access-log.ts");
     expect(invitations).toContain('.eq("community_id", communityId)');
     expect(invitations).toContain('.eq("resident_id", residentId)');
-    expect(invitations).toContain(".range(from, to)");
+    expect(invitations).toContain('rpc("get_invitation_card_ids"');
+    expect(read("supabase/migrations/202608210001_group_individual_event_access.sql")).toContain("offset (p_page-1)*p_page_size limit p_page_size");
     expect(accessLog).toContain('.eq("community_id", communityId)');
     expect(accessLog).toContain('query = query.eq("resident_id", filters.residentId)');
     expect(accessLog).toContain(".range(pagination.from, pagination.to)");
@@ -122,5 +123,32 @@ describe("authentication and credential boundaries", () => {
     expect(migration).toContain("resident_events_planned_exit_after_window_check");
     expect(credentialMigration).toContain("now() < v_start_at or now() > v_end_at");
     expect(credentialMigration).not.toContain("planned_exit_date");
+  });
+
+  it("protects group and individual credentials with scoped transactional RPCs", () => {
+    const migration = read("supabase/migrations/202608210001_group_individual_event_access.sql");
+    expect(migration).toContain("create_invitation_group");
+    expect(migration).toContain("create_individual_resident_event");
+    expect(migration).toContain("event_guest_credential_secrets");
+    expect(migration).toContain("revoke all on public.event_guest_credential_secrets from anon, authenticated");
+    expect(migration).toContain("validate_event_guest_credential");
+    expect(migration).toContain("p_companion_count integer");
+    expect(migration).toContain("idempotency key was used for another operation");
+    expect(migration).toContain("idx_invitation_groups_creation_idempotency");
+    expect(migration).toContain("idx_resident_events_creation_idempotency");
+    expect(migration).toContain("a recent successful validation is required");
+    expect(migration).toContain("get_byte(v_bytes,0)::bigint*16777216");
+    expect(migration).toContain("get_guard_upcoming_access");
+    expect(migration).not.toContain("service_role");
+  });
+
+  it("does not return database errors from the new creation APIs", () => {
+    const creationRoutes = [
+      "src/app/api/events/route.ts",
+      "src/app/api/invitation-groups/route.ts",
+      "src/app/api/invitation-groups/[groupId]/revoke/route.ts",
+    ].map(read).join("\n");
+
+    expect(creationRoutes).not.toContain("error instanceof Error ? error.message");
   });
 });

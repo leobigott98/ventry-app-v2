@@ -30,6 +30,7 @@ export async function POST(request: NextRequest) {
       communityId: auth.context.community.id,
       eventId: parsed.data.eventId,
       eventGuestId: parsed.data.eventGuestId,
+      companionCount: parsed.data.companionCount,
       idempotencyKey: idempotencyKey.data,
     });
     return NextResponse.json({ ok: true, entry });

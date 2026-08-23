@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { createEventSchema } from "@/lib/schemas/events";
 
 const valid = {
+  idempotencyKey: "11111111-1111-4111-8111-111111111199",
   residentId: "11111111-1111-4111-8111-111111111111",
   name: "Reunión familiar",
   eventDate: "2026-08-20",
@@ -34,5 +35,11 @@ describe("createEventSchema", () => {
   it("rechaza una salida prevista anterior al fin de vigencia", () => {
     const result = createEventSchema.safeParse({ ...valid, plannedExitDate: "2026-08-20", plannedExitTime: "17:59" });
     expect(result.success).toBe(false);
+  });
+
+  it("valida acompanantes generales y excepciones por invitado", () => {
+    expect(createEventSchema.safeParse({ ...valid, allowsCompanions: true, maxCompanions: 3 }).success).toBe(true);
+    expect(createEventSchema.safeParse({ ...valid, allowsCompanions: false, maxCompanions: 2 }).success).toBe(false);
+    expect(createEventSchema.safeParse({ ...valid, allowsCompanions: false, maxCompanions: 0, guests: [{ ...valid.guests[0], allowsCompanions: true, maxCompanions: 6 }] }).success).toBe(false);
   });
 });

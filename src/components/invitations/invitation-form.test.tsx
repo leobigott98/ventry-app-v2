@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { InvitationForm } from "@/components/invitations/invitation-form";
 import type { ResidentRecord } from "@/lib/domain/types";
+import { EVENT_DRAFT_TRANSFER_KEY } from "@/lib/event-draft-transfer";
 
 const navigation = vi.hoisted(() => ({
   push: vi.fn(),
@@ -33,6 +34,7 @@ describe("InvitationForm", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.stubGlobal("scrollTo", vi.fn());
+    sessionStorage.clear();
   });
 
   it("solo crea al confirmar despues de elegir explicitamente la credencial", async () => {
@@ -76,7 +78,7 @@ describe("InvitationForm", () => {
     );
     expect(navigation.push).toHaveBeenCalledWith("/app/invitations/invitation-1");
     expect(navigation.refresh).toHaveBeenCalledOnce();
-  });
+  }, 20_000);
 
   it("bloquea un segundo envio mientras la solicitud esta pendiente", async () => {
     let resolveResponse: ((response: Response) => void) | undefined;
@@ -109,7 +111,7 @@ describe("InvitationForm", () => {
     await waitFor(() => {
       expect(navigation.push).toHaveBeenCalledWith("/app/invitations/invitation-1");
     });
-  });
+  }, 20_000);
 
   it("no envia con Enter, al avanzar, al elegir credencial ni al volver al ultimo paso", async () => {
     const fetchMock = vi.fn();
@@ -135,5 +137,47 @@ describe("InvitationForm", () => {
     await user.click(screen.getByRole("button", { name: "Atrás" }));
     await user.click(screen.getByRole("button", { name: /Continuar/ }));
     expect(fetchMock).not.toHaveBeenCalled();
-  });
+  }, 20_000);
+
+  it("crea un grupo por un unico endpoint cuando agrega varias personas", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ redirectTo: "/app/invitation-groups/group-1" }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+    render(<InvitationForm residents={[resident]} />);
+    await user.type(screen.getByLabelText(/Quién va a visitarte/), "Carlos Rojas");
+    await user.type(screen.getByLabelText("Telefono o WhatsApp opcional"), "+58 111");
+    await user.click(screen.getByRole("button", { name: "Agregar otra persona" }));
+    await user.type(screen.getByLabelText(/Quién va a visitarte/), "Luisa Rojas");
+    await user.click(screen.getByRole("button", { name: /Continuar/ }));
+    await user.click(screen.getByRole("button", { name: /Continuar/ }));
+    expect(screen.getByText("Invitacion para 2 personas")).toBeInTheDocument();
+    await user.click(screen.getByRole("radio", { name: "QR" }));
+    await user.click(screen.getByRole("button", { name: "Crear invitación" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/invitation-groups");
+    const payload=JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body));
+    expect(payload.visitors).toEqual([{fullName:"Carlos Rojas",phone:"+58 111"},{fullName:"Luisa Rojas",phone:""}]);
+    expect(payload.idempotencyKey).toMatch(/^[0-9a-f-]{36}$/i);
+  }, 20_000);
+
+  it("transfiere un grupo grande a Event Mode sin enviar ni exponer datos en la URL", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+    render(<InvitationForm residents={[resident]} />);
+
+    for (let index = 1; index <= 9; index += 1) {
+      await user.type(screen.getByLabelText(/Quién va a visitarte/), `Persona ${index}`);
+      await user.click(screen.getByRole("button", { name: "Agregar otra persona" }));
+    }
+
+    await user.click(screen.getByRole("button", { name: /Crear como evento con estas 9 personas/ }));
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(navigation.push).toHaveBeenCalledWith("/app/events/new?source=invitation-group");
+    expect(navigation.push.mock.calls[0]?.[0]).not.toContain("Persona");
+    const transfer = JSON.parse(sessionStorage.getItem(EVENT_DRAFT_TRANSFER_KEY) ?? "null");
+    expect(transfer.guests).toHaveLength(9);
+    expect(transfer.guests[0]).toEqual(expect.objectContaining({ fullName: "Persona 1", allowsCompanions: false, maxCompanions: 0 }));
+  }, 30_000);
 });

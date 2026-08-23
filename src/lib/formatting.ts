@@ -40,8 +40,12 @@ export function formatAppDate(
 }
 
 export function getAppLocalNowParts(now = new Date()) {
+  return getTimeZoneNowParts(APP_TIME_ZONE, now);
+}
+
+export function getTimeZoneNowParts(timeZone: string, now = new Date()) {
   const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: APP_TIME_ZONE,
+    timeZone,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",

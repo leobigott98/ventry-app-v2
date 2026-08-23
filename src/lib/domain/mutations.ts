@@ -14,7 +14,7 @@ import type {
   UnitInput,
   CommunityProfileInput,
 } from "@/lib/schemas/community";
-import type { CreateInvitationInput, UpdateInvitationWindowInput } from "@/lib/schemas/invitations";
+import type { CreateInvitationGroupInput, CreateInvitationInput, UpdateInvitationWindowInput } from "@/lib/schemas/invitations";
 import type {
   ManualVehicleEntryInput,
   UnannouncedVisitorInput,
@@ -288,6 +288,7 @@ export async function createInvitation(communityId: string, input: CreateInvitat
       resident_id: input.residentId,
       unit_id: resident.unit_id,
       visitor_name: input.visitorName,
+      visitor_phone: input.visitorPhone,
       access_type: input.accessType,
       visit_date: input.visitDate,
       window_start: input.windowStart,
@@ -337,6 +338,33 @@ export async function createInvitation(communityId: string, input: CreateInvitat
   }
 
   return invitation;
+}
+
+export async function createInvitationGroup(communityId: string, input: CreateInvitationGroupInput) {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase.rpc("create_invitation_group", {
+    p_community_id: communityId,
+    p_resident_id: input.residentId,
+    p_access_type: input.accessType,
+    p_visit_date: input.visitDate,
+    p_window_start: input.windowStart,
+    p_window_end_date: input.noTimeLimit ? null : input.windowEndDate ?? input.visitDate,
+    p_window_end: input.noTimeLimit ? "23:59" : input.windowEnd,
+    p_no_time_limit: input.noTimeLimit,
+    p_notes: input.notes,
+    p_credential_type: input.credentialType,
+    p_visitors: input.visitors,
+    p_idempotency_key: input.idempotencyKey,
+  });
+  if (error || !data) throw new Error(error?.message ?? "No fue posible crear la invitacion grupal.");
+  return data as { groupId: string; invitationIds: string[] };
+}
+
+export async function revokeInvitationGroup(communityId: string, groupId: string) {
+  const supabase = await createServerSupabaseClient();
+  const { data, error } = await supabase.rpc("revoke_invitation_group", { p_community_id: communityId, p_group_id: groupId });
+  if (error) throw new Error(error.message);
+  return Number(data ?? 0);
 }
 export async function revokeInvitation(communityId: string, invitationId: string) {
   const supabase = await createServerSupabaseClient();

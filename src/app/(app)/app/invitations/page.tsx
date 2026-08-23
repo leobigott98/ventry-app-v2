@@ -6,7 +6,7 @@ import { InvitationStatusBadge } from "@/components/invitations/invitation-statu
 import { SectionShell } from "@/components/layout/section-shell";
 import { ResidentPageHeader } from "@/components/resident/resident-header";
 import { Button } from "@/components/ui/button";
-import { classifyInvitations, getInvitationAccessTypeLabel, getInvitationEffectiveStatus, getInvitationWindowLabel, getPaginatedInvitations, type InvitationListFilter } from "@/lib/domain/invitations";
+import { getInvitationAccessTypeLabel, getInvitationEffectiveStatus, getInvitationGroupSummaries, getInvitationWindowLabel, getPaginatedInvitations, type InvitationGroupSummary, type InvitationListFilter } from "@/lib/domain/invitations";
 import { getCommunityContextOrRedirect } from "@/lib/domain/session-context";
 
 function single(value: string | string[] | undefined) { return Array.isArray(value) ? value[0] ?? "" : value ?? ""; }
@@ -32,7 +32,7 @@ export default async function InvitationsPage({ searchParams }: { searchParams: 
     dateTo: single(params.dateTo),
   };
   const result = await getPaginatedInvitations(context.community.id, sessionUser.role === "resident" ? sessionUser.residentId : null, { query: values.q, status: values.status, dateFrom: values.dateFrom, dateTo: values.dateTo, page: integer(params.page, 1), pageSize: 10 });
-  const groups = classifyInvitations(result.items);
+  const groupSummaries = await getInvitationGroupSummaries(context.community.id, result.items.flatMap((item) => item.group_id ? [item.group_id] : []), sessionUser.role === "resident" ? sessionUser.residentId : null);
   const resident = sessionUser.role === "resident";
   const filterParams = { q: values.q, status: values.status, dateFrom: values.dateFrom, dateTo: values.dateTo };
 
@@ -45,9 +45,7 @@ export default async function InvitationsPage({ searchParams }: { searchParams: 
     {resident ? <div className="flex items-center justify-between gap-3"><Link className="inline-flex min-h-11 items-center gap-2 text-sm font-bold text-primary" href="/app/events"><CalendarDays className="h-4 w-4" /> Eventos</Link><Link className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-bold text-white" href="/app/invitations/new"><Plus className="h-4 w-4" /> Nueva invitación</Link></div> : sessionUser.role !== "guard" ? <Button asChild><Link href="/app/invitations/new">Nueva invitación</Link></Button> : null}
 
     <div className="space-y-5">
-      {values.status === "all" && groups.current.length > 0 ? <InvitationGroup invitations={groups.current} title="Vigentes" /> : null}
-      {values.status === "all" && groups.history.length > 0 ? <InvitationGroup invitations={groups.history} title="Historial" /> : null}
-      {values.status !== "all" && result.items.length > 0 ? <InvitationGroup invitations={result.items} title={values.status === "current" ? "Vigentes" : "Resultados"} /> : null}
+      {result.items.length > 0 ? <InvitationGroup groupSummaries={groupSummaries} invitations={result.items} title={values.status === "current" ? "Vigentes" : values.status === "all" ? "Invitaciones" : "Resultados"} /> : null}
       {result.items.length === 0 ? <div className="rounded-2xl border border-dashed border-border bg-surface px-6 py-10 text-center"><p className="font-bold">No encontramos invitaciones</p><p className="mt-2 text-sm text-muted-foreground">Ajusta los filtros o crea una nueva visita.</p></div> : null}
     </div>
 
@@ -58,6 +56,8 @@ export default async function InvitationsPage({ searchParams }: { searchParams: 
   return <SectionShell eyebrow={`${result.total} registradas`} title="Invitaciones" description={sessionUser.role === "guard" ? "Consulta accesos vigentes y detalles operativos." : "Crea y administra accesos para la comunidad."}>{content}</SectionShell>;
 }
 
-function InvitationGroup({ invitations, title }: { invitations: Awaited<ReturnType<typeof getPaginatedInvitations>>["items"]; title: string }) {
-  return <section><h2 className="mb-2 px-1 text-sm font-bold text-muted-foreground">{title}</h2><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{invitations.map((invitation) => { const status = getInvitationEffectiveStatus(invitation); return <Link className="block rounded-2xl border border-border bg-surface p-4 transition hover:border-primary/35" href={`/app/invitations/${invitation.id}`} key={invitation.id}><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-[17px] font-bold">{invitation.visitor_name || "Acceso rápido sin nombre"}</p><p className="mt-1 text-sm text-muted-foreground">{getInvitationAccessTypeLabel(invitation.access_type)} · {getInvitationWindowLabel(invitation)}</p></div><InvitationStatusBadge status={status} /></div></Link>; })}</div></section>;
+function InvitationGroup({ groupSummaries, invitations, title }: { groupSummaries: Map<string, InvitationGroupSummary>; invitations: Awaited<ReturnType<typeof getPaginatedInvitations>>["items"]; title: string }) {
+  const seenGroups = new Set<string>();
+  const cards = invitations.filter((invitation) => { if (!invitation.group_id) return true; if (seenGroups.has(invitation.group_id)) return false; seenGroups.add(invitation.group_id); return true; });
+  return <section><h2 className="mb-2 px-1 text-sm font-bold text-muted-foreground">{title}</h2><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{cards.map((invitation) => { const summary=invitation.group_id?groupSummaries.get(invitation.group_id):null; const status = summary?.current ? "active" : getInvitationEffectiveStatus(invitation); return <Link className="block rounded-2xl border border-border bg-surface p-4 transition hover:border-primary/35" href={invitation.group_id ? `/app/invitation-groups/${invitation.group_id}` : `/app/invitations/${invitation.id}`} key={invitation.group_id ?? invitation.id}><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-[17px] font-bold">{summary ? `Invitación para ${summary.total} personas` : invitation.visitor_name || "Acceso rápido sin nombre"}</p><p className="mt-1 text-sm text-muted-foreground">{getInvitationAccessTypeLabel(invitation.access_type)} · {getInvitationWindowLabel(invitation)}</p>{summary?<p className="mt-2 text-xs text-muted-foreground">{summary.current} vigentes · {summary.used} usadas · {summary.expired} vencidas · {summary.revoked} revocadas</p>:null}</div><InvitationStatusBadge status={status} /></div></Link>; })}</div></section>;
 }

@@ -15,6 +15,7 @@ function request(planned = false) {
   return new NextRequest("http://localhost/api/events", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
+      idempotencyKey: "11111111-1111-4111-8111-111111111199",
       residentId: otherResidentId, name: "Reunión familiar", eventDate: "2026-08-20", windowStart: "10:00",
       windowEndDate: "2026-08-20", windowEnd: "18:00",
       plannedExitDate: planned ? "2026-08-20" : null, plannedExitTime: planned ? "19:00" : null,
@@ -39,6 +40,7 @@ describe("POST /api/events", () => {
     expect(response.status).toBe(200);
     expect(createResidentEvent).toHaveBeenCalledWith("community-a", expect.objectContaining({
       residentId,
+      idempotencyKey: "11111111-1111-4111-8111-111111111199",
       plannedExitDate: planned ? "2026-08-20" : null,
       plannedExitTime: planned ? "19:00" : null,
     }));

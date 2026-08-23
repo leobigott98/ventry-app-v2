@@ -35,9 +35,9 @@ export async function POST(request: NextRequest) {
       eventId: event.id,
       redirectTo: `/app/events/${event.id}`,
     });
-  } catch (error) {
+  } catch {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "No fue posible crear el evento." },
+      { error: "No fue posible crear el evento. Revisa los datos e intenta nuevamente." },
       { status: 500 },
     );
   }

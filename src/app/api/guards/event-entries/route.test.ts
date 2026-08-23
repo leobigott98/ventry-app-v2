@@ -46,6 +46,7 @@ describe("POST /api/guards/event-entries", () => {
       communityId: "community-a",
       eventId,
       eventGuestId,
+      companionCount: 0,
       idempotencyKey,
     });
   });
