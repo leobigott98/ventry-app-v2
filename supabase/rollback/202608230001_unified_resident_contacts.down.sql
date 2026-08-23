@@ -1,0 +1,14 @@
+drop function if exists public.get_resident_contact_views(uuid, uuid, integer, integer);
+drop trigger if exists sync_invitation_contact_usage on public.invitations;
+drop function if exists public.sync_invitation_contact_usage();
+drop trigger if exists enforce_invitation_contact_scope on public.invitations;
+drop function if exists public.enforce_invitation_contact_scope();
+alter table public.invitations drop column if exists resident_contact_id;
+drop index if exists public.resident_contacts_unique_name_without_phone_idx;
+drop index if exists public.resident_contacts_unique_phone_idx;
+alter table public.resident_contacts drop column if exists normalized_name;
+alter table public.resident_contacts alter column phone set not null;
+alter table public.resident_contacts alter column normalized_phone set not null;
+alter table public.resident_contacts add unique (resident_id, normalized_phone);
+drop function if exists public.normalize_resident_contact_phone(text);
+drop function if exists public.normalize_resident_contact_name(text);

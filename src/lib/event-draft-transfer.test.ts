@@ -11,6 +11,9 @@ describe("event draft transfer", () => {
       notes: null,
       allowsCompanions: false,
       maxCompanions: 0,
+      residentContactId: null,
+      contactStableId: null,
+      contactOrigin: null,
     }]);
   });
 

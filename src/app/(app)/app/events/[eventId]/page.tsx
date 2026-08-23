@@ -30,14 +30,17 @@ function baseUrl(requestHeaders: Headers) {
 
 export default async function EventDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ eventId: string }>;
+  searchParams: Promise<{ contactWarning?: string }>;
 }) {
   const { context, sessionUser } = await getCommunityContextOrRedirect({
     allowedRoles: ["admin", "guard", "resident"],
   });
   if (sessionUser.role === "resident" && !sessionUser.residentId) redirect("/app");
   const { eventId } = await params;
+  const showContactWarning = (await searchParams).contactWarning === "1";
   const event = await getEventById(
     context.community.id,
     eventId,
@@ -75,6 +78,7 @@ export default async function EventDetailPage({
       <ResidentPageHeader backHref="/app/events" subtitle={`${getEventStatusLabel(status)} · ${getEventWindowLabel(event)}`} title={event.name} />
       <div className="grid gap-4 px-4 py-5 sm:px-6 md:px-8 md:py-6 xl:grid-cols-[1.05fr_0.95fr] xl:px-10">
         <div className="space-y-4">
+          {showContactWarning ? <p className="rounded-2xl border border-warning/30 bg-warning/10 p-4 text-sm text-foreground" role="status">El evento se creó correctamente, pero algunos invitados no pudieron guardarse en tus contactos.</p> : null}
           <Card className="border-primary/25">
             <CardHeader>
               <div className="flex items-start justify-between gap-3">

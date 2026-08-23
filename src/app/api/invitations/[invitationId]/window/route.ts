@@ -30,15 +30,7 @@ export async function PATCH(
       auth.sessionUser.role === "resident" ? auth.sessionUser.residentId : null,
     );
     return NextResponse.json({ ok: true, invitation });
-  } catch (error) {
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error
-            ? error.message
-            : "No fue posible actualizar la ventana de la invitacion.",
-      },
-      { status: 500 },
-    );
+  } catch {
+    return NextResponse.json({ error: "No fue posible actualizar la ventana de la invitacion." }, { status: 500 });
   }
 }

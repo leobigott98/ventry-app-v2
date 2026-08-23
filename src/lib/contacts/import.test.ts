@@ -1,13 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { parseVCard, pickDeviceContacts, prepareImportReview } from "@/lib/contacts/import";
+import { contactPickerIsSupported, pickDeviceContacts, prepareImportReview } from "@/lib/contacts/import";
 
 describe("contact import", () => {
   it("deduplica por teléfono normalizado contra guardados y dentro del lote", () => {
     const review = prepareImportReview([
-      { name: "María", phone: "0412 555 1234", source: "vcard" },
-      { name: "María duplicada", phone: "+58 412 555 1234", source: "vcard" },
-      { name: "Pedro", phone: "+1 305 555 0199", source: "vcard" },
+      { name: "María", phone: "0412 555 1234", source: "contact_picker" },
+      { name: "María duplicada", phone: "+58 412 555 1234", source: "contact_picker" },
+      { name: "Pedro", phone: "+1 305 555 0199", source: "contact_picker" },
     ], ["+13055550199"]);
 
     expect(review.map((item) => ({ phone: item.normalizedPhone, duplicate: item.duplicate }))).toEqual([
@@ -17,11 +17,11 @@ describe("contact import", () => {
     ]);
   });
 
-  it("extrae únicamente nombre y teléfono de vCard", () => {
-    const contacts = parseVCard("BEGIN:VCARD\nVERSION:3.0\nFN:Ana García\nTEL;TYPE=CELL:04145551234\nEMAIL:ana@example.com\nADR:Caracas\nEND:VCARD");
-    expect(contacts).toEqual([{ name: "Ana García", phone: "04145551234", source: "vcard" }]);
-    expect(JSON.stringify(contacts)).not.toContain("example.com");
-    expect(JSON.stringify(contacts)).not.toContain("Caracas");
+  it("comprueba que el selector ofrece nombre y teléfono antes de mostrarlo", async () => {
+    const supported = { getProperties: vi.fn().mockResolvedValue(["name", "tel", "email"]), select: vi.fn() };
+    const unsupported = { getProperties: vi.fn().mockResolvedValue(["name", "email"]), select: vi.fn() };
+    await expect(contactPickerIsSupported(supported)).resolves.toBe(true);
+    await expect(contactPickerIsSupported(unsupported)).resolves.toBe(false);
   });
 
   it("trata la cancelación del selector como un resultado vacío sin error", async () => {

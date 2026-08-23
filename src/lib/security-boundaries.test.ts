@@ -144,11 +144,31 @@ describe("authentication and credential boundaries", () => {
 
   it("does not return database errors from the new creation APIs", () => {
     const creationRoutes = [
+      "src/app/api/contacts/route.ts",
+      "src/app/api/contacts/[contactId]/route.ts",
+      "src/app/api/invitations/route.ts",
       "src/app/api/events/route.ts",
       "src/app/api/invitation-groups/route.ts",
       "src/app/api/invitation-groups/[groupId]/revoke/route.ts",
+      "src/app/api/invitations/[invitationId]/share/route.ts",
+      "src/app/api/invitations/[invitationId]/revoke/route.ts",
+      "src/app/api/invitations/[invitationId]/window/route.ts",
+      "src/app/api/events/[eventId]/share/route.ts",
+      "src/app/api/events/[eventId]/revoke/route.ts",
     ].map(read).join("\n");
 
     expect(creationRoutes).not.toContain("error instanceof Error ? error.message");
+  });
+
+  it("creates individual invitations atomically and idempotently with server-side contact scope", () => {
+    const migration = read("supabase/migrations/202608230003_individual_invitation_idempotency.sql");
+    const mutations = read("src/lib/domain/mutations.ts");
+    expect(migration).toContain("create_individual_invitation");
+    expect(migration).toContain("invitations_individual_creation_idempotency_idx");
+    expect(migration).toContain("pg_advisory_xact_lock");
+    expect(migration).toContain("resident contact is outside invitation scope");
+    expect(migration).toContain("store_invitation_credential");
+    expect(migration).not.toContain("event_guest_credential.community_id");
+    expect(mutations).toContain('rpc("create_individual_invitation"');
   });
 });

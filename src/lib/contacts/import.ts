@@ -8,16 +8,30 @@ export type ImportedContact = {
 };
 
 type DeviceContact = { name?: string[]; tel?: string[] };
-type ContactsManager = {
+export type ContactsManager = {
+  getProperties?(): Promise<string[]>;
   select(properties: Array<"name" | "tel">, options: { multiple: boolean }): Promise<DeviceContact[]>;
 };
 
 export type ContactPickResult =
   | { status: "selected"; contacts: ImportedContact[] }
-  | { status: "cancelled"; contacts: [] };
+  | { status: "cancelled"; contacts: [] }
+  | { status: "unsupported"; contacts: [] };
+
+export async function contactPickerIsSupported(manager: ContactsManager | undefined) {
+  if (!manager?.select) return false;
+  if (!manager.getProperties) return true;
+  try {
+    const properties = await manager.getProperties();
+    return properties.includes("name") && properties.includes("tel");
+  } catch {
+    return false;
+  }
+}
 
 export async function pickDeviceContacts(manager: ContactsManager): Promise<ContactPickResult> {
   try {
+    if (!await contactPickerIsSupported(manager)) return { status: "unsupported", contacts: [] };
     const selected = await manager.select(["name", "tel"], { multiple: true });
     return {
       status: "selected",
@@ -33,30 +47,6 @@ export async function pickDeviceContacts(manager: ContactsManager): Promise<Cont
     }
     throw error;
   }
-}
-
-function unfoldVCard(value: string) {
-  return value.replace(/\r?\n[ \t]/g, "");
-}
-
-function unescapeVCard(value: string) {
-  return value.replace(/\\n/gi, " ").replace(/\\,/g, ",").replace(/\\;/g, ";").replace(/\\\\/g, "\\").trim();
-}
-
-export function parseVCard(value: string): ImportedContact[] {
-  const cards = unfoldVCard(value).split(/BEGIN:VCARD/i).slice(1, 201);
-  return cards.flatMap((card) => {
-    const lines = card.split(/\r?\n/);
-    const fn = lines.find((line) => /^FN(?:;[^:]*)?:/i.test(line));
-    const structuredName = lines.find((line) => /^N(?:;[^:]*)?:/i.test(line));
-    const tel = lines.find((line) => /^TEL(?:;[^:]*)?:/i.test(line));
-    const fnValue = fn?.slice(fn.indexOf(":") + 1);
-    const nValue = structuredName?.slice(structuredName.indexOf(":") + 1)
-      .split(";").filter(Boolean).reverse().join(" ");
-    const name = unescapeVCard(fnValue || nValue || "");
-    const phone = unescapeVCard(tel?.slice(tel.indexOf(":") + 1) || "");
-    return name && normalizePhoneNumber(phone) ? [{ name, phone, source: "vcard" as const }] : [];
-  });
 }
 
 export type ImportReviewItem = ImportedContact & {

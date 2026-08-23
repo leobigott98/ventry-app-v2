@@ -1,226 +1,196 @@
 "use client";
 
 import Link from "next/link";
-import {
-  Check,
-  Download,
-  FileUp,
-  Pencil,
-  Plus,
-  Search,
-  ShieldCheck,
-  Star,
-  Trash2,
-  UserPlus,
-  X,
-} from "lucide-react";
-import { ChangeEvent, FormEvent, useMemo, useRef, useState } from "react";
+import { Check, ContactRound, Download, Pencil, Plus, Search, Star, Trash2, UserPlus } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 
 import { ResidentPageHeader } from "@/components/resident/resident-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { formatPhoneForDisplay } from "@/lib/contacts/phone";
-import {
-  parseVCard,
-  pickDeviceContacts,
-  prepareImportReview,
-  type ImportReviewItem,
-  type ImportedContact,
-} from "@/lib/contacts/import";
-import type { ResidentContactRecord } from "@/lib/domain/types";
+import { ResponsiveDialog } from "@/components/ui/responsive-dialog";
+import { contactPickerIsSupported, pickDeviceContacts, prepareImportReview, type ContactsManager, type ImportReviewItem, type ImportedContact } from "@/lib/contacts/import";
+import { formatPhoneForDisplay, normalizePhoneNumber } from "@/lib/contacts/phone";
+import type { ResidentContactViewModel } from "@/lib/domain/types";
+import { APP_TIME_ZONE } from "@/lib/formatting";
 import { cn } from "@/lib/utils";
 
-type ContactsManager = Parameters<typeof pickDeviceContacts>[0];
 type ContactDraft = { name: string; phone: string; relationshipLabel: string; isFavorite: boolean };
-
+type EditorState = { mode: "create" | "edit"; savedContactId?: string; initial: ContactDraft };
 const emptyDraft: ContactDraft = { name: "", phone: "", relationshipLabel: "", isFavorite: false };
 const avatarColors = ["bg-blue-100 text-blue-700", "bg-emerald-100 text-emerald-700", "bg-violet-100 text-violet-700", "bg-orange-100 text-orange-700"];
 
-function sortContacts(contacts: ResidentContactRecord[]) {
-  return [...contacts].sort((left, right) => Number(right.is_favorite) - Number(left.is_favorite) || (right.last_invited_at ?? "").localeCompare(left.last_invited_at ?? "") || left.name.localeCompare(right.name, "es"));
+function invitationHref(contact: ResidentContactViewModel) {
+  if (contact.savedContactId) return `/app/invitations/new?contactId=${encodeURIComponent(contact.savedContactId)}`;
+  const params = new URLSearchParams({ visitorName: contact.name });
+  if (contact.phone) params.set("visitorPhone", contact.phone);
+  return `/app/invitations/new?${params.toString()}`;
 }
 
-async function readPayload<T>(response: Response): Promise<T & { error?: string }> {
-  return response.json() as Promise<T & { error?: string }>;
+async function responsePayload<T>(response: Response) { return response.json() as Promise<T & { error?: string }>; }
+
+function ContactEditor({ initial, isSaving, mode, onCancel, onSave }: { initial: ContactDraft; isSaving: boolean; mode: EditorState["mode"]; onCancel: () => void; onSave: (draft: ContactDraft) => void }) {
+  const [draft, setDraft] = useState(initial);
+  const dirty = JSON.stringify(draft) !== JSON.stringify(initial);
+  const close = useCallback(() => { if (!dirty || window.confirm("¿Cerrar sin guardar los cambios?")) onCancel(); }, [dirty, onCancel]);
+  function submit(event: FormEvent) { event.preventDefault(); onSave(draft); }
+  return <ResponsiveDialog description="Nombre obligatorio; teléfono, relación y favorito son opcionales." onClose={close} title={mode === "edit" ? "Editar contacto" : "Agregar contacto"}>
+    <form className="flex min-h-0 flex-col" onSubmit={submit}>
+      <div className="space-y-4 px-5 py-5 sm:px-6">
+        <div className="space-y-2"><Label htmlFor="contact-name">Nombre</Label><Input data-autofocus id="contact-name" maxLength={120} onChange={(event) => setDraft({ ...draft, name: event.target.value })} placeholder="Nombre completo" required value={draft.name} /></div>
+        <div className="space-y-2"><Label htmlFor="contact-phone">Teléfono o WhatsApp <span className="font-normal text-muted-foreground">(opcional)</span></Label><Input id="contact-phone" inputMode="tel" maxLength={32} onChange={(event) => setDraft({ ...draft, phone: event.target.value })} placeholder="0412 555 1234" value={draft.phone} /></div>
+        <div className="space-y-2"><Label htmlFor="contact-relationship">Relación o etiqueta <span className="font-normal text-muted-foreground">(opcional)</span></Label><Input id="contact-relationship" maxLength={80} onChange={(event) => setDraft({ ...draft, relationshipLabel: event.target.value })} placeholder="Ej. Hija, médico, plomería" value={draft.relationshipLabel} /></div>
+        <label className="flex min-h-12 cursor-pointer items-center gap-3 rounded-xl bg-muted px-4"><input checked={draft.isFavorite} className="h-5 w-5 accent-[#1446cc]" onChange={(event) => setDraft({ ...draft, isFavorite: event.target.checked })} type="checkbox" /><Star className="h-4 w-4 text-amber-500" /><span className="font-semibold">Marcar como favorito</span></label>
+      </div>
+      <div className="sticky bottom-0 border-t border-border bg-surface p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] sm:px-6"><Button className="h-14 w-full rounded-xl" disabled={isSaving || draft.name.trim().length < 2} type="submit">{isSaving ? "Guardando…" : "Guardar contacto"}</Button></div>
+    </form>
+  </ResponsiveDialog>;
 }
 
-function ContactForm({
-  draft,
-  isSaving,
-  onCancel,
-  onChange,
-  onSubmit,
-  title,
-}: {
-  draft: ContactDraft;
-  isSaving: boolean;
-  onCancel: () => void;
-  onChange: (draft: ContactDraft) => void;
-  onSubmit: (event: FormEvent) => void;
-  title: string;
-}) {
-  return <form className="rounded-2xl border border-primary/20 bg-surface p-4 shadow-panel" onSubmit={onSubmit}>
-    <div className="flex items-center justify-between gap-3"><h2 className="text-lg font-bold">{title}</h2><button aria-label="Cerrar formulario" className="flex h-11 w-11 items-center justify-center rounded-xl text-muted-foreground hover:bg-muted" onClick={onCancel} type="button"><X className="h-5 w-5" /></button></div>
-    <div className="mt-4 grid gap-4 sm:grid-cols-2">
-      <div className="space-y-2"><Label htmlFor="contact-name">Nombre</Label><Input id="contact-name" maxLength={120} onChange={(event) => onChange({ ...draft, name: event.target.value })} placeholder="Nombre del contacto" required value={draft.name} /></div>
-      <div className="space-y-2"><Label htmlFor="contact-phone">Teléfono</Label><Input id="contact-phone" inputMode="tel" maxLength={32} onChange={(event) => onChange({ ...draft, phone: event.target.value })} placeholder="0412 555 1234 o +1…" required value={draft.phone} /></div>
-      <div className="space-y-2 sm:col-span-2"><Label htmlFor="contact-relationship">Relación o etiqueta <span className="font-normal text-muted-foreground">(opcional)</span></Label><Input id="contact-relationship" maxLength={80} onChange={(event) => onChange({ ...draft, relationshipLabel: event.target.value })} placeholder="Ej. Hija, médico, plomería" value={draft.relationshipLabel} /></div>
-    </div>
-    <label className="mt-4 flex min-h-12 cursor-pointer items-center gap-3 rounded-xl bg-muted px-4"><input checked={draft.isFavorite} className="h-5 w-5 accent-[#1446cc]" onChange={(event) => onChange({ ...draft, isFavorite: event.target.checked })} type="checkbox" /><Star className="h-4 w-4 text-amber-500" /><span className="font-semibold">Marcar como favorito</span></label>
-    <Button className="mt-4 h-12 w-full rounded-xl" disabled={isSaving} type="submit">{isSaving ? "Guardando…" : "Guardar contacto"}</Button>
-  </form>;
-}
-
-function ImportReview({
-  items,
-  onCancel,
-  onSave,
-  saving,
-}: {
-  items: ImportReviewItem[];
-  onCancel: () => void;
-  onSave: (selected: ImportReviewItem[]) => void;
-  saving: boolean;
-}) {
+function ImportReview({ existingPhones, imported, isSaving, onCancel, onSave }: { existingPhones: string[]; imported: ImportedContact[]; isSaving: boolean; onCancel: () => void; onSave: (selected: ImportReviewItem[]) => void }) {
+  const items = useMemo(() => prepareImportReview(imported, existingPhones), [existingPhones, imported]);
   const [selectedKeys, setSelectedKeys] = useState(() => new Set(items.filter((item) => !item.duplicate).map((item) => item.key)));
   const selected = items.filter((item) => selectedKeys.has(item.key) && !item.duplicate);
-  return <section aria-labelledby="import-review-title" className="rounded-2xl border border-primary/20 bg-surface p-4 shadow-panel">
-    <div className="flex items-start justify-between gap-3"><div><h2 className="text-lg font-bold" id="import-review-title">Revisa antes de importar</h2><p className="mt-1 text-sm leading-5 text-muted-foreground">Solo se guardarán nombre y teléfono de los contactos que selecciones.</p></div><button aria-label="Cancelar importación" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-muted-foreground hover:bg-muted" onClick={onCancel} type="button"><X className="h-5 w-5" /></button></div>
-    <div className="mt-4 max-h-[24rem] space-y-2 overflow-y-auto">
-      {items.map((item) => <label className={cn("flex min-h-16 items-center gap-3 rounded-xl border p-3", item.duplicate ? "cursor-not-allowed border-border bg-muted/60 opacity-70" : "cursor-pointer border-border bg-background")} key={item.key}>
-        <input aria-label={`Importar ${item.name}`} checked={selectedKeys.has(item.key) && !item.duplicate} className="h-5 w-5 accent-[#1446cc]" disabled={item.duplicate} onChange={(event) => setSelectedKeys((current) => { const next = new Set(current); if (event.target.checked) next.add(item.key); else next.delete(item.key); return next; })} type="checkbox" />
-        <span className="min-w-0 flex-1"><span className="block truncate font-semibold">{item.name}</span><span className="block text-sm text-muted-foreground">{formatPhoneForDisplay(item.normalizedPhone)}</span></span>
-        {item.duplicate ? <span className="rounded-full bg-secondary px-2 py-1 text-xs font-bold text-primary">Ya existe</span> : <Check className="h-4 w-4 text-accent" />}
-      </label>)}
-    </div>
-    {items.length === 0 ? <p className="mt-5 rounded-xl bg-muted p-4 text-sm text-muted-foreground">El archivo no contiene contactos con nombre y teléfono válidos.</p> : null}
-    <Button className="mt-4 h-12 w-full rounded-xl" disabled={saving || selected.length === 0} onClick={() => onSave(selected)} type="button">{saving ? "Importando…" : `Importar ${selected.length || ""} ${selected.length === 1 ? "contacto" : "contactos"}`}</Button>
-    <button className="mt-2 min-h-11 w-full font-semibold text-muted-foreground" disabled={saving} onClick={onCancel} type="button">Cancelar</button>
-  </section>;
+  return <ResponsiveDialog description="Elige qué personas guardar. Solo usamos nombre y teléfono; no obtenemos acceso permanente a tu agenda." onClose={onCancel} title="Revisar contactos" wide>
+    <div className="space-y-2 px-5 py-4 sm:px-6">{items.map((item) => <label className={cn("flex min-h-16 items-center gap-3 rounded-xl border p-3", item.duplicate ? "cursor-not-allowed bg-muted/60 opacity-70" : "cursor-pointer")} key={item.key}><input aria-label={`Importar ${item.name}`} checked={selectedKeys.has(item.key) && !item.duplicate} className="h-5 w-5 accent-[#1446cc]" disabled={item.duplicate} onChange={(event) => setSelectedKeys((current) => { const next = new Set(current); if (event.target.checked) next.add(item.key); else next.delete(item.key); return next; })} type="checkbox" /><span className="min-w-0 flex-1"><span className="block truncate font-semibold">{item.name}</span><span className="text-sm text-muted-foreground">{formatPhoneForDisplay(item.phone)}</span></span>{item.duplicate ? <span className="rounded-full bg-secondary px-2 py-1 text-xs font-bold text-primary">Ya existe</span> : <Check className="h-4 w-4 text-accent" />}</label>)}{items.length === 0 ? <p className="rounded-xl bg-muted p-4 text-sm text-muted-foreground">No seleccionaste contactos con nombre y teléfono válidos.</p> : null}</div>
+    <div className="sticky bottom-0 border-t border-border bg-surface p-4 pb-[calc(env(safe-area-inset-bottom)+1rem)] sm:px-6"><Button className="h-14 w-full rounded-xl" disabled={isSaving || selected.length === 0} onClick={() => onSave(selected)}>{isSaving ? "Importando…" : `Guardar ${selected.length} ${selected.length === 1 ? "contacto" : "contactos"}`}</Button></div>
+  </ResponsiveDialog>;
 }
 
-export function ResidentContactsManager({ initialContacts }: { initialContacts: ResidentContactRecord[] }) {
-  const [contacts, setContacts] = useState(() => sortContacts(initialContacts));
+function ContactDetails({ contact, isSaving, onClose, onDelete, onEdit, onSaveHistory, onToggleFavorite, timeZone }: { contact: ResidentContactViewModel; isSaving: boolean; onClose: () => void; onDelete: () => void; onEdit: () => void; onSaveHistory: () => void; onToggleFavorite: () => void; timeZone: string }) {
+  const lastVisit = contact.lastInvitedAt ? new Intl.DateTimeFormat("es-VE", { dateStyle: "medium", timeZone }).format(new Date(contact.lastInvitedAt)) : "Sin invitaciones todavía";
+  return <ResponsiveDialog onClose={onClose} title="Detalle del contacto">
+    <div className="px-5 py-5 sm:px-6"><div className="flex items-center gap-4"><span className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full bg-blue-100 text-2xl font-bold text-blue-700">{contact.name.charAt(0).toUpperCase()}</span><div className="min-w-0"><h3 className="truncate text-xl font-extrabold">{contact.name}</h3><p className="mt-1 text-sm text-muted-foreground">{contact.relationshipLabel || (contact.origin === "history" ? "Sugerido por tu historial" : "Contacto guardado")}</p></div></div>
+      <dl className="mt-5 divide-y divide-border rounded-2xl bg-muted/60 px-4 text-sm"><div className="flex justify-between gap-4 py-3"><dt className="text-muted-foreground">Teléfono</dt><dd className="text-right font-semibold">{contact.phone ? formatPhoneForDisplay(contact.phone) : "No registrado"}</dd></div><div className="flex justify-between gap-4 py-3"><dt className="text-muted-foreground">Invitaciones</dt><dd className="font-semibold">{contact.invitationCount}</dd></div><div className="flex justify-between gap-4 py-3"><dt className="text-muted-foreground">Última invitación</dt><dd className="text-right font-semibold">{lastVisit}</dd></div>{contact.savedContactId ? <div className="flex justify-between gap-4 py-3"><dt className="text-muted-foreground">Favorito</dt><dd className="font-semibold">{contact.isFavorite ? "Sí" : "No"}</dd></div> : null}</dl>
+      <Button asChild className="mt-5 h-14 w-full rounded-xl"><Link href={invitationHref(contact)}><UserPlus className="h-5 w-5" /> Invitar</Link></Button>
+      {contact.savedContactId ? <div className="mt-3 grid gap-2"><Button disabled={isSaving} onClick={onEdit} variant="outline"><Pencil className="h-4 w-4" /> Editar</Button><Button disabled={isSaving} onClick={onToggleFavorite} variant="outline"><Star className={cn("h-4 w-4", contact.isFavorite && "fill-amber-400 text-amber-400")} /> {contact.isFavorite ? "Quitar de favoritos" : "Marcar como favorito"}</Button><Button className="text-danger" disabled={isSaving} onClick={onDelete} variant="ghost"><Trash2 className="h-4 w-4" /> Eliminar de mis contactos</Button></div> : <Button className="mt-3 w-full" disabled={isSaving} onClick={onSaveHistory} variant="outline"><Plus className="h-4 w-4" /> Guardar contacto</Button>}
+    </div>
+  </ResponsiveDialog>;
+}
+
+export function ResidentContactsManager({ initialContacts, initialTotal, timeZone = APP_TIME_ZONE }: { initialContacts: ResidentContactViewModel[]; initialTotal: number; timeZone?: string }) {
+  const [contacts, setContacts] = useState(initialContacts);
+  const [total, setTotal] = useState(initialTotal);
+  const [page, setPage] = useState(1);
   const [query, setQuery] = useState("");
   const [favoritesOnly, setFavoritesOnly] = useState(false);
-  const [draft, setDraft] = useState<ContactDraft>(emptyDraft);
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [showForm, setShowForm] = useState(false);
-  const [reviewItems, setReviewItems] = useState<ImportReviewItem[] | null>(null);
+  const [selected, setSelected] = useState<ResidentContactViewModel | null>(null);
+  const [editor, setEditor] = useState<EditorState | null>(null);
+  const [imported, setImported] = useState<ImportedContact[] | null>(null);
+  const [importExistingPhones, setImportExistingPhones] = useState<string[]>([]);
+  const [picker, setPicker] = useState<ContactsManager | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState<{ text: string; error?: boolean } | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const contactsManager = typeof navigator !== "undefined" ? (navigator as Navigator & { contacts?: ContactsManager }).contacts : undefined;
+
+  const reload = useCallback(async () => {
+    const response = await fetch("/api/contacts?page=1&pageSize=50");
+    const payload = await responsePayload<{ items?: ResidentContactViewModel[]; total?: number }>(response);
+    if (!response.ok || !payload.items) throw new Error(payload.error || "No fue posible actualizar la lista.");
+    setContacts(payload.items); setTotal(payload.total ?? payload.items.length); setPage(1);
+    setSelected((current) => current ? payload.items!.find((item) => item.stableId === current.stableId || (current.savedContactId && item.savedContactId === current.savedContactId)) ?? null : null);
+  }, []);
+
+  async function loadMore() {
+    const nextPage = page + 1;
+    const response = await fetch(`/api/contacts?page=${nextPage}&pageSize=50`);
+    const payload = await responsePayload<{ items?: ResidentContactViewModel[]; total?: number }>(response);
+    if (!response.ok || !payload.items) { setMessage({ text: payload.error || "No fue posible cargar más contactos.", error: true }); return; }
+    setContacts((current) => [...current, ...payload.items!]); setTotal(payload.total ?? total); setPage(nextPage);
+  }
+
+  useEffect(() => {
+    const manager = (navigator as Navigator & { contacts?: ContactsManager }).contacts;
+    if (window.isSecureContext === false) { setPicker(null); return; }
+    void contactPickerIsSupported(manager).then((supported) => setPicker(supported && manager ? manager : null));
+  }, []);
 
   const filtered = useMemo(() => {
     const needle = query.trim().toLocaleLowerCase("es-VE");
-    return contacts.filter((contact) => (!favoritesOnly || contact.is_favorite) && (!needle || `${contact.name} ${contact.relationship_label ?? ""} ${contact.phone}`.toLocaleLowerCase("es-VE").includes(needle)));
+    return contacts.filter((contact) => (!favoritesOnly || contact.isFavorite) && (!needle || `${contact.name} ${contact.relationshipLabel ?? ""} ${contact.phone ?? ""}`.toLocaleLowerCase("es-VE").includes(needle)));
   }, [contacts, favoritesOnly, query]);
 
-  function beginReview(imported: ImportedContact[]) {
-    setReviewItems(prepareImportReview(imported, contacts.map((contact) => contact.normalized_phone)));
-    setShowForm(false);
-    setMessage(null);
-  }
-
-  async function chooseFromDevice() {
-    if (!contactsManager) return;
+  async function chooseFromPhone() {
+    if (!picker) return;
     setMessage(null);
     try {
-      const result = await pickDeviceContacts(contactsManager);
-      if (result.status === "cancelled") { setMessage({ text: "Importación cancelada. No se guardó ningún contacto." }); return; }
-      beginReview(result.contacts);
-    } catch {
-      setMessage({ text: "No pudimos abrir los contactos del dispositivo. Puedes usar un archivo vCard o agregarlos manualmente.", error: true });
-    }
+      const result = await pickDeviceContacts(picker);
+      if (result.status === "selected") {
+        const response = await fetch("/api/contacts/review", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ phones: result.contacts.map((contact) => contact.phone) }) });
+        const payload = await responsePayload<{ normalizedPhones?: string[] }>(response);
+        if (!response.ok || !payload.normalizedPhones) throw new Error(payload.error || "No fue posible revisar los contactos.");
+        setImportExistingPhones(payload.normalizedPhones);
+        setImported(result.contacts);
+      }
+      else if (result.status === "cancelled") setMessage({ text: "Selección cancelada. No se guardó nada." });
+    } catch { setMessage({ text: "No pudimos abrir tus contactos. Puedes agregar uno manualmente.", error: true }); }
   }
 
-  async function readVCard(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    if (!file.name.toLocaleLowerCase().endsWith(".vcf") && file.type !== "text/vcard") { setMessage({ text: "Selecciona un archivo vCard con extensión .vcf.", error: true }); return; }
-    try { beginReview(parseVCard(await file.text())); }
-    catch { setMessage({ text: "No pudimos leer ese archivo vCard.", error: true }); }
-  }
-
-  async function saveImported(selected: ImportReviewItem[]) {
+  async function saveDraft(draft: ContactDraft) {
+    if (!editor) return;
     setIsSaving(true); setMessage(null);
     try {
-      const response = await fetch("/api/contacts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contacts: selected.map((item) => ({ name: item.name, phone: item.phone, source: item.source })) }) });
-      const payload = await readPayload<{ contacts?: ResidentContactRecord[] }>(response);
-      if (!response.ok || !payload.contacts) throw new Error(payload.error || "No fue posible importar los contactos.");
-      setContacts((current) => sortContacts([...current, ...payload.contacts!])); setReviewItems(null);
-      setMessage({ text: `${payload.contacts.length} ${payload.contacts.length === 1 ? "contacto importado" : "contactos importados"}.` });
-    } catch (error) { setMessage({ text: error instanceof Error ? error.message : "No fue posible importar los contactos.", error: true }); }
-    finally { setIsSaving(false); }
-  }
-
-  async function saveDraft(event: FormEvent) {
-    event.preventDefault(); setIsSaving(true); setMessage(null);
-    try {
-      const response = await fetch(editingId ? `/api/contacts/${editingId}` : "/api/contacts", { method: editingId ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(editingId ? draft : { contacts: [{ ...draft, source: "manual" }] }) });
-      const payload = await readPayload<{ contact?: ResidentContactRecord; contacts?: ResidentContactRecord[] }>(response);
+      const response = await fetch(editor.mode === "edit" ? `/api/contacts/${editor.savedContactId}` : "/api/contacts", { method: editor.mode === "edit" ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(editor.mode === "edit" ? draft : { contacts: [{ ...draft, source: "manual" }] }) });
+      const payload = await responsePayload<Record<string, never>>(response);
       if (!response.ok) throw new Error(payload.error || "No fue posible guardar el contacto.");
-      const saved = payload.contact ?? payload.contacts?.[0];
-      if (!saved) throw new Error("No fue posible guardar el contacto.");
-      setContacts((current) => sortContacts(editingId ? current.map((contact) => contact.id === saved.id ? saved : contact) : [...current, saved]));
-      setDraft(emptyDraft); setEditingId(null); setShowForm(false); setMessage({ text: editingId ? "Contacto actualizado." : "Contacto guardado." });
+      const wasEdit = editor.mode === "edit"; setEditor(null); await reload(); setMessage({ text: wasEdit ? "Contacto actualizado." : "Contacto guardado." });
     } catch (error) { setMessage({ text: error instanceof Error ? error.message : "No fue posible guardar el contacto.", error: true }); }
     finally { setIsSaving(false); }
   }
 
-  async function toggleFavorite(contact: ResidentContactRecord) {
-    setMessage(null);
+  async function importSelected(items: ImportReviewItem[]) {
+    setIsSaving(true); setMessage(null);
     try {
-      const response = await fetch(`/api/contacts/${contact.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ isFavorite: !contact.is_favorite }) });
-      const payload = await readPayload<{ contact?: ResidentContactRecord }>(response);
-      if (!response.ok || !payload.contact) throw new Error(payload.error || "No fue posible cambiar el favorito.");
-      setContacts((current) => sortContacts(current.map((item) => item.id === contact.id ? payload.contact! : item)));
-    } catch (error) { setMessage({ text: error instanceof Error ? error.message : "No fue posible cambiar el favorito.", error: true }); }
+      const response = await fetch("/api/contacts", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contacts: items.map((item) => ({ name: item.name, phone: item.phone, source: "contact_picker" })) }) });
+      const payload = await responsePayload<Record<string, never>>(response);
+      if (!response.ok) throw new Error(payload.error || "No fue posible guardar los contactos.");
+      setImported(null); setImportExistingPhones([]); await reload(); setMessage({ text: `${items.length} ${items.length === 1 ? "contacto guardado" : "contactos guardados"}.` });
+    } catch (error) { setMessage({ text: error instanceof Error ? error.message : "No fue posible guardar los contactos.", error: true }); }
+    finally { setIsSaving(false); }
   }
 
-  async function removeContact(contact: ResidentContactRecord) {
-    if (!window.confirm(`¿Eliminar a ${contact.name} de tus contactos?`)) return;
-    setMessage(null);
+  function editContact(contact: ResidentContactViewModel) {
+    if (!contact.savedContactId) return;
+    setSelected(null); setEditor({ mode: "edit", savedContactId: contact.savedContactId, initial: { name: contact.name, phone: contact.phone ?? "", relationshipLabel: contact.relationshipLabel ?? "", isFavorite: contact.isFavorite } });
+  }
+
+  async function patchSelected(body: object) {
+    if (!selected?.savedContactId) return;
+    setIsSaving(true);
     try {
-      const response = await fetch(`/api/contacts/${contact.id}`, { method: "DELETE" });
-      const payload = await readPayload<Record<string, never>>(response);
-      if (!response.ok) throw new Error(payload.error || "No fue posible eliminar el contacto.");
-      setContacts((current) => current.filter((item) => item.id !== contact.id)); setMessage({ text: "Contacto eliminado." });
+      const response = await fetch(`/api/contacts/${selected.savedContactId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (!response.ok) throw new Error((await responsePayload<Record<string, never>>(response)).error || "No fue posible actualizar el contacto.");
+      await reload();
+    } catch (error) { setMessage({ text: error instanceof Error ? error.message : "No fue posible actualizar el contacto.", error: true }); }
+    finally { setIsSaving(false); }
+  }
+
+  async function deleteSelected() {
+    if (!selected?.savedContactId || !window.confirm(`¿Eliminar a ${selected.name} de tus contactos? El historial de invitaciones se conservará.`)) return;
+    setIsSaving(true);
+    try {
+      const response = await fetch(`/api/contacts/${selected.savedContactId}`, { method: "DELETE" });
+      if (!response.ok) throw new Error((await responsePayload<Record<string, never>>(response)).error || "No fue posible eliminar el contacto.");
+      setSelected(null); await reload(); setMessage({ text: "Contacto eliminado. Su historial se conserva." });
     } catch (error) { setMessage({ text: error instanceof Error ? error.message : "No fue posible eliminar el contacto.", error: true }); }
-  }
-
-  function editContact(contact: ResidentContactRecord) {
-    setDraft({ name: contact.name, phone: contact.phone, relationshipLabel: contact.relationship_label ?? "", isFavorite: contact.is_favorite });
-    setEditingId(contact.id); setShowForm(true); setReviewItems(null); setMessage(null);
+    finally { setIsSaving(false); }
   }
 
   return <section className="min-h-[100dvh] bg-background">
-    <ResidentPageHeader subtitle="Privados y visibles solo para ti" title="Contactos frecuentes" />
-    <div className="mx-auto max-w-4xl space-y-4 px-4 py-4 sm:px-6 md:py-6">
-      <div className="relative"><Search aria-hidden="true" className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" /><input aria-label="Buscar contactos" className="h-14 w-full rounded-2xl border-0 bg-muted pl-12 pr-4 text-base outline-none ring-primary/25 focus:ring-2" onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por nombre, relación o teléfono" type="search" value={query} /></div>
+    <ResidentPageHeader title="Contactos frecuentes" />
+    <div className="mx-auto max-w-4xl px-4 py-4 sm:px-6 md:py-6">
+      <div className="flex items-center gap-2"><div className="relative min-w-0 flex-1"><Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" /><input aria-label="Buscar contactos" className="h-14 w-full rounded-2xl border-0 bg-muted pl-12 pr-4 text-base outline-none ring-primary/25 focus:ring-2" onChange={(event) => setQuery(event.target.value)} placeholder="Buscar por nombre" type="search" value={query} /></div><button aria-label="Mostrar solo favoritos" aria-pressed={favoritesOnly} className={cn("flex h-12 w-12 shrink-0 items-center justify-center rounded-full", favoritesOnly ? "bg-amber-50 text-amber-600" : "text-muted-foreground hover:bg-muted")} onClick={() => setFavoritesOnly((value) => !value)}><Star className={cn("h-5 w-5", favoritesOnly && "fill-current")} /></button></div>
+      <div className="mt-3 flex flex-wrap gap-2"><Button className="h-11 rounded-xl px-3" onClick={() => setEditor({ mode: "create", initial: emptyDraft })} variant="outline"><Plus className="h-4 w-4" /> Agregar contacto</Button>{picker ? <Button className="h-11 rounded-xl px-3" onClick={() => void chooseFromPhone()} variant="secondary"><Download className="h-4 w-4" /> Elegir del teléfono</Button> : null}</div>
+      {message ? <p className={cn("mt-3 rounded-xl px-4 py-3 text-sm font-medium", message.error ? "bg-danger/10 text-danger" : "bg-emerald-50 text-emerald-800")} role={message.error ? "alert" : "status"}>{message.text}</p> : null}
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <Button className="h-14 rounded-2xl" onClick={() => { setDraft(emptyDraft); setEditingId(null); setShowForm(true); setReviewItems(null); }}><Plus className="h-5 w-5" /> Agregar manualmente</Button>
-        {contactsManager ? <Button className="h-14 rounded-2xl" onClick={() => void chooseFromDevice()} variant="secondary"><Download className="h-5 w-5" /> Elegir del teléfono</Button> : <div className="flex min-h-14 items-center rounded-2xl bg-muted px-4 text-sm font-medium text-muted-foreground"><Download className="mr-2 h-5 w-5 shrink-0" /> Selector no disponible</div>}
-        <Button className="h-14 rounded-2xl" onClick={() => fileInputRef.current?.click()} variant="outline"><FileUp className="h-5 w-5" /> Importar .vcf</Button>
-        <input accept=".vcf,text/vcard,text/x-vcard" className="sr-only" onChange={(event) => void readVCard(event)} ref={fileInputRef} type="file" />
+      <div className="mt-4 overflow-hidden rounded-2xl bg-surface px-4 shadow-[0_6px_18px_rgba(12,18,33,0.05)]">
+        {filtered.map((contact, index) => <article className="flex min-h-[5.9rem] items-center gap-2 border-b border-border py-3 last:border-0" data-testid="contact-row" key={contact.stableId}><button aria-label={`Abrir opciones de ${contact.name}`} className="flex min-w-0 flex-1 items-center gap-3 rounded-xl text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-primary" onClick={() => setSelected(contact)} type="button"><span aria-hidden="true" className={cn("flex h-14 w-14 shrink-0 items-center justify-center rounded-full text-xl font-bold", avatarColors[index % avatarColors.length])}>{contact.name.charAt(0).toUpperCase()}</span><span className="min-w-0 flex-1"><span className="flex items-center gap-1.5"><span className="block truncate font-bold sm:text-[17px]">{contact.name}</span>{contact.isFavorite ? <Star className="h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-400" /> : null}</span><span className="mt-1 block truncate text-sm text-muted-foreground">{contact.relationshipLabel || (contact.invitationCount === 1 ? "1 invitación anterior" : `${contact.invitationCount} invitaciones anteriores`)}</span></span></button><Link aria-label={`Invitar a ${contact.name}`} className="inline-flex min-h-12 w-[6.25rem] shrink-0 items-center justify-center gap-1.5 rounded-xl bg-primary px-2 text-sm font-bold text-white sm:w-[6.75rem]" href={invitationHref(contact)}><UserPlus className="h-4 w-4" /> Invitar</Link></article>)}
+        {filtered.length === 0 ? <div className="px-3 py-14 text-center"><ContactRound className="mx-auto h-9 w-9 text-muted-foreground" /><h2 className="mt-4 font-bold">{contacts.length === 0 ? "Aún no hay contactos frecuentes" : "Sin coincidencias"}</h2><p className="mx-auto mt-2 max-w-sm text-sm leading-5 text-muted-foreground">{contacts.length === 0 ? "Cuando crees invitaciones, las personas aparecerán aquí automáticamente. También puedes agregar un contacto." : "Prueba con otro nombre o desactiva el filtro de favoritos."}</p></div> : null}
       </div>
-
-      <div className="flex gap-3 rounded-2xl bg-secondary p-4 text-sm leading-5 text-muted-foreground"><ShieldCheck className="h-5 w-5 shrink-0 text-primary" /><p>Ventry solicita únicamente nombre y teléfono después de tu acción. Revisas y eliges antes de guardar; no copiamos la agenda completa ni enviamos contactos a terceros.</p></div>
-      {message ? <p className={cn("rounded-xl px-4 py-3 text-sm font-medium", message.error ? "bg-danger/10 text-danger" : "bg-emerald-50 text-emerald-800")} role={message.error ? "alert" : "status"}>{message.text}</p> : null}
-      {showForm ? <ContactForm draft={draft} isSaving={isSaving} onCancel={() => { setShowForm(false); setEditingId(null); setDraft(emptyDraft); }} onChange={setDraft} onSubmit={(event) => void saveDraft(event)} title={editingId ? "Editar contacto" : "Nuevo contacto"} /> : null}
-      {reviewItems ? <ImportReview items={reviewItems} onCancel={() => setReviewItems(null)} onSave={(selected) => void saveImported(selected)} saving={isSaving} /> : null}
-
-      <div className="flex min-h-11 items-center justify-between gap-3"><h2 className="text-lg font-bold">{filtered.length === 1 ? "1 contacto" : `${filtered.length} contactos`}</h2><button aria-pressed={favoritesOnly} className={cn("inline-flex min-h-11 items-center gap-2 rounded-xl px-3 text-sm font-bold", favoritesOnly ? "bg-amber-50 text-amber-700" : "text-muted-foreground hover:bg-muted")} onClick={() => setFavoritesOnly((value) => !value)} type="button"><Star className={cn("h-4 w-4", favoritesOnly && "fill-current")} /> Solo favoritos</button></div>
-
-      {filtered.length ? <div className="space-y-2">{filtered.map((contact, index) => <article className="flex items-center gap-3 rounded-2xl border border-border bg-surface p-3 shadow-[0_5px_16px_rgba(12,18,33,0.035)] sm:p-4" key={contact.id}>
-        <span aria-hidden="true" className={cn("flex h-12 w-12 shrink-0 items-center justify-center rounded-full text-lg font-bold", avatarColors[index % avatarColors.length])}>{contact.name.trim().charAt(0).toLocaleUpperCase("es-VE")}</span>
-        <div className="min-w-0 flex-1"><div className="flex items-center gap-1.5"><h3 className="truncate font-bold">{contact.name}</h3>{contact.is_favorite ? <Star aria-label="Favorito" className="h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-400" /> : null}</div><p className="truncate text-sm text-muted-foreground">{contact.relationship_label || formatPhoneForDisplay(contact.phone)}</p><p className="text-xs text-muted-foreground">{contact.invitation_count === 1 ? "1 invitación creada" : `${contact.invitation_count} invitaciones creadas`}</p></div>
-        <div className="flex shrink-0 items-center gap-1"><Link aria-label={`Invitar a ${contact.name}`} className="inline-flex min-h-12 items-center gap-1.5 rounded-xl bg-primary px-3 text-sm font-bold text-white" href={`/app/invitations/new?contactId=${encodeURIComponent(contact.id)}`}><UserPlus className="h-4 w-4" /><span className="hidden sm:inline">Invitar</span></Link><button aria-label={contact.is_favorite ? `Quitar ${contact.name} de favoritos` : `Marcar ${contact.name} como favorito`} className="flex h-11 w-11 items-center justify-center rounded-xl text-amber-500 hover:bg-amber-50" onClick={() => void toggleFavorite(contact)} type="button"><Star className={cn("h-4 w-4", contact.is_favorite && "fill-current")} /></button><button aria-label={`Editar ${contact.name}`} className="flex h-11 w-11 items-center justify-center rounded-xl text-muted-foreground hover:bg-muted" onClick={() => editContact(contact)} type="button"><Pencil className="h-4 w-4" /></button><button aria-label={`Eliminar ${contact.name}`} className="flex h-11 w-11 items-center justify-center rounded-xl text-danger hover:bg-danger/10" onClick={() => void removeContact(contact)} type="button"><Trash2 className="h-4 w-4" /></button></div>
-      </article>)}</div> : <div className="rounded-2xl border border-dashed border-border bg-surface px-5 py-12 text-center"><Star className="mx-auto h-9 w-9 text-muted-foreground" /><h2 className="mt-4 font-bold">{contacts.length === 0 ? "Aún no tienes contactos" : "Sin coincidencias"}</h2><p className="mx-auto mt-2 max-w-sm text-sm leading-5 text-muted-foreground">{contacts.length === 0 ? "Agrega uno manualmente o elige contactos de forma explícita desde tu dispositivo o un archivo vCard." : "Prueba con otra búsqueda o desactiva el filtro de favoritos."}</p></div>}
+      {total > contacts.length ? <Button className="mt-4 w-full" onClick={() => void loadMore()} variant="ghost">Ver más contactos · {contacts.length} de {total}</Button> : null}
     </div>
+
+    {selected ? <ContactDetails contact={selected} isSaving={isSaving} onClose={() => setSelected(null)} onDelete={() => void deleteSelected()} onEdit={() => editContact(selected)} onSaveHistory={() => { const current = selected; setSelected(null); setEditor({ mode: "create", initial: { name: current.name, phone: current.phone ?? "", relationshipLabel: "", isFavorite: false } }); }} onToggleFavorite={() => void patchSelected({ isFavorite: !selected.isFavorite })} timeZone={timeZone} /> : null}
+    {editor ? <ContactEditor initial={editor.initial} isSaving={isSaving} mode={editor.mode} onCancel={() => setEditor(null)} onSave={(draft) => void saveDraft(draft)} /> : null}
+    {imported ? <ImportReview existingPhones={[...importExistingPhones, ...contacts.flatMap((contact) => { const phone = contact.phone ? normalizePhoneNumber(contact.phone) : null; return phone ? [phone] : []; })]} imported={imported} isSaving={isSaving} onCancel={() => { setImported(null); setImportExistingPhones([]); }} onSave={(items) => void importSelected(items)} /> : null}
   </section>;
 }

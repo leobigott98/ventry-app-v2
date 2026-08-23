@@ -27,13 +27,7 @@ export async function PATCH(
 
     await revokeInvitation(auth.context.community.id, invitationId);
     return NextResponse.json({ ok: true });
-  } catch (error) {
-    return NextResponse.json(
-      {
-        error:
-          error instanceof Error ? error.message : "No fue posible revocar la invitacion.",
-      },
-      { status: 500 },
-    );
+  } catch {
+    return NextResponse.json({ error: "No fue posible revocar la invitacion." }, { status: 500 });
   }
 }

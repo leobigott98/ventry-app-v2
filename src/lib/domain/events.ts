@@ -233,7 +233,7 @@ export async function getEventByShareToken(shareToken: string) {
 
 export async function createResidentEvent(communityId: string, input: CreateEventInput) {
   const supabase = await createServerSupabaseClient();
-  const guests = input.guests.map((guest) => ({ ...guest, allowsCompanions: guest.allowsCompanions ?? input.allowsCompanions, maxCompanions: guest.maxCompanions ?? input.maxCompanions }));
+  const guests = input.guests.map((guest) => ({ fullName: guest.fullName, phone: guest.phone, notes: guest.notes, allowsCompanions: guest.allowsCompanions ?? input.allowsCompanions, maxCompanions: guest.maxCompanions ?? input.maxCompanions }));
   const { data: eventId, error } = await supabase.rpc("create_individual_resident_event", {
     p_community_id: communityId, p_resident_id: input.residentId, p_name: input.name,
     p_event_date: input.eventDate, p_window_start: input.windowStart,

@@ -28,3 +28,7 @@ export function formatPhoneForDisplay(value: string) {
   }
   return normalized;
 }
+
+export function normalizeContactName(value: string) {
+  return value.trim().replace(/\s+/g, " ").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLocaleLowerCase("es-VE");
+}

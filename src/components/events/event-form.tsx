@@ -4,13 +4,15 @@ import { CheckCircle2, FileSpreadsheet, Pencil, Plus, Trash2, Upload, UserRoundP
 import { useRouter } from "next/navigation";
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 
+import { ContactAutocomplete } from "@/components/contacts/contact-autocomplete";
 import { ResidentPageHeader } from "@/components/resident/resident-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import type { ResidentRecord, UnitRecord } from "@/lib/domain/types";
+import { normalizePhoneNumber } from "@/lib/contacts/phone";
+import type { ResidentContactViewModel, ResidentRecord, UnitRecord } from "@/lib/domain/types";
 import { EVENT_DRAFT_TRANSFER_KEY, parseEventDraftTransfer } from "@/lib/event-draft-transfer";
 import { APP_TIME_ZONE, formatAppDate, getTimeZoneNowParts } from "@/lib/formatting";
 import { createEventSchema, type EventGuestInput } from "@/lib/schemas/events";
@@ -19,6 +21,13 @@ import { cn } from "@/lib/utils";
 type ResidentOption = ResidentRecord & { units: Pick<UnitRecord, "identifier" | "building"> | null };
 type CredentialChoice = "pin" | "qr" | "";
 type FieldErrors = Partial<Record<"residentId" | "name" | "eventDate" | "windowStart" | "windowEndDate" | "windowEnd" | "plannedExitDate" | "plannedExitTime" | "guests" | "credentialType", string>>;
+
+function isDuplicateGuest(candidate: EventGuestInput, guests: EventGuestInput[]) {
+  const contactKey = candidate.contactStableId ?? candidate.residentContactId ?? null;
+  if (contactKey && guests.some((guest) => (guest.contactStableId ?? guest.residentContactId) === contactKey)) return true;
+  const phone = candidate.phone ? normalizePhoneNumber(candidate.phone) : null;
+  return Boolean(phone && guests.some((guest) => guest.phone && normalizePhoneNumber(guest.phone) === phone));
+}
 
 function pad(value: number) { return String(value).padStart(2, "0"); }
 function defaultWindow(timeZone: string) {
@@ -76,7 +85,7 @@ function ErrorText({ message }: { message?: string }) {
   return message ? <p className="text-sm font-medium text-danger" role="alert">{message}</p> : null;
 }
 
-export function EventForm({ residents, timeZone = APP_TIME_ZONE }: { residents: ResidentOption[]; timeZone?: string }) {
+export function EventForm({ contactAutocomplete = false, residents, timeZone = APP_TIME_ZONE }: { contactAutocomplete?: boolean; residents: ResidentOption[]; timeZone?: string }) {
   const router = useRouter();
   const defaults = useMemo(() => defaultWindow(timeZone), [timeZone]);
   const headingRef = useRef<HTMLHeadingElement | null>(null);
@@ -91,12 +100,13 @@ export function EventForm({ residents, timeZone = APP_TIME_ZONE }: { residents: 
     includePlannedExit: false, plannedExitDate: "", plannedExitTime: "", credentialType: "" as CredentialChoice, notes: "", allowsCompanions: false, maxCompanions: 0,
   });
   const [guests, setGuests] = useState<EventGuestInput[]>([]);
-  const [draftGuest, setDraftGuest] = useState({ fullName: "", phone: "", notes: "", allowsCompanions: false, maxCompanions: 0 });
+  const [draftGuest, setDraftGuest] = useState<EventGuestInput>({ fullName: "", phone: "", notes: "", allowsCompanions: false, maxCompanions: 0, residentContactId: null, contactStableId: null, contactOrigin: null });
   const [guestMode, setGuestMode] = useState<"manual" | "csv">("manual");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [error, setError] = useState<string | null>(null);
   const [csvMessage, setCsvMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [saveNewContacts, setSaveNewContacts] = useState(false);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "auto" });
@@ -151,11 +161,11 @@ export function EventForm({ residents, timeZone = APP_TIME_ZONE }: { residents: 
   function addGuest() {
     const fullName = draftGuest.fullName.trim();
     if (fullName.length < 2) { setFieldErrors({ guests: "Escribe el nombre del invitado." }); return; }
-    const duplicate = guests.some((guest) => guest.fullName.toLocaleLowerCase() === fullName.toLocaleLowerCase() && (guest.phone ?? "") === draftGuest.phone.trim());
-    if (duplicate) { setFieldErrors({ guests: "Ese invitado ya está en la lista." }); return; }
+    const candidate = { ...draftGuest, fullName, phone: draftGuest.phone?.trim() || null, notes: draftGuest.notes?.trim() || null, allowsCompanions: draftGuest.allowsCompanions, maxCompanions: draftGuest.allowsCompanions ? Math.max(draftGuest.maxCompanions ?? 0, 1) : 0 };
+    if (isDuplicateGuest(candidate, guests)) { setFieldErrors({ guests: "Este contacto ya está incluido" }); return; }
     if (guests.length >= 500) { setFieldErrors({ guests: "El límite es de 500 invitados." }); return; }
-    setGuests((current) => [...current, { fullName, phone: draftGuest.phone.trim() || null, notes: draftGuest.notes.trim() || null, allowsCompanions: draftGuest.allowsCompanions, maxCompanions: draftGuest.allowsCompanions ? Math.max(draftGuest.maxCompanions, 1) : 0 }]);
-    setDraftGuest({ fullName: "", phone: "", notes: "", allowsCompanions: form.allowsCompanions, maxCompanions: form.maxCompanions });
+    setGuests((current) => [...current, candidate]);
+    setDraftGuest({ fullName: "", phone: "", notes: "", allowsCompanions: form.allowsCompanions, maxCompanions: form.maxCompanions, residentContactId: null, contactStableId: null, contactOrigin: null });
     setFieldErrors({}); setError(null);
   }
 
@@ -169,6 +179,9 @@ export function EventForm({ residents, timeZone = APP_TIME_ZONE }: { residents: 
       notes: guest.notes ?? "",
       allowsCompanions: guest.allowsCompanions ?? form.allowsCompanions,
       maxCompanions: guest.maxCompanions ?? form.maxCompanions,
+      residentContactId: guest.residentContactId ?? null,
+      contactStableId: guest.contactStableId ?? null,
+      contactOrigin: guest.contactOrigin ?? null,
     });
     setGuests((current) => current.filter((_, itemIndex) => itemIndex !== index));
     setFieldErrors({});
@@ -185,7 +198,7 @@ export function EventForm({ residents, timeZone = APP_TIME_ZONE }: { residents: 
     setGuests((current) => {
       const merged = [...current];
       imported.forEach((guest) => {
-        const exists = merged.some((item) => item.fullName.toLocaleLowerCase() === guest.fullName.toLocaleLowerCase() && (item.phone ?? "") === (guest.phone ?? ""));
+        const exists = isDuplicateGuest(guest, merged);
         if (!exists && merged.length < 500) merged.push(guest);
       });
       return merged;
@@ -201,7 +214,7 @@ export function EventForm({ residents, timeZone = APP_TIME_ZONE }: { residents: 
       windowEndDate: form.windowEndDate, windowEnd: form.windowEnd,
       plannedExitDate: form.includePlannedExit ? form.plannedExitDate : null,
       plannedExitTime: form.includePlannedExit ? form.plannedExitTime : null,
-      credentialType: form.credentialType, notes: form.notes, allowsCompanions: form.allowsCompanions, maxCompanions: form.maxCompanions, guests,
+      credentialType: form.credentialType, notes: form.notes, allowsCompanions: form.allowsCompanions, maxCompanions: form.maxCompanions, guests, saveNewContacts,
       idempotencyKey: creationKeyRef.current ?? crypto.randomUUID(),
     });
     if (!parsed.success) { setError(parsed.error.issues.map((issue) => issue.message).join(" ")); return; }
@@ -240,11 +253,12 @@ export function EventForm({ residents, timeZone = APP_TIME_ZONE }: { residents: 
         </div> : null}
 
         {step === 3 ? <div className="mt-6 space-y-4">
-          <div className="rounded-2xl border border-border bg-surface p-4"><label className="flex min-h-11 items-center gap-3 font-bold"><input className="h-5 w-5 accent-[#1446cc]" checked={form.allowsCompanions} onChange={(event) => { const enabled=event.target.checked; setForm((current) => ({ ...current, allowsCompanions: enabled, maxCompanions: enabled ? Math.max(current.maxCompanions,1) : 0 })); setDraftGuest((current) => ({ ...current, allowsCompanions: enabled, maxCompanions: enabled ? Math.max(current.maxCompanions,1) : 0 })); }} type="checkbox" />Permitir acompañantes por defecto</label>{form.allowsCompanions ? <div className="mt-3 space-y-2"><Label htmlFor="eventMaxCompanions">Máximo por invitado (1–5)</Label><Input className="h-12" id="eventMaxCompanions" max={5} min={1} type="number" value={form.maxCompanions} onChange={(event) => { const value=Math.min(Math.max(Number(event.target.value)||1,1),5); setForm((current) => ({ ...current,maxCompanions:value })); setDraftGuest((current) => ({...current,maxCompanions:value})); }} /></div> : null}</div>
+          <div className="rounded-2xl border border-border bg-surface p-4"><label className="flex min-h-11 items-center gap-3 font-bold"><input className="h-5 w-5 accent-[#1446cc]" checked={form.allowsCompanions} onChange={(event) => { const enabled=event.target.checked; setForm((current) => ({ ...current, allowsCompanions: enabled, maxCompanions: enabled ? Math.max(current.maxCompanions,1) : 0 })); setDraftGuest((current) => ({ ...current, allowsCompanions: enabled, maxCompanions: enabled ? Math.max(current.maxCompanions ?? 0,1) : 0 })); }} type="checkbox" />Permitir acompañantes por defecto</label>{form.allowsCompanions ? <div className="mt-3 space-y-2"><Label htmlFor="eventMaxCompanions">Máximo por invitado (1–5)</Label><Input className="h-12" id="eventMaxCompanions" max={5} min={1} type="number" value={form.maxCompanions} onChange={(event) => { const value=Math.min(Math.max(Number(event.target.value)||1,1),5); setForm((current) => ({ ...current,maxCompanions:value })); setDraftGuest((current) => ({...current,maxCompanions:value})); }} /></div> : null}</div>
           <div className="grid grid-cols-2 rounded-2xl border border-border bg-surface p-1"><button aria-pressed={guestMode === "manual"} className={cn("flex min-h-12 items-center justify-center gap-2 rounded-xl text-sm font-semibold", guestMode === "manual" ? "bg-secondary text-primary" : "text-muted-foreground")} onClick={() => setGuestMode("manual")} type="button"><UserRoundPlus className="h-4 w-4" /> Manual</button><button aria-pressed={guestMode === "csv"} className={cn("flex min-h-12 items-center justify-center gap-2 rounded-xl text-sm font-semibold", guestMode === "csv" ? "bg-secondary text-primary" : "text-muted-foreground")} onClick={() => setGuestMode("csv")} type="button"><FileSpreadsheet className="h-4 w-4" /> Importar CSV</button></div>
-          {guestMode === "manual" ? <div className="space-y-3 rounded-2xl bg-surface p-4"><div className="space-y-2"><Label htmlFor="guestName">Nombre completo</Label><Input id="guestName" className="h-14 text-base" value={draftGuest.fullName} onChange={(event) => setDraftGuest((current) => ({ ...current, fullName: event.target.value }))} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); addGuest(); } }} /></div><div className="grid gap-3 sm:grid-cols-2"><div className="space-y-2"><Label htmlFor="guestPhone">Teléfono (opcional)</Label><Input id="guestPhone" className="h-14 text-base" value={draftGuest.phone} onChange={(event) => setDraftGuest((current) => ({ ...current, phone: event.target.value }))} /></div><div className="space-y-2"><Label htmlFor="guestNotes">Nota (opcional)</Label><Input id="guestNotes" className="h-14 text-base" value={draftGuest.notes} onChange={(event) => setDraftGuest((current) => ({ ...current, notes: event.target.value }))} /></div></div><label className="flex min-h-11 items-center gap-3 text-sm font-semibold"><input className="h-5 w-5 accent-[#1446cc]" checked={draftGuest.allowsCompanions} onChange={(event) => setDraftGuest((current) => ({ ...current, allowsCompanions:event.target.checked,maxCompanions:event.target.checked?Math.max(current.maxCompanions,1):0 }))} type="checkbox" />Permitir acompañantes para esta persona</label>{draftGuest.allowsCompanions ? <Input aria-label="Máximo de acompañantes para esta persona" className="h-12" max={5} min={1} type="number" value={draftGuest.maxCompanions} onChange={(event) => setDraftGuest((current) => ({...current,maxCompanions:Math.min(Math.max(Number(event.target.value)||1,1),5)}))} /> : null}<Button className="h-14 w-full" onClick={addGuest} type="button" variant="outline"><Plus className="h-5 w-5" /> Agregar a la lista</Button></div> : <button className="flex min-h-44 w-full flex-col items-center justify-center rounded-2xl border border-dashed border-primary/40 bg-primary/5 p-6 text-center" onClick={() => fileInputRef.current?.click()} type="button"><Upload className="h-8 w-8 text-primary" /><span className="mt-3 font-bold">Seleccionar archivo CSV</span><span className="mt-1 text-sm text-muted-foreground">Columnas: nombre, teléfono, notas, acompañantes y max_acompanantes.</span><input ref={fileInputRef} accept=".csv,text/csv" className="hidden" onChange={importCsv} type="file" /></button>}
+          {guestMode === "manual" ? <div className="space-y-3 rounded-2xl bg-surface p-4"><div className="space-y-2"><Label htmlFor="guestName">Nombre completo</Label><ContactAutocomplete ariaLabel="Nombre completo" className="h-14 text-base" enabled={contactAutocomplete} id="guestName" value={draftGuest.fullName} onChange={(fullName) => setDraftGuest((current) => ({ ...current, fullName }))} onEnter={addGuest} onSelect={(contact: ResidentContactViewModel) => { const candidate = { ...draftGuest, fullName: contact.name, phone: contact.phone ?? draftGuest.phone, residentContactId: contact.savedContactId, contactStableId: contact.stableId, contactOrigin: contact.origin }; if (isDuplicateGuest(candidate, guests)) return "Este contacto ya está incluido"; setDraftGuest(candidate); setFieldErrors({}); return null; }} /></div><div className="grid gap-3 sm:grid-cols-2"><div className="space-y-2"><Label htmlFor="guestPhone">Teléfono (opcional)</Label><Input id="guestPhone" className="h-14 text-base" value={draftGuest.phone ?? ""} onChange={(event) => setDraftGuest((current) => ({ ...current, phone: event.target.value }))} /></div><div className="space-y-2"><Label htmlFor="guestNotes">Nota (opcional)</Label><Input id="guestNotes" className="h-14 text-base" value={draftGuest.notes ?? ""} onChange={(event) => setDraftGuest((current) => ({ ...current, notes: event.target.value }))} /></div></div><label className="flex min-h-11 items-center gap-3 text-sm font-semibold"><input className="h-5 w-5 accent-[#1446cc]" checked={draftGuest.allowsCompanions} onChange={(event) => setDraftGuest((current) => ({ ...current, allowsCompanions:event.target.checked,maxCompanions:event.target.checked?Math.max(current.maxCompanions ?? 0,1):0 }))} type="checkbox" />Permitir acompañantes para esta persona</label>{draftGuest.allowsCompanions ? <Input aria-label="Máximo de acompañantes para esta persona" className="h-12" max={5} min={1} type="number" value={draftGuest.maxCompanions} onChange={(event) => setDraftGuest((current) => ({...current,maxCompanions:Math.min(Math.max(Number(event.target.value)||1,1),5)}))} /> : null}<Button className="h-14 w-full" onClick={addGuest} type="button" variant="outline"><Plus className="h-5 w-5" /> Agregar a la lista</Button></div> : <button className="flex min-h-44 w-full flex-col items-center justify-center rounded-2xl border border-dashed border-primary/40 bg-primary/5 p-6 text-center" onClick={() => fileInputRef.current?.click()} type="button"><Upload className="h-8 w-8 text-primary" /><span className="mt-3 font-bold">Seleccionar archivo CSV</span><span className="mt-1 text-sm text-muted-foreground">Columnas: nombre, teléfono, notas, acompañantes y max_acompanantes.</span><input ref={fileInputRef} accept=".csv,text/csv" className="hidden" onChange={importCsv} type="file" /></button>}
           {csvMessage ? <p className="rounded-2xl bg-[#e8f7f2] p-3 text-sm text-success">{csvMessage}</p> : null}<ErrorText message={fieldErrors.guests} />
           <div className="space-y-2">{guests.map((guest, index) => <div className="flex items-center gap-3 rounded-2xl bg-surface p-3" key={`${guest.fullName}-${guest.phone ?? ""}-${index}`}><span className="flex h-10 w-10 items-center justify-center rounded-full bg-secondary text-sm font-bold text-primary">{index + 1}</span><span className="min-w-0 flex-1"><span className="block truncate font-semibold">{guest.fullName}</span><span className="block truncate text-xs text-muted-foreground">{[guest.phone, guest.notes, guest.allowsCompanions ? `hasta ${guest.maxCompanions} acompañantes` : null].filter(Boolean).join(" · ") || "Sin datos adicionales"}</span></span><Button aria-label={`Editar a ${guest.fullName}`} onClick={() => editGuest(index)} size="icon" type="button" variant="ghost"><Pencil className="h-4 w-4" /></Button><Button aria-label={`Quitar a ${guest.fullName}`} onClick={() => setGuests((current) => current.filter((_, item) => item !== index))} size="icon" type="button" variant="ghost"><Trash2 className="h-4 w-4" /></Button></div>)}</div>
+          {guests.length > 0 ? <label className="flex min-h-12 cursor-pointer items-center gap-3 rounded-2xl bg-muted px-4 text-sm font-semibold"><input checked={saveNewContacts} className="h-5 w-5 accent-[#1446cc]" onChange={(event) => setSaveNewContacts(event.target.checked)} type="checkbox" />Guardar los invitados nuevos en mis contactos</label> : null}
         </div> : null}
 
         {step === 4 ? <div className="mt-6 space-y-5">

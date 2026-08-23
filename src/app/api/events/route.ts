@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { requireApiCommunityContext } from "@/lib/auth/api";
+import { findOrCreateResidentContact, residentContactIdsBelongToResident } from "@/lib/domain/contacts";
 import { createResidentEvent } from "@/lib/domain/events";
 import { createEventSchema } from "@/lib/schemas/events";
 
@@ -26,14 +27,33 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    if (auth.sessionUser.role === "resident" && !await residentContactIdsBelongToResident(
+      auth.context.community.id,
+      residentId,
+      parsed.data.guests.map((guest) => guest.residentContactId),
+    )) {
+      return NextResponse.json({ error: "Uno de los contactos seleccionados no está disponible." }, { status: 400 });
+    }
     const event = await createResidentEvent(auth.context.community.id, {
       ...parsed.data,
       residentId,
     });
+    let contactWarning = false;
+    if (auth.sessionUser.role === "resident" && parsed.data.saveNewContacts) {
+      const results = await Promise.allSettled(parsed.data.guests.filter((guest) => !guest.residentContactId).map((guest) => findOrCreateResidentContact(auth.context.community.id, residentId, {
+        name: guest.fullName,
+        phone: guest.phone,
+        relationshipLabel: null,
+        isFavorite: false,
+        source: "manual",
+      })));
+      contactWarning = results.some((result) => result.status === "rejected");
+    }
     return NextResponse.json({
       ok: true,
       eventId: event.id,
-      redirectTo: `/app/events/${event.id}`,
+      warning: contactWarning ? "El evento se creó, pero algunos contactos no pudieron guardarse." : undefined,
+      redirectTo: `/app/events/${event.id}${contactWarning ? "?contactWarning=1" : ""}`,
     });
   } catch {
     return NextResponse.json(

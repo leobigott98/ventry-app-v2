@@ -4,6 +4,7 @@ import {
   credentialTypeOptions,
   invitationAccessTypeOptions,
 } from "@/lib/domain/types";
+import { normalizePhoneNumber } from "@/lib/contacts/phone";
 import { nullableOptionalText } from "@/lib/schemas/community";
 
 const invitationDate = z
@@ -17,6 +18,9 @@ const invitationTime = z
 export const invitationVisitorSchema = z.object({
   fullName: z.string().trim().min(2, "Ingresa el nombre del visitante.").max(120),
   phone: nullableOptionalText,
+  residentContactId: z.string().uuid().optional().nullable(),
+  contactStableId: z.string().max(200).optional().nullable(),
+  contactOrigin: z.enum(["history", "saved", "both"]).optional().nullable(),
 });
 
 function validateWindow(
@@ -57,8 +61,10 @@ function validateWindow(
 
 export const createInvitationSchema = z
   .object({
+    idempotencyKey: z.string().uuid("La clave de reintento no es válida."),
     residentId: z.string().uuid("Selecciona un residente."),
     residentContactId: z.string().uuid("El contacto seleccionado no es válido.").optional().nullable(),
+    saveContact: z.boolean().optional().default(false),
     visitorName: nullableOptionalText,
     visitorPhone: nullableOptionalText,
     accessType: z.enum(
@@ -102,17 +108,21 @@ export const createInvitationGroupSchema = z
     windowEnd: invitationTime.optional(),
     noTimeLimit: z.boolean().default(false),
     notes: nullableOptionalText,
+    saveNewContacts: z.boolean().optional().default(false),
     visitors: z.array(invitationVisitorSchema).min(2, "Agrega al menos dos personas.").max(25),
   })
   .superRefine((input, ctx) => {
     validateWindow(input, ctx);
-    const seen = new Set<string>();
+    const seenContacts = new Set<string>();
+    const seenPhones = new Set<string>();
     input.visitors.forEach((visitor, index) => {
-      const key = `${visitor.fullName.toLocaleLowerCase("es-VE")}|${visitor.phone?.replace(/\s+/g, "") ?? ""}`;
-      if (seen.has(key)) {
+      const contactKey = visitor.contactStableId ?? visitor.residentContactId ?? null;
+      const phone = visitor.phone ? normalizePhoneNumber(visitor.phone) : null;
+      if ((contactKey && seenContacts.has(contactKey)) || (phone && seenPhones.has(phone))) {
         ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["visitors", index, "fullName"], message: "Esta persona ya esta en la lista." });
       }
-      seen.add(key);
+      if (contactKey) seenContacts.add(contactKey);
+      if (phone) seenPhones.add(phone);
     });
   });
 

@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { credentialTypeOptions } from "@/lib/domain/types";
+import { normalizePhoneNumber } from "@/lib/contacts/phone";
 import { nullableOptionalText } from "@/lib/schemas/community";
 
 const eventDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Selecciona una fecha valida.");
@@ -18,6 +19,9 @@ export const eventGuestSchema = z.object({
   notes: nullableOptionalText,
   allowsCompanions: z.boolean().optional(),
   maxCompanions: z.number().int().min(0).max(5).optional(),
+  residentContactId: z.string().uuid().optional().nullable(),
+  contactStableId: z.string().max(200).optional().nullable(),
+  contactOrigin: z.enum(["history", "saved", "both"]).optional().nullable(),
 });
 
 export const createEventSchema = z
@@ -37,6 +41,7 @@ export const createEventSchema = z
     notes: nullableOptionalText,
     allowsCompanions: z.boolean().default(false),
     maxCompanions: z.number().int().min(0).max(5).default(0),
+    saveNewContacts: z.boolean().optional().default(false),
     guests: z.array(eventGuestSchema).min(1, "Agrega al menos un invitado.").max(500),
   })
   .superRefine((input, ctx) => {
@@ -69,17 +74,20 @@ export const createEventSchema = z
       }
     }
 
-    const seen = new Set<string>();
+    const seenContacts = new Set<string>();
+    const seenPhones = new Set<string>();
     input.guests.forEach((guest, index) => {
-      const key = `${guest.fullName.trim().toLocaleLowerCase()}|${guest.phone?.trim() ?? ""}`;
-      if (seen.has(key)) {
+      const contactKey = guest.contactStableId ?? guest.residentContactId ?? null;
+      const phone = guest.phone ? normalizePhoneNumber(guest.phone) : null;
+      if ((contactKey && seenContacts.has(contactKey)) || (phone && seenPhones.has(phone))) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
           path: ["guests", index, "fullName"],
           message: `${guest.fullName} aparece mas de una vez.`,
         });
       }
-      seen.add(key);
+      if (contactKey) seenContacts.add(contactKey);
+      if (phone) seenPhones.add(phone);
 
       const allowsCompanions = guest.allowsCompanions ?? input.allowsCompanions;
       const maxCompanions = guest.maxCompanions ?? input.maxCompanions;

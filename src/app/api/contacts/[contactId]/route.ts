@@ -17,8 +17,8 @@ export async function PATCH(request: NextRequest, { params }: RouteContext) {
   try {
     const contact = await updateResidentContact(auth.context.community.id, auth.sessionUser.residentId, contactId, parsed.data);
     return NextResponse.json({ contact });
-  } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "No fue posible actualizar el contacto." }, { status: 404 });
+  } catch {
+    return NextResponse.json({ error: "No fue posible actualizar el contacto." }, { status: 404 });
   }
 }
 
@@ -31,7 +31,7 @@ export async function DELETE(request: NextRequest, { params }: RouteContext) {
   try {
     await deleteResidentContact(auth.context.community.id, auth.sessionUser.residentId, contactId);
     return NextResponse.json({ ok: true });
-  } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "No fue posible eliminar el contacto." }, { status: 404 });
+  } catch {
+    return NextResponse.json({ error: "No fue posible eliminar el contacto." }, { status: 404 });
   }
 }

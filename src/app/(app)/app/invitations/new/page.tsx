@@ -28,7 +28,7 @@ export default async function NewInvitationPage({ searchParams }: { searchParams
     return <InvitationForm
       defaultResidentContactId={contact?.id}
       defaultVisitorName={contact?.name ?? single(params.visitorName).slice(0, 120)}
-      defaultVisitorPhone={contact?.phone ?? ""}
+      defaultVisitorPhone={contact?.phone ?? single(params.visitorPhone).slice(0, 32)}
       residentMode
       residents={availableResidents}
       timeZone={context.community.time_zone}

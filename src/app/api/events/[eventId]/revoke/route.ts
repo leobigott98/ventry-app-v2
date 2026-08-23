@@ -17,10 +17,7 @@ export async function POST(
       auth.sessionUser.role === "resident" ? auth.sessionUser.residentId : null,
     );
     return NextResponse.json({ ok: true });
-  } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : "No fue posible cancelar el evento." },
-      { status: 500 },
-    );
+  } catch {
+    return NextResponse.json({ error: "No fue posible cancelar el evento." }, { status: 500 });
   }
 }

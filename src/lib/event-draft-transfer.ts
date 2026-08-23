@@ -10,7 +10,7 @@ const eventDraftTransferSchema = z.object({
 });
 
 export function serializeEventDraftTransfer(
-  visitors: Array<{ fullName: string; phone?: string | null }>,
+  visitors: Array<{ fullName: string; phone?: string | null; residentContactId?: string | null; contactStableId?: string | null; contactOrigin?: "history" | "saved" | "both" | null }>,
 ) {
   return JSON.stringify({
     version: 1,
@@ -20,6 +20,9 @@ export function serializeEventDraftTransfer(
       notes: null,
       allowsCompanions: false,
       maxCompanions: 0,
+      residentContactId: visitor.residentContactId ?? null,
+      contactStableId: visitor.contactStableId ?? null,
+      contactOrigin: visitor.contactOrigin ?? null,
     })),
   });
 }

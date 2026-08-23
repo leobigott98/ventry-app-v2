@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizePhoneNumber } from "@/lib/contacts/phone";
+import { normalizeContactName, normalizePhoneNumber } from "@/lib/contacts/phone";
 
 describe("normalizePhoneNumber", () => {
   it.each([
@@ -17,5 +17,11 @@ describe("normalizePhoneNumber", () => {
 
   it.each(["", "123", "555-1234", "0412 555 1234 ext 99", "+00 1234567"])("rechaza %s", (input) => {
     expect(normalizePhoneNumber(input)).toBeNull();
+  });
+});
+
+describe("normalizeContactName", () => {
+  it("normaliza acentos, mayúsculas y espacios para deduplicar sin teléfono", () => {
+    expect(normalizeContactName("  María   PÉREZ ")).toBe("maria perez");
   });
 });

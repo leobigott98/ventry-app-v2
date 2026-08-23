@@ -3,7 +3,7 @@ import { ChevronRight, Clock3, Mic, PhoneCall, UserPlus } from "lucide-react";
 
 import { ContactAvatar } from "@/components/resident/frequent-contact";
 import { ResidentHomeHeader } from "@/components/resident/resident-header";
-import type { ResidentContactRecord } from "@/lib/domain/types";
+import type { ResidentContactViewModel } from "@/lib/domain/types";
 
 type ResidentNotification = {
   id: string;
@@ -23,7 +23,7 @@ export function ResidentDashboard({
 }: {
   activeCount: number;
   communityName: string;
-  contacts: ResidentContactRecord[];
+  contacts: ResidentContactViewModel[];
   firstName: string;
   greeting: string;
   notifications: ResidentNotification[];
@@ -100,13 +100,15 @@ export function ResidentDashboard({
               {contacts.map((contact, index) => (
                 <Link
                   className="flex w-16 shrink-0 flex-col items-center text-center"
-                  href={`/app/invitations/new?contactId=${encodeURIComponent(contact.id)}`}
-                  key={contact.id}
+                  href={contact.savedContactId
+                    ? `/app/invitations/new?contactId=${encodeURIComponent(contact.savedContactId)}`
+                    : `/app/invitations/new?visitorName=${encodeURIComponent(contact.name)}${contact.phone ? `&visitorPhone=${encodeURIComponent(contact.phone)}` : ""}`}
+                  key={contact.stableId}
                 >
                   <ContactAvatar contact={contact} index={index} />
                   <span className="mt-2 w-full truncate text-xs font-semibold">{contact.name}</span>
                   <span className="mt-1 text-[10px] text-muted-foreground">
-                    {contact.invitation_count} {contact.invitation_count === 1 ? "visita" : "visitas"}
+                    {contact.invitationCount} {contact.invitationCount === 1 ? "visita" : "visitas"}
                   </span>
                 </Link>
               ))}

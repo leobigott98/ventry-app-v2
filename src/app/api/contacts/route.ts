@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { requireApiCommunityContext } from "@/lib/auth/api";
-import { createResidentContacts, getResidentContacts } from "@/lib/domain/contacts";
+import { getResidentContactViews, saveResidentContactsWithoutDuplicates } from "@/lib/domain/contacts";
 import { createResidentContactsSchema } from "@/lib/schemas/contacts";
 
 export async function GET(request: NextRequest) {
@@ -10,10 +10,12 @@ export async function GET(request: NextRequest) {
   if (!auth.sessionUser.residentId) return NextResponse.json({ error: "Tu usuario no tiene un residente vinculado." }, { status: 403 });
 
   try {
-    const contacts = await getResidentContacts(auth.context.community.id, auth.sessionUser.residentId);
-    return NextResponse.json({ contacts });
-  } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "No fue posible cargar tus contactos." }, { status: 500 });
+    const page = Number(request.nextUrl.searchParams.get("page") ?? 1);
+    const pageSize = Number(request.nextUrl.searchParams.get("pageSize") ?? 50);
+    const contacts = await getResidentContactViews(auth.context.community.id, auth.sessionUser.residentId, page, pageSize);
+    return NextResponse.json(contacts);
+  } catch {
+    return NextResponse.json({ error: "No fue posible cargar tus contactos." }, { status: 500 });
   }
 }
 
@@ -26,9 +28,9 @@ export async function POST(request: NextRequest) {
   if (!parsed.success) return NextResponse.json({ error: parsed.error.issues[0]?.message ?? "Datos inválidos." }, { status: 400 });
 
   try {
-    const contacts = await createResidentContacts(auth.context.community.id, auth.sessionUser.residentId, parsed.data.contacts);
+    const contacts = await saveResidentContactsWithoutDuplicates(auth.context.community.id, auth.sessionUser.residentId, parsed.data.contacts);
     return NextResponse.json({ contacts }, { status: 201 });
-  } catch (error) {
-    return NextResponse.json({ error: error instanceof Error ? error.message : "No fue posible guardar tus contactos." }, { status: 409 });
+  } catch {
+    return NextResponse.json({ error: "No fue posible guardar tus contactos." }, { status: 409 });
   }
 }

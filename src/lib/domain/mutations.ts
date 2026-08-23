@@ -2,11 +2,6 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import { getInvitationEffectiveStatus } from "@/lib/domain/invitations";
 import { getInvitationById } from "@/lib/domain/invitations";
 import { getVisitorEntryById } from "@/lib/domain/guards";
-import {
-  createNumericPin,
-  createOpaqueQrCredential,
-  createOpaqueShareToken,
-} from "@/lib/security/credentials";
 
 import type {
   OnboardingInput,
@@ -19,27 +14,6 @@ import type {
   ManualVehicleEntryInput,
   UnannouncedVisitorInput,
 } from "@/lib/schemas/guards";
-
-async function storeInvitationCredential(args: {
-  supabase: Awaited<ReturnType<typeof createServerSupabaseClient>>;
-  communityId: string;
-  invitationId: string;
-  credentialType: "pin" | "qr";
-}) {
-  for (let attempt = 0; attempt < 5; attempt += 1) {
-    const credentialValue =
-      args.credentialType === "pin" ? createNumericPin(6) : createOpaqueQrCredential();
-    const { error } = await args.supabase.rpc("store_invitation_credential", {
-      p_community_id: args.communityId,
-      p_invitation_id: args.invitationId,
-      p_credential_type: args.credentialType,
-      p_credential_value: credentialValue,
-    });
-    if (!error) return;
-    if (error.code !== "23505") throw new Error("No fue posible proteger la credencial.");
-  }
-  throw new Error("No fue posible generar una credencial unica. Intenta nuevamente.");
-}
 
 function getEventSourceFromRegistrationSource(
   registrationSource: "invitation" | "event" | "unannounced" | "vehicle_manual" | null | undefined,
@@ -264,92 +238,26 @@ export async function updateResident(communityId: string, residentId: string, in
 
 export async function createInvitation(communityId: string, input: CreateInvitationInput) {
   const supabase = await createServerSupabaseClient();
-
-  const { data: resident, error: residentError } = await supabase
-    .from("residents")
-    .select("id, unit_id")
-    .eq("community_id", communityId)
-    .eq("id", input.residentId)
-    .eq("is_active", true)
-    .maybeSingle();
-
-  if (residentError || !resident) {
-    throw new Error(residentError?.message || "No fue posible encontrar un residente activo.");
-  }
-
-  const shareToken = createOpaqueShareToken();
-  const windowEnd = input.noTimeLimit ? "23:59" : input.windowEnd;
-  const windowEndDate = input.noTimeLimit ? null : input.windowEndDate ?? input.visitDate;
-
-  const { data: invitation, error: invitationError } = await supabase
-    .from("invitations")
-    .insert({
-      community_id: communityId,
-      resident_id: input.residentId,
-      unit_id: resident.unit_id,
-      visitor_name: input.visitorName,
-      visitor_phone: input.visitorPhone,
-      access_type: input.accessType,
-      visit_date: input.visitDate,
-      window_start: input.windowStart,
-      window_end: windowEnd,
-      window_end_date: windowEndDate,
-      no_time_limit: input.noTimeLimit,
-      status: "active",
-      notes: input.notes,
-      share_token: shareToken,
-    })
-    .select("*")
-    .single();
-
-  if (invitationError || !invitation) {
-    throw new Error(invitationError?.message || "No fue posible crear la invitacion.");
-  }
-
-  try {
-    await storeInvitationCredential({
-      supabase,
-      communityId,
-      invitationId: invitation.id,
-      credentialType: input.credentialType as "pin" | "qr",
-    });
-  } catch (error) {
-    await supabase.from("invitations").delete().eq("id", invitation.id);
-    throw error;
-  }
-
-  const { error: eventError } = await supabase.from("invitation_events").insert({
-    invitation_id: invitation.id,
-    event_type: "created",
-    event_label: "Invitacion creada",
-    payload: {
-      accessType: input.accessType,
-      credentialType: input.credentialType,
-      visitDate: input.visitDate,
-      windowStart: input.windowStart,
-      windowEndDate,
-      windowEnd: input.noTimeLimit ? null : windowEnd,
-      noTimeLimit: input.noTimeLimit,
-    },
+  const { data: invitationId, error } = await supabase.rpc("create_individual_invitation", {
+    p_community_id: communityId,
+    p_resident_id: input.residentId,
+    p_resident_contact_id: input.residentContactId ?? null,
+    p_visitor_name: input.visitorName,
+    p_visitor_phone: input.visitorPhone,
+    p_access_type: input.accessType,
+    p_visit_date: input.visitDate,
+    p_window_start: input.windowStart,
+    p_window_end_date: input.noTimeLimit ? null : input.windowEndDate ?? input.visitDate,
+    p_window_end: input.noTimeLimit ? "23:59" : input.windowEnd,
+    p_no_time_limit: input.noTimeLimit,
+    p_notes: input.notes,
+    p_credential_type: input.credentialType,
+    p_idempotency_key: input.idempotencyKey,
   });
-
-  if (eventError) {
-    await supabase.from("invitations").delete().eq("id", invitation.id);
-    throw new Error(eventError.message);
+  if (error || !invitationId) {
+    throw new Error(error?.message ?? "No fue posible crear la invitacion.");
   }
-
-  if (input.residentContactId) {
-    const { error: contactUsageError } = await supabase.rpc(
-      "record_resident_contact_invitation",
-      { p_contact_id: input.residentContactId, p_invitation_id: invitation.id },
-    );
-    if (contactUsageError) {
-      await supabase.from("invitations").delete().eq("id", invitation.id);
-      throw new Error("No fue posible asociar la invitación con este contacto.");
-    }
-  }
-
-  return invitation;
+  return { id: String(invitationId) };
 }
 
 export async function createInvitationGroup(communityId: string, input: CreateInvitationGroupInput) {
@@ -365,7 +273,7 @@ export async function createInvitationGroup(communityId: string, input: CreateIn
     p_no_time_limit: input.noTimeLimit,
     p_notes: input.notes,
     p_credential_type: input.credentialType,
-    p_visitors: input.visitors,
+    p_visitors: input.visitors.map((visitor) => ({ fullName: visitor.fullName, phone: visitor.phone })),
     p_idempotency_key: input.idempotencyKey,
   });
   if (error || !data) throw new Error(error?.message ?? "No fue posible crear la invitacion grupal.");

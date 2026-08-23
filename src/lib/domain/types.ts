@@ -185,8 +185,9 @@ export type ResidentContactRecord = {
   community_id: string;
   resident_id: string;
   name: string;
-  phone: string;
-  normalized_phone: string;
+  phone: string | null;
+  normalized_phone: string | null;
+  normalized_name: string;
   relationship_label: string | null;
   is_favorite: boolean;
   source: ResidentContactSource;
@@ -194,6 +195,18 @@ export type ResidentContactRecord = {
   last_invited_at: string | null;
   created_at: string;
   updated_at: string;
+};
+
+export type ResidentContactViewModel = {
+  stableId: string;
+  savedContactId: string | null;
+  name: string;
+  phone: string | null;
+  relationshipLabel: string | null;
+  isFavorite: boolean;
+  invitationCount: number;
+  lastInvitedAt: string | null;
+  origin: "history" | "saved" | "both";
 };
 
 export type MembershipRecord = {
@@ -219,6 +232,7 @@ export type InvitationRecord = {
   unit_id: string | null;
   visitor_name: string | null;
   visitor_phone: string | null;
+  resident_contact_id: string | null;
   group_id: string | null;
   access_type: InvitationAccessType;
   visit_date: string;

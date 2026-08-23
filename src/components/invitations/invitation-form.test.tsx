@@ -1,6 +1,6 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { InvitationForm } from "@/components/invitations/invitation-form";
 import type { ResidentRecord } from "@/lib/domain/types";
@@ -57,7 +57,52 @@ describe("InvitationForm", () => {
     expect(payload).toEqual(expect.objectContaining({ residentContactId: contactId, visitorName: "María Pérez", visitorPhone: "04125551234" }));
   }, 20_000);
 
+  it("selecciona un contacto guardado sin avanzar ni mostrar Guardar contacto", async () => {
+    const saved = { stableId: "saved:33333333-3333-4333-8333-333333333333", savedContactId: "33333333-3333-4333-8333-333333333333", name: "María José Pérez", phone: "04125551234", relationshipLabel: "Hermana", isFavorite: true, invitationCount: 4, lastInvitedAt: null, origin: "both" };
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ items: [saved] }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+    render(<InvitationForm residentMode residents={[resident]} />);
+
+    await user.type(screen.getByLabelText(/Quién va a visitarte/), "maria");
+    await user.click(await screen.findByRole("option", { name: /María José Pérez/ }));
+    expect(screen.getByLabelText(/Quién va a visitarte/)).toHaveValue("María José Pérez");
+    expect(screen.getByLabelText("Telefono o WhatsApp opcional")).toHaveValue("04125551234");
+    expect(screen.queryByText("Guardar para invitar más rápido la próxima vez")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Continuar" })).toBeInTheDocument();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  }, 20_000);
+
+  it("impide seleccionar dos veces el mismo contacto en un grupo", async () => {
+    const saved = { stableId: "saved:33333333-3333-4333-8333-333333333333", savedContactId: "33333333-3333-4333-8333-333333333333", name: "María José Pérez", phone: null, relationshipLabel: null, isFavorite: false, invitationCount: 1, lastInvitedAt: null, origin: "saved" };
+    vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify({ items: [saved] }), { status: 200, headers: { "Content-Type": "application/json" } }))));
+    const user = userEvent.setup();
+    render(<InvitationForm residentMode residents={[resident]} />);
+
+    await user.type(screen.getByLabelText(/Quién va a visitarte/), "Maria");
+    await user.click(await screen.findByRole("option", { name: /María José Pérez/ }));
+    await user.click(screen.getByRole("button", { name: "Agregar otra persona" }));
+    await user.type(screen.getByLabelText(/Quién va a visitarte/), "Maria");
+    await user.click(await screen.findByRole("option", { name: /María José Pérez/ }));
+    expect(screen.getByText("Este contacto ya está incluido")).toBeInTheDocument();
+    expect(screen.getAllByText("María José Pérez")).toHaveLength(2);
+  }, 20_000);
+
+  it("no abre ni consulta sugerencias por un nombre prellenado desde voz", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    render(<InvitationForm defaultVisitorName="Nombre detectado por voz" defaultVisitorPhone="04125551234" residentMode residents={[resident]} />);
+    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 350)); });
+    expect(screen.getByLabelText(/Quién va a visitarte/)).toHaveValue("Nombre detectado por voz");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
   it("solo crea al confirmar despues de elegir explicitamente la credencial", async () => {
+    const reactErrors: unknown[][] = [];
+    vi.spyOn(console, "error").mockImplementation((...args) => { reactErrors.push(args); });
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({ ok: true, invitationId: "invitation-1", redirectTo: "/app/invitations/invitation-1" }),
@@ -98,6 +143,7 @@ describe("InvitationForm", () => {
     );
     expect(navigation.push).toHaveBeenCalledWith("/app/invitations/invitation-1");
     expect(navigation.refresh).toHaveBeenCalledOnce();
+    expect(reactErrors.flat().join(" ")).not.toContain("uncontrolled input to be controlled");
   }, 20_000);
 
   it("bloquea un segundo envio mientras la solicitud esta pendiente", async () => {
@@ -176,7 +222,10 @@ describe("InvitationForm", () => {
     await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
     expect(fetchMock.mock.calls[0]?.[0]).toBe("/api/invitation-groups");
     const payload=JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body));
-    expect(payload.visitors).toEqual([{fullName:"Carlos Rojas",phone:"+58 111"},{fullName:"Luisa Rojas",phone:""}]);
+    expect(payload.visitors).toEqual([
+      { fullName: "Carlos Rojas", phone: "+58 111", residentContactId: null, contactStableId: null, contactOrigin: null },
+      { fullName: "Luisa Rojas", phone: "", residentContactId: null, contactStableId: null, contactOrigin: null },
+    ]);
     expect(payload.idempotencyKey).toMatch(/^[0-9a-f-]{36}$/i);
   }, 20_000);
 

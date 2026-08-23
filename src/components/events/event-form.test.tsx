@@ -92,6 +92,29 @@ describe("EventForm", () => {
     expect(screen.getByText(/2 personas transferidas/)).toBeInTheDocument();
     expect(sessionStorage.getItem(EVENT_DRAFT_TRANSFER_KEY)).toBeNull();
   }, 20_000);
+
+  it("reutiliza contactos en cada invitado, completa teléfono y evita duplicados", async () => {
+    const saved = { stableId: "saved:33333333-3333-4333-8333-333333333333", savedContactId: "33333333-3333-4333-8333-333333333333", name: "María José Pérez", phone: "04125551234", relationshipLabel: "Prima", isFavorite: true, invitationCount: 5, lastInvitedAt: null, origin: "both" };
+    const fetchMock = vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify({ items: [saved] }), { status: 200, headers: { "Content-Type": "application/json" } })));
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+    render(<EventForm contactAutocomplete residents={[resident]} />);
+
+    await user.type(screen.getByLabelText("Nombre"), "Reunión familiar");
+    await user.click(screen.getByRole("button", { name: "Continuar" }));
+    await user.click(screen.getByRole("button", { name: "Continuar" }));
+    await user.type(screen.getByLabelText("Nombre completo"), "maria");
+    await user.click(await screen.findByRole("option", { name: /María José Pérez/ }));
+    expect(screen.getByLabelText("Nombre completo")).toHaveValue("María José Pérez");
+    expect(screen.getByLabelText("Teléfono (opcional)")).toHaveValue("04125551234");
+    expect(screen.getByRole("heading", { name: "Lista de invitados" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Agregar a la lista" }));
+    expect(screen.getByRole("checkbox", { name: "Guardar los invitados nuevos en mis contactos" })).not.toBeChecked();
+
+    await user.type(screen.getByLabelText("Nombre completo"), "maria");
+    await user.click(await screen.findByRole("option", { name: /María José Pérez/ }));
+    expect(screen.getByText("Este contacto ya está incluido")).toBeInTheDocument();
+  }, 25_000);
 });
 
 async function reachConfirmationAfterName(user: ReturnType<typeof userEvent.setup>) {

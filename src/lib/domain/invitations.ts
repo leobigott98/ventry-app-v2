@@ -17,7 +17,7 @@ import {
 } from "@/lib/domain/invitation-utils";
 import { getAppLocalNowParts } from "@/lib/formatting";
 import { normalizePagination } from "@/lib/pagination";
-import { getResidentContacts } from "@/lib/domain/contacts";
+import { getResidentContactViews } from "@/lib/domain/contacts";
 
 export {
   classifyInvitations,
@@ -191,7 +191,7 @@ export async function getResidentDashboardSnapshot(communityId: string, resident
       .order("visit_date", { ascending: true })
       .order("window_start", { ascending: true })
       .limit(5),
-    getResidentContacts(communityId, residentId).then((items) => items.slice(0, 3)),
+    getResidentContactViews(communityId, residentId, 1, 3).then((result) => result.items),
   ]);
   if (activeResult.error) throw new Error(activeResult.error.message);
   if (currentResult.error) throw new Error(currentResult.error.message);

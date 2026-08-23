@@ -42,4 +42,10 @@ describe("createEventSchema", () => {
     expect(createEventSchema.safeParse({ ...valid, allowsCompanions: false, maxCompanions: 2 }).success).toBe(false);
     expect(createEventSchema.safeParse({ ...valid, allowsCompanions: false, maxCompanions: 0, guests: [{ ...valid.guests[0], allowsCompanions: true, maxCompanions: 6 }] }).success).toBe(false);
   });
+
+  it("permite homónimos nuevos y evita contactos o teléfonos duplicados", () => {
+    expect(createEventSchema.safeParse({ ...valid, guests: [{ fullName: "José", phone: null }, { fullName: "José", phone: null }] }).success).toBe(true);
+    expect(createEventSchema.safeParse({ ...valid, guests: [{ fullName: "Uno", phone: "04125551234" }, { fullName: "Dos", phone: "+58 412 555 1234" }] }).success).toBe(false);
+    expect(createEventSchema.safeParse({ ...valid, guests: [{ fullName: "Uno", phone: null, contactStableId: "history:one" }, { fullName: "Dos", phone: null, contactStableId: "history:one" }] }).success).toBe(false);
+  });
 });
