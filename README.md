@@ -2,6 +2,8 @@
 
 Base inicial para una plataforma moderna de control de acceso residencial, pensada como sistema operativo de porteria y no como software administrativo generico.
 
+La compatibilidad y las garantías de privacidad de la importación progresiva de contactos están documentadas en [docs/resident-contact-import.md](docs/resident-contact-import.md).
+
 ## Stack
 
 - Next.js App Router

@@ -3,7 +3,7 @@ import { ChevronRight, Clock3, Mic, PhoneCall, UserPlus } from "lucide-react";
 
 import { ContactAvatar } from "@/components/resident/frequent-contact";
 import { ResidentHomeHeader } from "@/components/resident/resident-header";
-import type { FrequentVisitorContact } from "@/lib/domain/invitations";
+import type { ResidentContactRecord } from "@/lib/domain/types";
 
 type ResidentNotification = {
   id: string;
@@ -23,7 +23,7 @@ export function ResidentDashboard({
 }: {
   activeCount: number;
   communityName: string;
-  contacts: FrequentVisitorContact[];
+  contacts: ResidentContactRecord[];
   firstName: string;
   greeting: string;
   notifications: ResidentNotification[];
@@ -100,13 +100,13 @@ export function ResidentDashboard({
               {contacts.map((contact, index) => (
                 <Link
                   className="flex w-16 shrink-0 flex-col items-center text-center"
-                  href={`/app/invitations/new?visitorName=${encodeURIComponent(contact.name)}`}
-                  key={contact.name}
+                  href={`/app/invitations/new?contactId=${encodeURIComponent(contact.id)}`}
+                  key={contact.id}
                 >
                   <ContactAvatar contact={contact} index={index} />
                   <span className="mt-2 w-full truncate text-xs font-semibold">{contact.name}</span>
                   <span className="mt-1 text-[10px] text-muted-foreground">
-                    {contact.invitationCount} {contact.invitationCount === 1 ? "visita" : "visitas"}
+                    {contact.invitation_count} {contact.invitation_count === 1 ? "visita" : "visitas"}
                   </span>
                 </Link>
               ))}
@@ -116,7 +116,7 @@ export function ResidentDashboard({
             <div className="mt-2 flex items-center gap-4 py-2">
               <AddContact compact />
               <p className="max-w-xs text-sm leading-5 text-muted-foreground">
-                Tus visitantes habituales aparecerán aquí según tu historial.
+                Guarda contactos privados para reutilizarlos al crear invitaciones.
               </p>
             </div>
           )}
@@ -131,7 +131,7 @@ function AddContact({ compact = false }: { compact?: boolean }) {
     <Link className="flex w-16 shrink-0 flex-col items-center text-center" href="/app/contacts">
       <span className="flex h-14 w-14 items-center justify-center rounded-full bg-muted text-2xl font-semibold text-muted-foreground">+</span>
       <span className="mt-2 text-xs font-semibold">Agregar</span>
-      {!compact ? <span className="mt-1 text-[10px] text-muted-foreground">Próximamente</span> : null}
+      {!compact ? <span className="mt-1 text-[10px] text-muted-foreground">Nuevo</span> : null}
     </Link>
   );
 }

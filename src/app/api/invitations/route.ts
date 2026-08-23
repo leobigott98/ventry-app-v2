@@ -34,6 +34,8 @@ export async function POST(request: NextRequest) {
     const invitation = await createInvitation(auth.context.community.id, {
       ...parsed.data,
       residentId,
+      residentContactId:
+        auth.sessionUser.role === "resident" ? parsed.data.residentContactId : null,
     });
     return NextResponse.json({
       ok: true,

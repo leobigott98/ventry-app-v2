@@ -37,6 +37,26 @@ describe("InvitationForm", () => {
     sessionStorage.clear();
   });
 
+  it("prellena nombre y teléfono de un contacto y conserva su id al crear", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ redirectTo: "/app/invitations/invitation-1" }), { status: 200, headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+    const contactId = "33333333-3333-4333-8333-333333333333";
+
+    render(<InvitationForm defaultResidentContactId={contactId} defaultVisitorName="María Pérez" defaultVisitorPhone="04125551234" residents={[resident]} />);
+
+    expect(screen.getByLabelText(/Quién va a visitarte/)).toHaveValue("María Pérez");
+    expect(screen.getByLabelText("Telefono o WhatsApp opcional")).toHaveValue("04125551234");
+    await user.click(screen.getByRole("button", { name: /Continuar/ }));
+    await user.click(screen.getByRole("button", { name: /Continuar/ }));
+    await user.click(screen.getByRole("radio", { name: "PIN" }));
+    await user.click(screen.getByRole("button", { name: "Crear invitación" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    const payload = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body));
+    expect(payload).toEqual(expect.objectContaining({ residentContactId: contactId, visitorName: "María Pérez", visitorPhone: "04125551234" }));
+  }, 20_000);
+
   it("solo crea al confirmar despues de elegir explicitamente la credencial", async () => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(

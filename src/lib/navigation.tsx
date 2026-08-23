@@ -121,7 +121,7 @@ export const residentNavigation: AppNavItem[] = [
     href: "/app/contacts",
     label: "Contactos",
     shortLabel: "Contactos",
-    description: "Visitantes frecuentes derivados del historial.",
+    description: "Contactos privados para reutilizar en invitaciones.",
     icon: ContactRound,
     allowedRoles: ["resident"],
   },

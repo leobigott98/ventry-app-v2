@@ -58,6 +58,7 @@ function validateWindow(
 export const createInvitationSchema = z
   .object({
     residentId: z.string().uuid("Selecciona un residente."),
+    residentContactId: z.string().uuid("El contacto seleccionado no es válido.").optional().nullable(),
     visitorName: nullableOptionalText,
     visitorPhone: nullableOptionalText,
     accessType: z.enum(

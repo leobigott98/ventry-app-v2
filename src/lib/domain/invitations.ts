@@ -17,6 +17,7 @@ import {
 } from "@/lib/domain/invitation-utils";
 import { getAppLocalNowParts } from "@/lib/formatting";
 import { normalizePagination } from "@/lib/pagination";
+import { getResidentContacts } from "@/lib/domain/contacts";
 
 export {
   classifyInvitations,
@@ -58,12 +59,6 @@ export type InvitationListQuery = {
   dateTo?: string;
   page?: number;
   pageSize?: number;
-};
-
-export type FrequentVisitorContact = {
-  name: string;
-  invitationCount: number;
-  lastInvitedAt: string;
 };
 
 export type PublicInvitationRecord = Pick<
@@ -174,32 +169,6 @@ export async function getInvitationGroupById(communityId: string, groupId: strin
   return { ...raw, residents: Array.isArray(raw.residents) ? raw.residents[0] ?? null : raw.residents, units: Array.isArray(raw.units) ? raw.units[0] ?? null : raw.units, invitations } satisfies InvitationGroupDetailRecord;
 }
 
-export async function getFrequentVisitorContacts(communityId: string, residentId: string, limit = 12) {
-  const supabase = await createServerSupabaseClient();
-  const { data, error } = await supabase
-    .from("invitations")
-    .select("visitor_name, created_at")
-    .eq("community_id", communityId)
-    .eq("resident_id", residentId)
-    .not("visitor_name", "is", null)
-    .order("created_at", { ascending: false })
-    .limit(100);
-  if (error) throw new Error(error.message);
-
-  const grouped = new Map<string, FrequentVisitorContact>();
-  for (const invitation of data ?? []) {
-    const name = invitation.visitor_name?.trim();
-    if (!name) continue;
-    const key = name.toLocaleLowerCase("es-VE");
-    const current = grouped.get(key);
-    if (current) current.invitationCount += 1;
-    else grouped.set(key, { name, invitationCount: 1, lastInvitedAt: invitation.created_at });
-  }
-  return [...grouped.values()]
-    .sort((left, right) => right.invitationCount - left.invitationCount || right.lastInvitedAt.localeCompare(left.lastInvitedAt))
-    .slice(0, Math.min(Math.max(limit, 1), 20));
-}
-
 export async function getResidentDashboardSnapshot(communityId: string, residentId: string) {
   const supabase = await createServerSupabaseClient();
   const now = getAppLocalNowParts();
@@ -222,7 +191,7 @@ export async function getResidentDashboardSnapshot(communityId: string, resident
       .order("visit_date", { ascending: true })
       .order("window_start", { ascending: true })
       .limit(5),
-    getFrequentVisitorContacts(communityId, residentId, 3),
+    getResidentContacts(communityId, residentId).then((items) => items.slice(0, 3)),
   ]);
   if (activeResult.error) throw new Error(activeResult.error.message);
   if (currentResult.error) throw new Error(currentResult.error.message);

@@ -334,7 +334,19 @@ export async function createInvitation(communityId: string, input: CreateInvitat
   });
 
   if (eventError) {
+    await supabase.from("invitations").delete().eq("id", invitation.id);
     throw new Error(eventError.message);
+  }
+
+  if (input.residentContactId) {
+    const { error: contactUsageError } = await supabase.rpc(
+      "record_resident_contact_invitation",
+      { p_contact_id: input.residentContactId, p_invitation_id: invitation.id },
+    );
+    if (contactUsageError) {
+      await supabase.from("invitations").delete().eq("id", invitation.id);
+      throw new Error("No fue posible asociar la invitación con este contacto.");
+    }
   }
 
   return invitation;

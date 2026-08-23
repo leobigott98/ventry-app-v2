@@ -5,8 +5,8 @@ import ContactsPage from "@/app/(app)/app/contacts/page";
 import IntercomPage from "@/app/(app)/app/intercom/page";
 import VoiceInvitationPage from "@/app/(app)/app/invitations/voice/page";
 
-const invitationMocks = vi.hoisted(() => ({
-  getFrequentVisitorContacts: vi.fn(),
+const contactMocks = vi.hoisted(() => ({
+  getResidentContacts: vi.fn(),
 }));
 
 vi.mock("@/lib/domain/session-context", () => ({
@@ -16,17 +16,18 @@ vi.mock("@/lib/domain/session-context", () => ({
   })),
 }));
 
-vi.mock("@/lib/domain/invitations", () => {
-  return { getFrequentVisitorContacts: invitationMocks.getFrequentVisitorContacts };
+vi.mock("@/lib/domain/contacts", () => {
+  return { getResidentContacts: contactMocks.getResidentContacts };
 });
 
 describe("estados honestos de módulos residentes", () => {
-  beforeEach(() => invitationMocks.getFrequentVisitorContacts.mockResolvedValue([]));
+  beforeEach(() => contactMocks.getResidentContacts.mockResolvedValue([]));
 
-  it("no inventa contactos cuando el historial está vacío", async () => {
-    render(await ContactsPage({ searchParams: Promise.resolve({}) }));
-    expect(screen.getByText("Aún no hay contactos frecuentes")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /Importar contactos.*Próximamente/ })).toBeDisabled();
+  it("ofrece creación manual y vCard sin inventar contactos", async () => {
+    render(await ContactsPage());
+    expect(screen.getByText("Aún no tienes contactos")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Agregar manualmente/ })).toBeEnabled();
+    expect(screen.getByRole("button", { name: /Importar .vcf/ })).toBeEnabled();
   });
 
   it("mantiene voz deshabilitada sin simular grabación", async () => {

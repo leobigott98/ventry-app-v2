@@ -1,55 +1,7 @@
 import Link from "next/link";
-import { ArrowLeft, Mic, PhoneOff, Search, Shield, ShieldCheck } from "lucide-react";
+import { ArrowLeft, Mic, PhoneOff, Shield, ShieldCheck } from "lucide-react";
 
-import { FrequentContactRow } from "@/components/resident/frequent-contact";
 import { ResidentPageHeader } from "@/components/resident/resident-header";
-import type { FrequentVisitorContact } from "@/lib/domain/invitations";
-
-export function ResidentContacts({ contacts, query = "" }: { contacts: FrequentVisitorContact[]; query?: string }) {
-  const normalizedQuery = query.trim().toLocaleLowerCase("es-VE");
-  const filtered = normalizedQuery
-    ? contacts.filter((contact) => contact.name.toLocaleLowerCase("es-VE").includes(normalizedQuery))
-    : contacts;
-
-  return (
-    <section className="min-h-[100dvh]">
-      <ResidentPageHeader title="Contactos frecuentes" />
-      <div className="px-4 py-4 sm:px-6">
-        <form aria-label="Buscar contactos frecuentes" className="relative" role="search">
-          <Search aria-hidden="true" className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
-          <input
-            aria-label="Buscar contactos"
-            className="h-14 w-full rounded-2xl border-0 bg-muted pl-12 pr-4 text-base outline-none ring-primary/25 focus:ring-2"
-            defaultValue={query}
-            name="q"
-            placeholder="Buscar por nombre"
-          />
-        </form>
-        <button
-          className="mt-4 min-h-14 w-full rounded-2xl border border-primary/20 bg-secondary px-4 text-sm font-bold text-primary opacity-70"
-          disabled
-          type="button"
-        >
-          Importar contactos del teléfono · Próximamente
-        </button>
-        <div className="mt-5 rounded-2xl bg-surface px-4 shadow-[0_6px_18px_rgba(12,18,33,0.04)]">
-          {filtered.length > 0 ? filtered.map((contact, index) => (
-            <FrequentContactRow contact={contact} index={index} key={contact.name} />
-          )) : (
-            <div className="py-12 text-center">
-              <p className="font-bold">{normalizedQuery ? "Sin coincidencias" : "Aún no hay contactos frecuentes"}</p>
-              <p className="mx-auto mt-2 max-w-xs text-sm leading-5 text-muted-foreground">
-                {normalizedQuery
-                  ? "Prueba con otro nombre."
-                  : "Esta lista se crea únicamente a partir de los nombres reales de tus invitaciones anteriores."}
-              </p>
-            </div>
-          )}
-        </div>
-      </div>
-    </section>
-  );
-}
 
 export function VoiceUnavailable() {
   return (

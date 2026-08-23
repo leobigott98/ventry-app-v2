@@ -37,7 +37,7 @@ function getDefaultWindow(timeZone: string) {
 
 function ErrorText({ message }: { message?: string }) { return message ? <p className="text-sm font-medium text-danger" role="alert">{message}</p> : null; }
 
-export function InvitationForm({ defaultVisitorName = "", residentMode = false, residents, timeZone = APP_TIME_ZONE }: { defaultVisitorName?: string; residentMode?: boolean; residents: ResidentOption[]; timeZone?: string }) {
+export function InvitationForm({ defaultResidentContactId, defaultVisitorName = "", defaultVisitorPhone = "", residentMode = false, residents, timeZone = APP_TIME_ZONE }: { defaultResidentContactId?: string; defaultVisitorName?: string; defaultVisitorPhone?: string; residentMode?: boolean; residents: ResidentOption[]; timeZone?: string }) {
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [serverError, setServerError] = useState<string | null>(null);
@@ -46,12 +46,12 @@ export function InvitationForm({ defaultVisitorName = "", residentMode = false, 
   const creationKeyRef = useRef<string | null>(null);
   const [visitors, setVisitors] = useState<Array<{ fullName: string; phone: string }>>([]);
   const [draftName, setDraftName] = useState(defaultVisitorName);
-  const [draftPhone, setDraftPhone] = useState("");
+  const [draftPhone, setDraftPhone] = useState(defaultVisitorPhone);
   const [visitorError, setVisitorError] = useState<string | null>(null);
   const defaults = useMemo(() => getDefaultWindow(timeZone), [timeZone]);
   const { register, watch, trigger, handleSubmit, setValue, formState: { errors } } = useForm<CreateInvitationInput>({
     resolver: zodResolver(createInvitationSchema), mode: "onTouched",
-    defaultValues: { residentId: residents[0]?.id ?? "", visitorName: defaultVisitorName, visitorPhone: "", accessType: "visitor", visitDate: defaults.date, windowStart: defaults.start, windowEndDate: defaults.endDate, windowEnd: defaults.end, noTimeLimit: false, notes: "" },
+    defaultValues: { residentId: residents[0]?.id ?? "", residentContactId: defaultResidentContactId ?? null, visitorName: defaultVisitorName, visitorPhone: defaultVisitorPhone, accessType: "visitor", visitDate: defaults.date, windowStart: defaults.start, windowEndDate: defaults.endDate, windowEnd: defaults.end, noTimeLimit: false, notes: "" },
   });
   const values = watch();
   const singleResident = residents.length === 1;
@@ -123,7 +123,7 @@ export function InvitationForm({ defaultVisitorName = "", residentMode = false, 
       const endpoint = isGroup ? "/api/invitation-groups" : "/api/invitations";
       const idempotencyKey = creationKeyRef.current ?? crypto.randomUUID();
       creationKeyRef.current = idempotencyKey;
-      const body = isGroup ? { ...formValues, visitorName: undefined, visitorPhone: undefined, visitors, idempotencyKey } : { ...formValues, visitorName: visitors[0]?.fullName, visitorPhone: visitors[0]?.phone || null };
+      const body = isGroup ? { ...formValues, residentContactId: undefined, visitorName: undefined, visitorPhone: undefined, visitors, idempotencyKey } : { ...formValues, visitorName: visitors[0]?.fullName, visitorPhone: visitors[0]?.phone || null };
       const response = await fetch(endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const payload = (await response.json()) as { error?: string; redirectTo?: string };
       if (!response.ok) { setServerError(payload.error ?? "No fue posible crear la invitación."); return; }

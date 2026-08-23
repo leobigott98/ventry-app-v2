@@ -178,6 +178,24 @@ export type ResidentRecord = {
   updated_at: string;
 };
 
+export type ResidentContactSource = "manual" | "contact_picker" | "vcard";
+
+export type ResidentContactRecord = {
+  id: string;
+  community_id: string;
+  resident_id: string;
+  name: string;
+  phone: string;
+  normalized_phone: string;
+  relationship_label: string | null;
+  is_favorite: boolean;
+  source: ResidentContactSource;
+  invitation_count: number;
+  last_invited_at: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
 export type MembershipRecord = {
   id: string;
   community_id: string;

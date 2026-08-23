@@ -16,6 +16,7 @@ vi.mock("@/lib/domain/mutations", () => ({
 
 const residentId = "11111111-1111-4111-8111-111111111111";
 const otherResidentId = "22222222-2222-4222-8222-222222222222";
+const residentContactId = "33333333-3333-4333-8333-333333333333";
 
 const sessionUser = {
   email: "residente@example.com",
@@ -70,6 +71,7 @@ function invitationRequest(bodyResidentId = otherResidentId) {
     body: JSON.stringify({
       communityId: "community-from-client",
       residentId: bodyResidentId,
+      residentContactId,
       visitorName: "Carlos Rojas",
       accessType: "visitor",
       credentialType: "pin",
@@ -104,7 +106,7 @@ describe("POST /api/invitations", () => {
     );
     expect(createInvitation).toHaveBeenCalledWith(
       "community-1",
-      expect.objectContaining({ residentId }),
+      expect.objectContaining({ residentId, residentContactId }),
     );
     expect(createInvitation).not.toHaveBeenCalledWith(
       "community-1",
