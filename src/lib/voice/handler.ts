@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { requireApiCommunityContext } from "@/lib/auth/api";
 import { searchResidentContactViews } from "@/lib/domain/contacts";
-import { MAX_VOICE_BYTES, validateVoiceAudio } from "@/lib/voice/audio";
+import { validateVoiceAudio } from "@/lib/voice/audio";
+import { MAX_VOICE_BYTES } from "@/lib/voice/audio-limits";
 import { voiceErrorResponse, VoiceError, voiceSafeMessages } from "@/lib/voice/errors";
 import { OpenAIInvitationExtractionProvider, OpenAITranscriptionProvider, voiceProviderConfigured } from "@/lib/voice/openai-providers";
 import { interpretVoiceInvitation, transcribeAndInterpret } from "@/lib/voice/orchestrator";
@@ -48,7 +49,7 @@ export function createVoiceTranscriptionHandler(overrides: Partial<VoiceHandlerD
       if (!transcript) {
         if (!audioValue || typeof audioValue === "string" || typeof audioValue.arrayBuffer !== "function" || typeof audioValue.name !== "string") throw new VoiceError("AUDIO_EMPTY", 400, voiceSafeMessages.AUDIO_EMPTY);
         if (typeof audioValue.size === "number" && audioValue.size > MAX_VOICE_BYTES) throw new VoiceError("AUDIO_TOO_LARGE", 413, voiceSafeMessages.AUDIO_TOO_LARGE);
-        const bytes = new Uint8Array(await audioValue.arrayBuffer()); const validated = validateVoiceAudio({ bytes, fileName: audioValue.name });
+        const bytes = new Uint8Array(await audioValue.arrayBuffer()); const validated = await validateVoiceAudio({ bytes, fileName: audioValue.name });
         audio = { bytes, fileName: `${crypto.randomUUID()}.${validated.extension}`, mimeType: validated.mimeType };
       }
       requestId = crypto.randomUUID(); await dependencies.acquireSlot(auth.context.community.id, requestId);

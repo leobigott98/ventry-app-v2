@@ -13,12 +13,13 @@ import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { invitationAccessTypeOptions } from "@/lib/domain/types";
 import { createInvitationSchema } from "@/lib/schemas/invitations";
-import { MAX_VOICE_BYTES, MAX_VOICE_SECONDS } from "@/lib/voice/audio";
+import { MAX_VOICE_BYTES, MAX_VOICE_SECONDS } from "@/lib/voice/audio-limits";
 import { initialVoiceMachineState, voiceMachineReducer } from "@/lib/voice/machine";
 import { VOICE_MANUAL_FALLBACK_KEY } from "@/lib/voice/manual-fallback";
-import { voiceTranscriptionResponseSchema, type VoiceInvitationDraft, type VoiceTranscriptionResponse } from "@/lib/voice/types";
+import { voiceTranscriptionResponseSchema, type VoiceInvitationDraft } from "@/lib/voice/types";
 
 const mimeCandidates = ["audio/webm;codecs=opus", "audio/mp4;codecs=mp4a.40.2", "audio/mp4", "audio/webm"];
+const VOICE_AUDIO_BITS_PER_SECOND = 64_000;
 const extensionForMime = (mime: string) => mime.includes("mp4") ? "mp4" : mime.includes("mpeg") ? "mp3" : mime.includes("wav") ? "wav" : "webm";
 const emptyDraft: VoiceInvitationDraft = { visitorName: null, contactId: null, visitDate: null, windowStart: null, windowEndDate: null, windowEnd: null, accessType: "visitor", noTimeLimit: false, notes: null };
 const guardedPhases = ["recording", "uploading", "transcribing", "needs-clarification", "confirm", "creating"];
@@ -32,6 +33,20 @@ function getMicrophoneMessage(error: unknown) {
   if (error.name === "NotFoundError") return "No encontramos un micrófono disponible en este dispositivo.";
   if (error.name === "NotReadableError" || error.name === "AbortError") return "El micrófono está ocupado por otra aplicación. Ciérrala e intenta de nuevo.";
   return "No pudimos usar el micrófono en este navegador.";
+}
+
+function createMediaRecorder(stream: MediaStream, mimeType: string) {
+  const format = mimeType ? { mimeType } : {};
+  try {
+    return new MediaRecorder(stream, { ...format, audioBitsPerSecond: VOICE_AUDIO_BITS_PER_SECOND });
+  } catch {
+    return new MediaRecorder(stream, format);
+  }
+}
+
+async function readJsonResponse(response: Response): Promise<unknown | null> {
+  try { return await response.json() as unknown; }
+  catch { return null; }
 }
 
 export function VoiceInvitation({ providerAvailable, residentId }: { providerAvailable: boolean; residentId: string }) {
@@ -100,9 +115,16 @@ export function VoiceInvitation({ providerAvailable, residentId }: { providerAva
     try {
       dispatch({ type: "UPLOADED" });
       const response = await fetch("/api/invitations/voice/transcribe", { method: "POST", body, signal: controller.signal });
-      const payload = await response.json() as { error?: string; code?: string } | VoiceTranscriptionResponse;
+      const payload = await readJsonResponse(response);
       if (generation !== requestGenerationRef.current || controller.signal.aborted) return;
-      if (!response.ok) { const error = payload as { error?: string; code?: string }; dispatch({ type: "ERROR", code: error.code, message: error.error ?? "No pudimos procesar la invitación.", retryable: !["VOICE_PROVIDER_NOT_CONFIGURED", "TRANSCRIPTION_RATE_LIMITED"].includes(error.code ?? "") }); return; }
+      if (!response.ok) {
+        const error = payload && typeof payload === "object" ? payload as { error?: unknown; code?: unknown } : null;
+        const code = typeof error?.code === "string" ? error.code : undefined;
+        const safeMessage = typeof error?.error === "string" ? error.error : response.status === 413
+          ? "La plataforma rechazó la grabación antes de procesarla. Intenta una grabación más corta o completa la invitación manualmente."
+          : "No pudimos procesar la invitación. Intenta de nuevo o complétala manualmente.";
+        dispatch({ type: "ERROR", code, message: safeMessage, retryable: !["VOICE_PROVIDER_NOT_CONFIGURED", "TRANSCRIPTION_RATE_LIMITED"].includes(code ?? "") }); return;
+      }
       const parsed = voiceTranscriptionResponseSchema.safeParse(payload);
       if (!parsed.success) { dispatch({ type: "ERROR", code: "EXTRACTION_INVALID", message: "No pudimos organizar los datos. Puedes completarlos manualmente." }); return; }
       setDraft(parsed.data.draft); setTranscript(parsed.data.transcript); setManualEdits(false); setResolvedIssueKeys(new Set()); dispatch({ type: "RESULT", result: parsed.data });
@@ -128,7 +150,7 @@ export function VoiceInvitation({ providerAvailable, residentId }: { providerAva
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true }); streamRef.current = stream;
       const mimeType = mimeCandidates.find((candidate) => MediaRecorder.isTypeSupported(candidate)) ?? "";
-      const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+      const recorder = createMediaRecorder(stream, mimeType);
       mediaRecorderRef.current = recorder; chunksRef.current = []; setElapsed(0);
       recorder.ondataavailable = (event) => { if (event.data.size) chunksRef.current.push(event.data); };
       recorder.onerror = () => { cleanupMedia(); busyRef.current = false; chunksRef.current = []; dispatch({ type: "ERROR", message: "La grabación se interrumpió. Puedes intentar de nuevo." }); };

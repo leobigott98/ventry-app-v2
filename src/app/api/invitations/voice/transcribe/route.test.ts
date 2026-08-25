@@ -1,10 +1,14 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { Buffer } from "node:buffer";
+
 import { NextRequest, NextResponse } from "next/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createVoiceTranscriptionHandler } from "@/lib/voice/handler";
 import { requireApiCommunityContext } from "@/lib/auth/api";
 import { searchResidentContactViews } from "@/lib/domain/contacts";
-import { MAX_VOICE_BYTES } from "@/lib/voice/audio";
+import { MAX_VOICE_BYTES } from "@/lib/voice/audio-limits";
 import { VoiceError, voiceSafeMessages } from "@/lib/voice/errors";
 import { FakeInvitationExtractionProvider, FakeTranscriptionProvider } from "@/test/voice-fake-providers";
 
@@ -13,6 +17,13 @@ vi.mock("@/lib/domain/contacts", () => ({ searchResidentContactViews: vi.fn() })
 
 const extraction = { draft: { visitorName: "Pedro Pérez", contactId: null, visitDate: "2026-08-24", windowStart: "14:00", windowEndDate: "2026-08-24", windowEnd: "16:00", accessType: "visitor" as const, noTimeLimit: false, notes: null }, ambiguities: [] };
 const context = { sessionUser: { role: "resident", residentId: "11111111-1111-4111-8111-111111111111" }, context: { community: { id: "22222222-2222-4222-8222-222222222222", time_zone: "America/Caracas" } } } as never;
+const fixture = (name: string) => new Uint8Array(readFileSync(path.join(process.cwd(), "src", "test", "fixtures", "voice", name)));
+
+function chromiumWebm(long = false) {
+  const bytes = fixture("chromium-mediarecorder-8s.webm");
+  if (long) new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).setInt16(18_971, 32_700, false);
+  return bytes;
+}
 
 function wavFile() {
   const bytes = new Uint8Array(8044); const view = new DataView(bytes.buffer); const encoder = new TextEncoder();
@@ -22,6 +33,18 @@ function wavFile() {
 function requestWithAudio(file: { name: string; size?: number; arrayBuffer: () => Promise<ArrayBuffer> } = wavFile()) {
   const body = { get: (key: string) => key === "audio" ? file : null } as unknown as FormData;
   return { formData: vi.fn().mockResolvedValue(body), signal: new AbortController().signal } as unknown as NextRequest;
+}
+
+function requestWithRealFormData(bytes: Uint8Array, name: string, type: string) {
+  const boundary = `----ventry-${crypto.randomUUID()}`;
+  const prefix = `--${boundary}\r\nContent-Disposition: form-data; name="audio"; filename="${name}"\r\nContent-Type: ${type}\r\n\r\n`;
+  const suffix = `\r\n--${boundary}--\r\n`;
+  const body = Buffer.concat([Buffer.from(prefix), Buffer.from(bytes), Buffer.from(suffix)]);
+  return new NextRequest("http://localhost/api/invitations/voice/transcribe", {
+    method: "POST",
+    headers: { "Content-Type": `multipart/form-data; boundary=${boundary}` },
+    body,
+  });
 }
 
 describe("POST /api/invitations/voice/transcribe", () => {
@@ -45,6 +68,48 @@ describe("POST /api/invitations/voice/transcribe", () => {
     expect(response.status).toBe(200); const payload = await response.json(); expect(payload).toMatchObject({ transcript: expect.any(String), draft: { visitorName: "Pedro Pérez" }, timeZone: "America/Caracas" });
     expect(acquireSlot).toHaveBeenCalledOnce(); expect(releaseSlot).toHaveBeenCalledWith(expect.any(String), expect.any(String), "success");
     expect(searchResidentContactViews).toHaveBeenCalledWith("22222222-2222-4222-8222-222222222222", "11111111-1111-4111-8111-111111111111", "Pedro Pérez", 5);
+  });
+
+  it("acepta FormData real con WebM corto de Chromium y solo entonces llama al proveedor", async () => {
+    const bytes = chromiumWebm();
+    const transcriptionProvider = { transcribe: vi.fn().mockResolvedValue({ transcript: "Invita a Pedro mañana" }) };
+    const response = await createVoiceTranscriptionHandler({
+      providerConfigured: () => true,
+      transcriptionProvider,
+      extractionProvider: new FakeInvitationExtractionProvider(extraction),
+      acquireSlot: vi.fn(),
+      releaseSlot: vi.fn(),
+      now: () => new Date("2026-08-23T12:00:00.000Z"),
+    })(requestWithRealFormData(bytes, "grabacion.webm", "audio/webm;codecs=opus"));
+
+    expect(response.status).toBe(200);
+    expect(transcriptionProvider.transcribe).toHaveBeenCalledOnce();
+    expect(transcriptionProvider.transcribe).toHaveBeenCalledWith(expect.objectContaining({
+      bytes: expect.any(Uint8Array),
+      fileName: expect.stringMatching(/\.webm$/),
+      mimeType: "audio/webm",
+    }));
+    expect(transcriptionProvider.transcribe.mock.calls[0]?.[0].bytes).toHaveLength(bytes.length);
+  });
+
+  it("rechaza FormData real con WebM >30 s antes de proveedor y lock", async () => {
+    const transcriptionProvider = { transcribe: vi.fn() }; const acquireSlot = vi.fn();
+    const response = await createVoiceTranscriptionHandler({ providerConfigured: () => true, transcriptionProvider, acquireSlot })(
+      requestWithRealFormData(chromiumWebm(true), "grabacion.webm", "audio/webm;codecs=opus"),
+    );
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toEqual({ error: voiceSafeMessages.AUDIO_TOO_LONG, code: "AUDIO_TOO_LONG" });
+    expect(transcriptionProvider.transcribe).not.toHaveBeenCalled(); expect(acquireSlot).not.toHaveBeenCalled();
+  });
+
+  it("rechaza FormData real mayor de 3 MB antes de proveedor y lock", async () => {
+    const transcriptionProvider = { transcribe: vi.fn() }; const acquireSlot = vi.fn();
+    const response = await createVoiceTranscriptionHandler({ providerConfigured: () => true, transcriptionProvider, acquireSlot })(
+      requestWithRealFormData(new Uint8Array(MAX_VOICE_BYTES + 1), "grabacion.wav", "audio/wav"),
+    );
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toEqual({ error: voiceSafeMessages.AUDIO_TOO_LARGE, code: "AUDIO_TOO_LARGE" });
+    expect(transcriptionProvider.transcribe).not.toHaveBeenCalled(); expect(acquireSlot).not.toHaveBeenCalled();
   });
 
   it("no llama proveedores ni toma lock cuando falla la validación previa", async () => {

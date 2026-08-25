@@ -28,6 +28,12 @@ describe("voice server and persistence boundaries", () => {
     expect(client).not.toContain("OPENAI_API_KEY"); expect(client).not.toContain("OPENAI_TRANSCRIPTION_MODEL");
   });
 
+  it("mantiene el parser pesado de medios fuera del bundle cliente", () => {
+    const audio = read("src/lib/voice/audio.ts"); const client = read("src/components/invitations/voice-invitation.tsx");
+    expect(audio).toContain('import "server-only"'); expect(audio).toContain('from "mediabunny"');
+    expect(client).toContain('from "@/lib/voice/audio-limits"'); expect(client).not.toContain("@/lib/voice/audio\""); expect(client).not.toContain("mediabunny");
+  });
+
   it("implementa límite atómico por usuario/comunidad, lock expirable y metadatos mínimos", () => {
     const migration = read("supabase/migrations/202608230004_voice_transcription_limits.sql");
     expect(migration).toContain("pg_advisory_xact_lock"); expect(migration).toContain("interval '10 minutes'"); expect(migration).toContain(">= 10"); expect(migration).toContain("where status = 'active'"); expect(migration).toContain("auth.uid()"); expect(migration).toContain("enable row level security");
