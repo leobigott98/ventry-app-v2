@@ -20,6 +20,7 @@ import { EVENT_DRAFT_TRANSFER_KEY, serializeEventDraftTransfer } from "@/lib/eve
 import { APP_TIME_ZONE, formatAppDate, getTimeZoneNowParts } from "@/lib/formatting";
 import { createInvitationSchema, type CreateInvitationInput } from "@/lib/schemas/invitations";
 import { cn } from "@/lib/utils";
+import { VOICE_MANUAL_FALLBACK_KEY } from "@/lib/voice/manual-fallback";
 
 type ResidentOption = ResidentRecord & { units: Pick<UnitRecord, "identifier" | "building"> | null };
 type DraftVisitor = { fullName: string; phone: string; residentContactId?: string | null; contactStableId?: string | null; contactOrigin?: ResidentContactViewModel["origin"] | null };
@@ -61,6 +62,7 @@ export function InvitationForm({ defaultResidentContactId, defaultVisitorName = 
   const [draftContactOrigin, setDraftContactOrigin] = useState<ResidentContactViewModel["origin"] | null>(defaultResidentContactId ? "saved" : null);
   const [visitorError, setVisitorError] = useState<string | null>(null);
   const [saveNewContacts, setSaveNewContacts] = useState(false);
+  const [voiceFallbackPhrase, setVoiceFallbackPhrase] = useState<string | null>(null);
   const defaults = useMemo(() => getDefaultWindow(timeZone), [timeZone]);
   const { register, watch, trigger, handleSubmit, setValue, formState: { errors } } = useForm<CreateInvitationInput>({
     resolver: zodResolver(createInvitationSchema), mode: "onTouched",
@@ -72,6 +74,11 @@ export function InvitationForm({ defaultResidentContactId, defaultVisitorName = 
   useEffect(() => {
     window.scrollTo({ behavior: "auto", top: 0 });
   }, [step]);
+
+  useEffect(() => {
+    const value = sessionStorage.getItem(VOICE_MANUAL_FALLBACK_KEY);
+    if (value) { setVoiceFallbackPhrase(value); sessionStorage.removeItem(VOICE_MANUAL_FALLBACK_KEY); }
+  }, []);
 
   function addDraftVisitor() {
     const fullName = draftName.trim();
@@ -148,6 +155,7 @@ export function InvitationForm({ defaultResidentContactId, defaultVisitorName = 
     {residentMode ? <ResidentPageHeader backHref="/app/invitations" progress={{ current: step, total: 3 }} title="Nueva invitación" /> : null}
     <div className={cn("mx-auto max-w-2xl px-5 pb-40 pt-7 sm:px-7", !residentMode && "px-0 pt-0 sm:px-0")}>
       {step === 1 ? <div className="space-y-7">
+        {voiceFallbackPhrase ? <div className="rounded-2xl border border-primary/15 bg-secondary p-4" role="status"><p className="text-sm font-bold text-primary">Lo que escribiste</p><p className="mt-1 text-sm italic text-muted-foreground">“{voiceFallbackPhrase}”</p><p className="mt-2 text-xs text-muted-foreground">Completa los campos usando esta frase como referencia. No se guardará como transcript.</p></div> : null}
         {!singleResident ? <div className="space-y-2"><Label htmlFor="residentId">Residente</Label><Select id="residentId" {...register("residentId")}><option value="">Selecciona un residente</option>{residents.map((resident) => <option key={resident.id} value={resident.id}>{resident.full_name}{resident.units ? ` · ${resident.units.identifier}` : ""}</option>)}</Select><ErrorText message={errors.residentId?.message} /></div> : <input type="hidden" {...register("residentId")} />}
         <div className="space-y-3"><Label className="text-lg font-bold" htmlFor="visitorDraftName">¿Quién va a visitarte?</Label>
           {visitors.length ? <div className="space-y-2" aria-label="Personas agregadas">{visitors.map((visitor, index) => <div className="flex min-h-14 items-center gap-3 rounded-2xl border border-border bg-surface px-3 py-2" key={`${visitor.fullName}-${visitor.phone}-${index}`}><div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-secondary font-bold text-primary">{visitor.fullName.charAt(0).toUpperCase()}</div><div className="min-w-0 flex-1"><p className="truncate font-semibold">{visitor.fullName}</p><p className="truncate text-xs text-muted-foreground">{visitor.phone || "Sin telefono"}</p></div><button aria-label={`Editar ${visitor.fullName}`} className="flex h-11 w-11 items-center justify-center rounded-xl text-muted-foreground hover:bg-muted" onClick={() => editVisitor(index)} type="button"><Pencil className="h-4 w-4" /></button><button aria-label={`Eliminar ${visitor.fullName}`} className="flex h-11 w-11 items-center justify-center rounded-xl text-danger hover:bg-danger/10" onClick={() => setVisitors((current) => current.filter((_, itemIndex) => itemIndex !== index))} type="button"><Trash2 className="h-4 w-4" /></button></div>)}</div> : null}

@@ -7,13 +7,24 @@ import {
 import { normalizePhoneNumber } from "@/lib/contacts/phone";
 import { nullableOptionalText } from "@/lib/schemas/community";
 
-const invitationDate = z
-  .string()
-  .regex(/^\d{4}-\d{2}-\d{2}$/, "Selecciona una fecha valida.");
+function isCalendarDate(value: string) {
+  const [year, month, day] = value.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day;
+}
 
-const invitationTime = z
+export const invitationDateSchema = z
   .string()
-  .regex(/^\d{2}:\d{2}$/, "Selecciona una hora valida.");
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "Selecciona una fecha valida.")
+  .refine(isCalendarDate, "Selecciona una fecha válida.");
+
+export const invitationTimeSchema = z
+  .string()
+  .regex(/^\d{2}:\d{2}$/, "Selecciona una hora valida.")
+  .refine((value) => {
+    const [hour, minute] = value.split(":").map(Number);
+    return hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59;
+  }, "Selecciona una hora válida.");
 
 export const invitationVisitorSchema = z.object({
   fullName: z.string().trim().min(2, "Ingresa el nombre del visitante.").max(120),
@@ -73,10 +84,10 @@ export const createInvitationSchema = z
     credentialType: z.enum(
       credentialTypeOptions.map((option) => option.value) as [string, ...string[]],
     ),
-    visitDate: invitationDate,
-    windowStart: invitationTime,
-    windowEndDate: invitationDate.optional(),
-    windowEnd: invitationTime.optional(),
+    visitDate: invitationDateSchema,
+    windowStart: invitationTimeSchema,
+    windowEndDate: invitationDateSchema.optional(),
+    windowEnd: invitationTimeSchema.optional(),
     noTimeLimit: z.boolean().default(false),
     notes: nullableOptionalText,
   })
@@ -102,10 +113,10 @@ export const createInvitationGroupSchema = z
     credentialType: z.enum(
       credentialTypeOptions.map((option) => option.value) as [string, ...string[]],
     ),
-    visitDate: invitationDate,
-    windowStart: invitationTime,
-    windowEndDate: invitationDate.optional(),
-    windowEnd: invitationTime.optional(),
+    visitDate: invitationDateSchema,
+    windowStart: invitationTimeSchema,
+    windowEndDate: invitationDateSchema.optional(),
+    windowEnd: invitationTimeSchema.optional(),
     noTimeLimit: z.boolean().default(false),
     notes: nullableOptionalText,
     saveNewContacts: z.boolean().optional().default(false),
@@ -128,10 +139,10 @@ export const createInvitationGroupSchema = z
 
 export const updateInvitationWindowSchema = z
   .object({
-    visitDate: invitationDate,
-    windowStart: invitationTime,
-    windowEndDate: invitationDate.optional(),
-    windowEnd: invitationTime.optional(),
+    visitDate: invitationDateSchema,
+    windowStart: invitationTimeSchema,
+    windowEndDate: invitationDateSchema.optional(),
+    windowEnd: invitationTimeSchema.optional(),
     noTimeLimit: z.boolean().default(false),
   })
   .superRefine(validateWindow);

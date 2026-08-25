@@ -4,6 +4,8 @@ Base inicial para una plataforma moderna de control de acceso residencial, pensa
 
 La compatibilidad y las garantías de privacidad de la importación progresiva de contactos están documentadas en [docs/resident-contact-import.md](docs/resident-contact-import.md).
 
+La arquitectura, activación, privacidad y límites de las invitaciones por voz están documentados en [docs/voice-invitations.md](docs/voice-invitations.md).
+
 ## Stack
 
 - Next.js App Router

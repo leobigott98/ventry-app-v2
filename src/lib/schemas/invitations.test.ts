@@ -46,6 +46,8 @@ describe("esquemas de invitaciones", () => {
     expect(
       createInvitationSchema.safeParse({ ...validInvitation, visitDate: "17/08/2026" }).success,
     ).toBe(false);
+    expect(createInvitationSchema.safeParse({ ...validInvitation, visitDate: "2026-02-30" }).success).toBe(false);
+    expect(createInvitationSchema.safeParse({ ...validInvitation, windowStart: "29:70" }).success).toBe(false);
     expect(
       createInvitationSchema.safeParse({ ...validInvitation, windowEnd: "08:59" }).success,
     ).toBe(false);

@@ -32,7 +32,8 @@ describe("estados honestos de módulos residentes", () => {
 
   it("mantiene voz deshabilitada sin simular grabación", async () => {
     render(await VoiceInvitationPage());
-    expect(screen.getByRole("button", { name: /voz/i })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: /grabar|voz/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /Completar manualmente/i })).toHaveAttribute("href", "/app/invitations/new");
     expect(screen.getByText(/No grabamos ni transcribimos/)).toBeInTheDocument();
   });
 
