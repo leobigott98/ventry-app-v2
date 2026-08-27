@@ -1,208 +1,131 @@
-import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { VoiceInvitation } from "@/components/invitations/voice-invitation";
-import { createInvitationSchema } from "@/lib/schemas/invitations";
 import { MAX_VOICE_BYTES } from "@/lib/voice/audio-limits";
+import { VOICE_ACCESS_DRAFT_TRANSFER_KEY } from "@/lib/voice/draft-transfer";
+import type { VoiceTranscriptionResponse } from "@/lib/voice/types";
 
 const router = { push: vi.fn(), refresh: vi.fn() };
 vi.mock("next/navigation", () => ({ useRouter: () => router }));
 
-const responsePayload = { transcript: "Invita a Pedro mañana a las dos de la tarde", draft: { visitorName: "Pedro", contactId: null, visitDate: "2026-08-24", windowStart: "14:00", windowEndDate: "2026-08-24", windowEnd: "16:00", accessType: "visitor", noTimeLimit: false, notes: null }, missingFields: [], ambiguities: [], contactCandidates: [], timeZone: "America/Caracas", referenceTime: "2026-08-23T12:00:00.000Z", referenceLocalDate: "2026-08-23" };
+const person = (id: string, name: string) => ({ personId: id, name, phone: null, contactId: null, contactCandidates: [], needsContactClarification: false });
+const responsePayload = { transcript: "Invita a Ana, Carlos y José mañana en la tarde", draft: { intent: "group_invitation", eventName: null, people: [person("11111111-1111-4111-8111-111111111111", "Ana"), person("22222222-2222-4222-8222-222222222222", "Carlos"), person("33333333-3333-4333-8333-333333333333", "José")], visitDate: "2026-08-24", arrivalWindowMode: "from_time", arrivalStart: "12:00", arrivalEndDate: "2026-08-24", arrivalEnd: "18:00", plannedExitDate: null, plannedExitTime: null, accessType: "visitor", notes: null, allowsCompanions: null, recommendEvent: false, tooManyPeople: false }, missingFields: [], ambiguities: [], timeZone: "America/Caracas", referenceTime: "2026-08-23T12:00:00.000Z", referenceLocalDate: "2026-08-23" };
 
 class RecorderMock {
-  static instances: RecorderMock[] = [];
-  static options: MediaRecorderOptions[] = [];
-  static rejectBitrate = false;
-  static finalData = new Uint8Array([0xfa, 0xfb]);
-  static isTypeSupported = vi.fn((type: string) => type === "audio/webm;codecs=opus");
-  state: RecordingState = "inactive";
-  mimeType = "audio/webm;codecs=opus";
-  ondataavailable: ((event: BlobEvent) => void) | null = null;
-  onstop: (() => void) | null = null;
-  onerror: (() => void) | null = null;
-  constructor(_stream: MediaStream, options: MediaRecorderOptions = {}) {
-    RecorderMock.options.push(options);
-    if (RecorderMock.rejectBitrate && options.audioBitsPerSecond) throw new DOMException("unsupported options", "NotSupportedError");
-    if (options.mimeType) this.mimeType = options.mimeType;
-    RecorderMock.instances.push(this);
-  }
+  static instances: RecorderMock[] = []; static finalData = new Uint8Array([0xfa, 0xfb]); static isTypeSupported = vi.fn(() => true);
+  state: RecordingState = "inactive"; mimeType = "audio/webm;codecs=opus"; ondataavailable: ((event: BlobEvent) => void) | null = null; onstop: (() => void) | null = null; onerror: (() => void) | null = null;
+  constructor(_stream: MediaStream, options: MediaRecorderOptions = {}) { if (options.mimeType) this.mimeType = options.mimeType; RecorderMock.instances.push(this); }
   start() { this.state = "recording"; }
   stop() { this.state = "inactive"; this.ondataavailable?.({ data: new Blob([RecorderMock.finalData], { type: this.mimeType }) } as BlobEvent); this.onstop?.(); }
 }
 
-describe("VoiceInvitation MediaRecorder", () => {
-  const track = { stop: vi.fn() };
-  const stream = { getTracks: () => [track] } as unknown as MediaStream;
+describe("VoiceInvitation", () => {
+  const track = { stop: vi.fn() }; const stream = { getTracks: () => [track] } as unknown as MediaStream;
   beforeEach(() => {
-    vi.clearAllMocks(); RecorderMock.instances = []; RecorderMock.options = []; RecorderMock.rejectBitrate = false; RecorderMock.finalData = new Uint8Array([0xfa, 0xfb]);
-    RecorderMock.isTypeSupported.mockImplementation((type: string) => type === "audio/webm;codecs=opus");
+    vi.clearAllMocks(); sessionStorage.clear(); RecorderMock.instances = []; RecorderMock.finalData = new Uint8Array([0xfa, 0xfb]);
     Object.defineProperty(window, "isSecureContext", { configurable: true, value: true });
     Object.defineProperty(navigator, "mediaDevices", { configurable: true, value: { getUserMedia: vi.fn().mockResolvedValue(stream) } });
     vi.stubGlobal("MediaRecorder", RecorderMock);
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(responsePayload), { status: 200, headers: { "Content-Type": "application/json" } })));
   });
-  afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
+  afterEach(() => vi.unstubAllGlobals());
 
-  async function begin() {
-    const user = userEvent.setup(); render(<VoiceInvitation providerAvailable residentId="11111111-1111-4111-8111-111111111111" />);
-    await user.click(screen.getByRole("button", { name: /Preparar micrófono/i }));
-    await user.click(screen.getByRole("button", { name: /Permitir micrófono y grabar/i }));
+  async function write(phrase = "Invita a Ana, Carlos y José mañana en la tarde") {
+    const user = userEvent.setup(); render(<VoiceInvitation providerAvailable residentId="resident" />);
+    await user.type(screen.getByPlaceholderText(/Invita a Ana/), phrase); await user.click(screen.getByRole("button", { name: /Interpretar texto/i }));
     return user;
   }
 
-  it("solicita permiso solo después de dos acciones claras y usa WebM/Opus", async () => {
-    const user = await begin();
-    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledWith({ audio: true }); expect(RecorderMock.isTypeSupported).toHaveBeenCalledWith("audio/webm;codecs=opus");
-    expect(RecorderMock.options[0]).toEqual({ mimeType: "audio/webm;codecs=opus", audioBitsPerSecond: 64_000 });
-    RecorderMock.instances[0]?.ondataavailable?.({ data: new Blob([new Uint8Array([0x1a, 0x45, 0xdf, 0xa3])], { type: "audio/webm;codecs=opus" }) } as BlobEvent);
-    await user.click(screen.getByRole("button", { name: /Detener/i }));
-    expect(track.stop).toHaveBeenCalled(); await screen.findByText("Esto fue lo que entendimos"); expect(fetch).toHaveBeenCalledOnce();
-    const form = (vi.mocked(fetch).mock.calls[0]?.[1] as RequestInit).body as FormData;
-    const audio = form.get("audio") as File;
-    expect(audio.name).toBe("grabacion.webm"); expect(audio.type).toBe("audio/webm;codecs=opus");
+  it("muestra un borrador grupal editable y no crea filas al interpretar", async () => {
+    await write(); expect(await screen.findByText("Invitación grupal detectada")).toBeInTheDocument();
+    expect(screen.getAllByLabelText("Nombre")).toHaveLength(3); expect(fetch).toHaveBeenCalledOnce();
+    expect(screen.getByRole("button", { name: /Continuar al formulario y confirmar/i })).toBeEnabled();
+  });
+
+  it("transfiere un borrador seguro al formulario grupal sin llamar la API de creación", async () => {
+    const user = await write(); await user.click(await screen.findByRole("button", { name: /Continuar al formulario y confirmar/i }));
+    expect(fetch).toHaveBeenCalledOnce(); expect(router.push).toHaveBeenCalledWith("/app/invitations/new?source=voice");
+    const stored = sessionStorage.getItem(VOICE_ACCESS_DRAFT_TRANSFER_KEY) ?? ""; expect(stored).toContain("group_invitation"); expect(stored).not.toMatch(/PIN|QR|token/i);
+  });
+
+  it("transfiere un evento al formulario de cuatro pasos sin habilitar acompañantes", async () => {
+    const eventPayload = structuredClone(responsePayload) as VoiceTranscriptionResponse;
+    eventPayload.draft = { ...eventPayload.draft, intent: "event", eventName: "Cumpleaños de Ana", allowsCompanions: null };
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify(eventPayload), { status: 200, headers: { "Content-Type": "application/json" } }));
+    const user = await write("Crea el cumpleaños de Ana mañana en la tarde");
+    expect(await screen.findByText("Evento detectado")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: /Continuar al formulario y confirmar/i }));
+    expect(router.push).toHaveBeenCalledWith("/app/events/new?source=voice");
+    expect(sessionStorage.getItem(VOICE_ACCESS_DRAFT_TRANSFER_KEY)).toContain('"allowsCompanions":null');
+  });
+
+  it("agrega un clip independiente sin reemplazar las personas existentes", async () => {
+    const added = structuredClone(responsePayload) as VoiceTranscriptionResponse;
+    added.draft.people = [person("66666666-6666-4666-8666-666666666666", "Luisa")];
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify(responsePayload), { status: 200, headers: { "Content-Type": "application/json" } })).mockResolvedValueOnce(new Response(JSON.stringify(added), { status: 200, headers: { "Content-Type": "application/json" } }));
+    const user = await write(); await user.click(await screen.findByRole("button", { name: /Agregar más invitados por voz/i }));
+    await user.click(screen.getByRole("button", { name: /Permitir y grabar/i })); await user.click(screen.getByRole("button", { name: /Detener/i }));
+    await waitFor(() => expect(screen.getAllByLabelText("Nombre")).toHaveLength(4));
+  });
+
+  it("solicita permiso, incluye el último chunk y libera tracks", async () => {
+    const user = userEvent.setup(); render(<VoiceInvitation providerAvailable residentId="resident" />);
+    await user.click(screen.getByRole("button", { name: /Preparar micrófono/i })); await user.click(screen.getByRole("button", { name: /Permitir y grabar/i }));
+    RecorderMock.instances[0]?.ondataavailable?.({ data: new Blob([new Uint8Array([0x1a, 0x45, 0xdf, 0xa3])], { type: "audio/webm" }) } as BlobEvent);
+    await user.click(screen.getByRole("button", { name: /Detener/i })); await screen.findByText("Invitación grupal detectada"); expect(track.stop).toHaveBeenCalled();
+    const audio = ((vi.mocked(fetch).mock.calls[0]?.[1] as RequestInit).body as FormData).get("audio") as File;
     await expect(new Response(audio).arrayBuffer()).resolves.toEqual(new Uint8Array([0x1a, 0x45, 0xdf, 0xa3, 0xfa, 0xfb]).buffer);
   });
 
-  it("usa fallback compatible si el navegador rechaza MIME más bitrate", async () => {
-    RecorderMock.rejectBitrate = true;
-    await begin();
-    expect(RecorderMock.options).toEqual([
-      { mimeType: "audio/webm;codecs=opus", audioBitsPerSecond: 64_000 },
-      { mimeType: "audio/webm;codecs=opus" },
-    ]);
-    expect(RecorderMock.instances).toHaveLength(1);
+  it("cancelar limpia chunks y no envía audio", async () => {
+    const user = userEvent.setup(); render(<VoiceInvitation providerAvailable residentId="resident" />);
+    await user.click(screen.getByRole("button", { name: /Preparar micrófono/i })); await user.click(screen.getByRole("button", { name: /Permitir y grabar/i }));
+    await user.click(screen.getByRole("button", { name: /^Cancelar$/i })); expect(track.stop).toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("conserva MIME y extensión MP4 cuando Safari selecciona AAC", async () => {
-    RecorderMock.isTypeSupported.mockImplementation((type: string) => type === "audio/mp4;codecs=mp4a.40.2");
-    const user = await begin(); await user.click(screen.getByRole("button", { name: /Detener/i })); await screen.findByText("Esto fue lo que entendimos");
-    const form = (vi.mocked(fetch).mock.calls[0]?.[1] as RequestInit).body as FormData;
-    const audio = form.get("audio") as File;
-    expect(audio.name).toBe("grabacion.mp4"); expect(audio.type).toBe("audio/mp4;codecs=mp4a.40.2");
-  });
-
-  it("explica permiso denegado sin dejar una pantalla sin salida", async () => {
-    vi.mocked(navigator.mediaDevices.getUserMedia).mockRejectedValueOnce(new DOMException("denied", "NotAllowedError"));
-    await begin(); expect(await screen.findByText(/No se concedió permiso/)).toBeInTheDocument(); expect(screen.getByRole("link", { name: /Completar manualmente/i })).toBeInTheDocument();
-  });
-
-  it("ofrece fallback cuando falta contexto seguro o MediaRecorder", async () => {
-    Object.defineProperty(window, "isSecureContext", { configurable: true, value: false });
-    await begin(); expect(await screen.findByText(/no permite grabar de forma segura/i)).toBeInTheDocument(); expect(navigator.mediaDevices.getUserMedia).not.toHaveBeenCalled();
-  });
-
-  it("cancelar detiene recorder y todos los tracks sin enviar audio", async () => {
-    const user = await begin(); await user.click(screen.getByRole("button", { name: /Cancelar grabación/i }));
-    expect(track.stop).toHaveBeenCalled(); expect(fetch).not.toHaveBeenCalled(); expect(screen.getByRole("button", { name: /Preparar micrófono/i })).toBeInTheDocument();
-  });
-
-  it("cancelar limpia chunks y una segunda grabación empieza desde cero", async () => {
-    const user = await begin();
-    RecorderMock.instances[0]?.ondataavailable?.({ data: new Blob([new Uint8Array([0xde, 0xad])], { type: "audio/webm" }) } as BlobEvent);
-    await user.click(screen.getByRole("button", { name: /Cancelar grabación/i }));
-    await user.click(screen.getByRole("button", { name: /Preparar micrófono/i }));
-    await user.click(screen.getByRole("button", { name: /Permitir micrófono y grabar/i }));
-    await user.click(screen.getByRole("button", { name: /Detener/i }));
-    await screen.findByText("Esto fue lo que entendimos");
-    const form = (vi.mocked(fetch).mock.calls[0]?.[1] as RequestInit).body as FormData;
-    const audio = form.get("audio") as File;
-    await expect(new Response(audio).arrayBuffer()).resolves.toEqual(new Uint8Array([0xfa, 0xfb]).buffer);
-  });
-
-  it("rechaza más de 3 MB en cliente sin enviar el archivo", async () => {
-    RecorderMock.finalData = new Uint8Array(MAX_VOICE_BYTES + 1);
-    const user = await begin(); await user.click(screen.getByRole("button", { name: /Detener/i }));
+  it("rechaza más de 3 MB en cliente", async () => {
+    RecorderMock.finalData = new Uint8Array(MAX_VOICE_BYTES + 1); const user = userEvent.setup(); render(<VoiceInvitation providerAvailable residentId="resident" />);
+    await user.click(screen.getByRole("button", { name: /Preparar micrófono/i })); await user.click(screen.getByRole("button", { name: /Permitir y grabar/i })); await user.click(screen.getByRole("button", { name: /Detener/i }));
     expect(await screen.findByText(/supera el tamaño permitido/i)).toBeInTheDocument(); expect(fetch).not.toHaveBeenCalled();
-    expect(screen.getByRole("link", { name: /Completar manualmente/i })).toBeInTheDocument();
   });
 
-  it("muestra el código y mensaje de un 413 JSON sin llamarlo error de conexión", async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify({ error: "La grabación supera los 30 segundos permitidos.", code: "AUDIO_TOO_LONG" }), { status: 413, headers: { "Content-Type": "application/json" } }));
-    const user = userEvent.setup(); render(<VoiceInvitation providerAvailable residentId="11111111-1111-4111-8111-111111111111" />);
-    await user.type(screen.getByLabelText("Describe la invitación"), "Invita a Pedro mañana"); await user.click(screen.getByRole("button", { name: /Escribir la invitación/i }));
-    expect(await screen.findByText("La grabación supera los 30 segundos permitidos.")).toBeInTheDocument();
-    expect(screen.queryByText(/Revisa tu conexión/)).not.toBeInTheDocument(); expect(screen.getByRole("button", { name: /Intentar de nuevo/i })).toBeInTheDocument();
+  it("un 413 no JSON se presenta como error recuperable, no como conectividad", async () => {
+    vi.mocked(fetch).mockResolvedValueOnce(new Response("Payload Too Large", { status: 413 })); await write("Invita a Ana mañana");
+    expect(await screen.findByText(/La plataforma rechazó la grabación/)).toBeInTheDocument(); expect(screen.queryByText(/Revisa tu conexión/)).not.toBeInTheDocument();
   });
 
-  it("convierte un 413 no JSON de plataforma en un error seguro y recuperable", async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(new Response("Payload Too Large", { status: 413, headers: { "Content-Type": "text/plain" } }));
-    const user = userEvent.setup(); render(<VoiceInvitation providerAvailable residentId="11111111-1111-4111-8111-111111111111" />);
-    await user.type(screen.getByLabelText("Describe la invitación"), "Invita a Pedro mañana"); await user.click(screen.getByRole("button", { name: /Escribir la invitación/i }));
-    expect(await screen.findByText(/La plataforma rechazó la grabación antes de procesarla/)).toBeInTheDocument();
-    expect(screen.queryByText(/Payload Too Large|Revisa tu conexión/)).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /Completar manualmente/i })).toBeInTheDocument(); expect(screen.getByRole("button", { name: /Intentar de nuevo/i })).toBeInTheDocument();
+  it("solo la persona con contacto ambiguo queda pendiente", async () => {
+    const ambiguous = structuredClone(responsePayload) as VoiceTranscriptionResponse; ambiguous.draft.people[1]!.needsContactClarification = true; ambiguous.draft.people[1]!.contactCandidates = [{ stableId: "saved:a", contactId: "44444444-4444-4444-8444-444444444444", name: "Carlos", relationshipLabel: "Familia", phoneLastDigits: "1234", origin: "saved", isFavorite: false }, { stableId: "saved:b", contactId: "55555555-5555-4555-8555-555555555555", name: "Carlos", relationshipLabel: "Trabajo", phoneLastDigits: "9876", origin: "saved", isFavorite: false }];
+    ambiguous.ambiguities = [{ field: `people.${ambiguous.draft.people[1]!.personId}.contactId`, personId: ambiguous.draft.people[1]!.personId, code: "CONTACT_AMBIGUOUS", question: "Encontramos dos contactos llamados Carlos." }];
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify(ambiguous), { status: 200, headers: { "Content-Type": "application/json" } })); await write();
+    expect(await screen.findByLabelText("¿Cuál Carlos?")).toBeInTheDocument(); expect(screen.getByRole("button", { name: /Continuar al formulario/i })).toBeDisabled();
   });
 
-  it("detiene realmente al alcanzar 30 segundos", async () => {
-    vi.useFakeTimers(); render(<VoiceInvitation providerAvailable residentId="11111111-1111-4111-8111-111111111111" />);
-    fireEvent.click(screen.getByRole("button", { name: /Preparar micrófono/i })); fireEvent.click(screen.getByRole("button", { name: /Permitir micrófono y grabar/i }));
-    await act(async () => { await Promise.resolve(); });
-    await act(async () => { vi.advanceTimersByTime(30_000); await Promise.resolve(); });
-    expect(RecorderMock.instances[0]?.state).toBe("inactive"); expect(track.stop).toHaveBeenCalled();
-    vi.useRealTimers(); await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+  it("bloquea personas duplicadas hasta que el residente las resuelva", async () => {
+    const duplicate = structuredClone(responsePayload) as VoiceTranscriptionResponse;
+    duplicate.draft.people[1]!.name = "Ana";
+    duplicate.ambiguities = [{ field: `people.${duplicate.draft.people[1]!.personId}`, personId: duplicate.draft.people[1]!.personId, code: "DUPLICATE_PERSON", question: "Ana parece estar repetida." }];
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify(duplicate), { status: 200, headers: { "Content-Type": "application/json" } }));
+    await write();
+    expect(await screen.findByRole("button", { name: /Continuar al formulario/i })).toBeDisabled();
   });
 
-  it("no crea al interpretar y usa una sola solicitud idempotente aunque se pulse dos veces", async () => {
-    let resolveCreation!: (response: Response) => void;
-    const creation = new Promise<Response>((resolve) => { resolveCreation = resolve; });
-    vi.mocked(fetch).mockReset().mockResolvedValueOnce(new Response(JSON.stringify(responsePayload), { status: 200, headers: { "Content-Type": "application/json" } })).mockImplementationOnce(() => creation);
-    const user = userEvent.setup(); render(<VoiceInvitation providerAvailable residentId="11111111-1111-4111-8111-111111111111" />);
-    await user.type(screen.getByLabelText("Describe la invitación"), "Invita a Pedro mañana");
-    await user.click(screen.getByRole("button", { name: /Escribir la invitación/i }));
-    await screen.findByText("Esto fue lo que entendimos");
-    expect(fetch).toHaveBeenCalledOnce(); expect(vi.mocked(fetch).mock.calls[0]?.[0]).toBe("/api/invitations/voice/transcribe");
-    const createButton = screen.getByRole("button", { name: /Crear invitación/i });
-    fireEvent.click(createButton); fireEvent.click(createButton);
-    expect(fetch).toHaveBeenCalledTimes(2); expect(vi.mocked(fetch).mock.calls[1]?.[0]).toBe("/api/invitations");
-    const body = JSON.parse(String((vi.mocked(fetch).mock.calls[1]?.[1] as RequestInit).body));
-    expect(createInvitationSchema.safeParse(body).success).toBe(true); expect(body.idempotencyKey).toMatch(/^[0-9a-f-]{36}$/i);
-    resolveCreation(new Response(JSON.stringify({ redirectTo: "/app/invitations/inv-1" }), { status: 200, headers: { "Content-Type": "application/json" } }));
-    await waitFor(() => expect(router.push).toHaveBeenCalledWith("/app/invitations/inv-1"));
+  it("no convierte una recomendación de evento sin confirmación explícita", async () => {
+    const recommended = structuredClone(responsePayload) as VoiceTranscriptionResponse;
+    recommended.draft.recommendEvent = true;
+    recommended.ambiguities = [{ field: "intent", code: "EVENT_RECOMMENDED", question: "Recomendamos un evento.", options: [{ value: "event", label: "Crear evento" }, { value: "group_invitation", label: "Mantener invitación grupal" }] }];
+    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify(recommended), { status: 200, headers: { "Content-Type": "application/json" } }));
+    const user = await write();
+    const continueButton = await screen.findByRole("button", { name: /Continuar al formulario/i });
+    expect(continueButton).toBeDisabled();
+    await user.click(screen.getByRole("button", { name: "Mantener invitación grupal" }));
+    expect(continueButton).toBeEnabled();
   });
 
-  it("aborta la creación pendiente si la persona confirma que desea salir", async () => {
-    let creationSignal: AbortSignal | undefined;
-    vi.mocked(fetch).mockReset().mockResolvedValueOnce(new Response(JSON.stringify(responsePayload), { status: 200, headers: { "Content-Type": "application/json" } })).mockImplementationOnce((_url, init) => {
-      creationSignal = init?.signal as AbortSignal;
-      return new Promise<Response>((_resolve, reject) => creationSignal?.addEventListener("abort", () => reject(new DOMException("aborted", "AbortError")), { once: true }));
-    });
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true); const user = userEvent.setup();
-    render(<VoiceInvitation providerAvailable residentId="11111111-1111-4111-8111-111111111111" />);
-    await user.type(screen.getByLabelText("Describe la invitación"), "Invita a Pedro mañana"); await user.click(screen.getByRole("button", { name: /Escribir la invitación/i }));
-    fireEvent.click(await screen.findByRole("button", { name: /Crear invitación/i })); await waitFor(() => expect(creationSignal).toBeDefined());
-    const back = screen.getByRole("link", { name: "Volver" }); back.addEventListener("click", (event) => event.preventDefault()); await user.click(back);
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("se está creando")); expect(creationSignal?.aborted).toBe(true); confirm.mockRestore();
-  });
-
-  it("obliga a resolver AM/PM y nunca crea desde una aclaración", async () => {
-    const ambiguous = { ...responsePayload, draft: { ...responsePayload.draft, windowStart: "02:00" }, ambiguities: [{ field: "windowStart", code: "AM_PM_AMBIGUOUS", question: "¿A las 2 a. m. o p. m.?", options: [{ value: "02:00", label: "2:00 a. m." }, { value: "14:00", label: "2:00 p. m." }] }] };
-    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify(ambiguous), { status: 200, headers: { "Content-Type": "application/json" } }));
-    const user = userEvent.setup(); render(<VoiceInvitation providerAvailable residentId="11111111-1111-4111-8111-111111111111" />);
-    await user.type(screen.getByLabelText("Describe la invitación"), "Invita a Pedro a las dos"); await user.click(screen.getByRole("button", { name: /Escribir la invitación/i }));
-    const review = await screen.findByRole("button", { name: /Revisar invitación/i }); expect(review).toBeDisabled(); expect(fetch).toHaveBeenCalledOnce();
-    await user.click(screen.getByRole("button", { name: "2:00 p. m." })); expect(review).toBeEnabled(); expect(fetch).toHaveBeenCalledOnce();
-    await user.click(review); expect(screen.getByRole("button", { name: /Crear invitación/i })).toBeInTheDocument(); expect(fetch).toHaveBeenCalledOnce();
-  });
-
-  it("ignora una respuesta tardía después de cancelar", async () => {
-    let resolveTranscription!: (response: Response) => void;
-    vi.mocked(fetch).mockReset().mockImplementationOnce(() => new Promise<Response>((resolve) => { resolveTranscription = resolve; }));
-    const user = userEvent.setup(); render(<VoiceInvitation providerAvailable residentId="11111111-1111-4111-8111-111111111111" />);
-    await user.type(screen.getByLabelText("Describe la invitación"), "Invita a Pedro mañana"); await user.click(screen.getByRole("button", { name: /Escribir la invitación/i }));
-    await user.click(await screen.findByRole("button", { name: "Cancelar" }));
-    resolveTranscription(new Response(JSON.stringify(responsePayload), { status: 200, headers: { "Content-Type": "application/json" } }));
-    await waitFor(() => expect(screen.getByRole("button", { name: /Preparar micrófono/i })).toBeInTheDocument());
-    expect(screen.queryByText("Esto fue lo que entendimos")).not.toBeInTheDocument();
-  });
-
-  it("asocia etiquetas y bloquea fechas anteriores al reloj de la comunidad", async () => {
-    const past = { ...responsePayload, draft: { ...responsePayload.draft, visitDate: "2026-08-22", windowEndDate: "2026-08-22" } };
-    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify(past), { status: 200, headers: { "Content-Type": "application/json" } }));
-    const user = userEvent.setup(); render(<VoiceInvitation providerAvailable residentId="11111111-1111-4111-8111-111111111111" />);
-    await user.type(screen.getByLabelText("Describe la invitación"), "Invita a Pedro ayer"); await user.click(screen.getByRole("button", { name: /Escribir la invitación/i }));
-    const date = await screen.findByLabelText("Fecha"); const create = screen.getByRole("button", { name: /Crear invitación/i }); expect(create).toBeDisabled();
-    fireEvent.change(date, { target: { value: "2026-08-24" } }); fireEvent.change(screen.getByLabelText("Fecha de finalización"), { target: { value: "2026-08-24" } }); await waitFor(() => expect(create).toBeEnabled());
+  it("un error de red deja salida manual", async () => {
+    vi.mocked(fetch).mockRejectedValueOnce(new TypeError("offline")); await write();
+    expect(await screen.findByText(/No pudimos conectar/)).toBeInTheDocument(); expect(screen.getByRole("link", { name: /Completar manualmente/i })).toBeInTheDocument();
   });
 });

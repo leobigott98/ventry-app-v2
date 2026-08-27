@@ -238,7 +238,7 @@ export async function updateResident(communityId: string, residentId: string, in
 
 export async function createInvitation(communityId: string, input: CreateInvitationInput) {
   const supabase = await createServerSupabaseClient();
-  const { data: invitationId, error } = await supabase.rpc("create_individual_invitation", {
+  const { data: invitationId, error } = await supabase.rpc("create_arrival_invitation", {
     p_community_id: communityId,
     p_resident_id: input.residentId,
     p_resident_contact_id: input.residentContactId ?? null,
@@ -246,10 +246,12 @@ export async function createInvitation(communityId: string, input: CreateInvitat
     p_visitor_phone: input.visitorPhone,
     p_access_type: input.accessType,
     p_visit_date: input.visitDate,
-    p_window_start: input.windowStart,
-    p_window_end_date: input.noTimeLimit ? null : input.windowEndDate ?? input.visitDate,
-    p_window_end: input.noTimeLimit ? "23:59" : input.windowEnd,
-    p_no_time_limit: input.noTimeLimit,
+    p_arrival_window_mode: input.arrivalWindowMode,
+    p_arrival_start: input.arrivalStart,
+    p_arrival_end_date: input.arrivalEndDate,
+    p_arrival_end: input.arrivalEnd,
+    p_planned_exit_date: input.plannedExitDate,
+    p_planned_exit_time: input.plannedExitTime,
     p_notes: input.notes,
     p_credential_type: input.credentialType,
     p_idempotency_key: input.idempotencyKey,
@@ -262,15 +264,17 @@ export async function createInvitation(communityId: string, input: CreateInvitat
 
 export async function createInvitationGroup(communityId: string, input: CreateInvitationGroupInput) {
   const supabase = await createServerSupabaseClient();
-  const { data, error } = await supabase.rpc("create_invitation_group", {
+  const { data, error } = await supabase.rpc("create_arrival_invitation_group", {
     p_community_id: communityId,
     p_resident_id: input.residentId,
     p_access_type: input.accessType,
     p_visit_date: input.visitDate,
-    p_window_start: input.windowStart,
-    p_window_end_date: input.noTimeLimit ? null : input.windowEndDate ?? input.visitDate,
-    p_window_end: input.noTimeLimit ? "23:59" : input.windowEnd,
-    p_no_time_limit: input.noTimeLimit,
+    p_arrival_window_mode: input.arrivalWindowMode,
+    p_arrival_start: input.arrivalStart,
+    p_arrival_end_date: input.arrivalEndDate,
+    p_arrival_end: input.arrivalEnd,
+    p_planned_exit_date: input.plannedExitDate,
+    p_planned_exit_time: input.plannedExitTime,
     p_notes: input.notes,
     p_credential_type: input.credentialType,
     p_visitors: input.visitors.map((visitor) => ({ fullName: visitor.fullName, phone: visitor.phone })),
@@ -323,6 +327,7 @@ export async function updateInvitationWindow(
   communityId: string,
   invitationId: string,
   input: UpdateInvitationWindowInput,
+  timeZone: string,
   residentId?: string | null,
 ) {
   const supabase = await createServerSupabaseClient();
@@ -332,21 +337,22 @@ export async function updateInvitationWindow(
     throw new Error("No fue posible encontrar la invitacion.");
   }
 
-  if (getInvitationEffectiveStatus(invitation) !== "active") {
-    throw new Error("Solo puedes modificar invitaciones activas.");
+  if (!["active", "scheduled"].includes(getInvitationEffectiveStatus(invitation, timeZone))) {
+    throw new Error("Solo puedes modificar invitaciones activas o programadas.");
   }
-
-  const windowEnd = input.noTimeLimit ? "23:59" : input.windowEnd;
-  const windowEndDate = input.noTimeLimit ? null : input.windowEndDate ?? input.visitDate;
 
   const { data, error } = await supabase
     .from("invitations")
     .update({
       visit_date: input.visitDate,
-      window_start: input.windowStart,
-      window_end: windowEnd,
-      window_end_date: windowEndDate,
-      no_time_limit: input.noTimeLimit,
+      arrival_window_mode: input.arrivalWindowMode,
+      arrival_start: input.arrivalStart,
+      arrival_end_date: input.arrivalEndDate,
+      arrival_end: input.arrivalEnd,
+      planned_exit_date: input.plannedExitDate,
+      planned_exit_time: input.plannedExitTime,
+      legacy_indefinite: false,
+      no_time_limit: false,
     })
     .eq("community_id", communityId)
     .eq("id", invitationId)
@@ -355,27 +361,31 @@ export async function updateInvitationWindow(
     .maybeSingle();
 
   if (error || !data) {
-    throw new Error(error?.message || "No fue posible actualizar la ventana de la invitacion.");
+    throw new Error(error?.message || "No fue posible actualizar el horario de llegada de la invitación.");
   }
 
   const { error: eventError } = await supabase.from("invitation_events").insert({
     invitation_id: invitationId,
     event_type: "window_updated",
-    event_label: "Ventana de acceso actualizada",
+    event_label: "Horario de llegada actualizado",
     payload: {
       previous: {
         visitDate: invitation.visit_date,
-        windowStart: invitation.window_start,
-        windowEndDate: invitation.window_end_date,
-        windowEnd: invitation.window_end,
-        noTimeLimit: invitation.no_time_limit,
+        arrivalWindowMode: invitation.arrival_window_mode,
+        arrivalStart: invitation.arrival_start,
+        arrivalEndDate: invitation.arrival_end_date,
+        arrivalEnd: invitation.arrival_end,
+        plannedExitDate: invitation.planned_exit_date,
+        plannedExitTime: invitation.planned_exit_time,
       },
       next: {
         visitDate: input.visitDate,
-        windowStart: input.windowStart,
-        windowEndDate,
-        windowEnd: input.noTimeLimit ? null : windowEnd,
-        noTimeLimit: input.noTimeLimit,
+        arrivalWindowMode: input.arrivalWindowMode,
+        arrivalStart: input.arrivalStart,
+        arrivalEndDate: input.arrivalEndDate,
+        arrivalEnd: input.arrivalEnd,
+        plannedExitDate: input.plannedExitDate,
+        plannedExitTime: input.plannedExitTime,
       },
     },
   });

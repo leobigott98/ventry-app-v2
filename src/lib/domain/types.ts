@@ -103,6 +103,7 @@ export const credentialTypeOptions = [
 export type InvitationAccessType = (typeof invitationAccessTypeOptions)[number]["value"];
 export type InvitationStatus = (typeof invitationStatusOptions)[number]["value"];
 export type CredentialType = (typeof credentialTypeOptions)[number]["value"];
+export type ArrivalWindowMode = "all_day" | "from_time";
 
 export const accessEventStatusOptions = [
   { value: "validated", label: "Validado" },
@@ -240,6 +241,13 @@ export type InvitationRecord = {
   window_end: string;
   window_end_date: string | null;
   no_time_limit: boolean;
+  arrival_window_mode?: ArrivalWindowMode | null;
+  arrival_start?: string | null;
+  arrival_end_date?: string | null;
+  arrival_end?: string | null;
+  planned_exit_date?: string | null;
+  planned_exit_time?: string | null;
+  legacy_indefinite?: boolean;
   status: Exclude<InvitationStatus, "scheduled" | "expired">;
   notes: string | null;
   share_token: string;
@@ -259,6 +267,13 @@ export type InvitationGroupRecord = {
   window_end: string;
   window_end_date: string | null;
   no_time_limit: boolean;
+  arrival_window_mode?: ArrivalWindowMode | null;
+  arrival_start?: string | null;
+  arrival_end_date?: string | null;
+  arrival_end?: string | null;
+  planned_exit_date?: string | null;
+  planned_exit_time?: string | null;
+  legacy_indefinite?: boolean;
   notes: string | null;
   credential_type: CredentialType;
   created_at: string;
@@ -346,6 +361,10 @@ export type ResidentEventRecord = {
   window_end: string;
   planned_exit_date: string | null;
   planned_exit_time: string | null;
+  arrival_window_mode?: ArrivalWindowMode | null;
+  arrival_start?: string | null;
+  arrival_end_date?: string | null;
+  arrival_end?: string | null;
   status: Exclude<EventStatus, "scheduled" | "expired">;
   credential_mode: "shared" | "individual";
   notes: string | null;

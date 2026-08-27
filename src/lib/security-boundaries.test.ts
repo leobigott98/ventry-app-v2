@@ -169,6 +169,7 @@ describe("authentication and credential boundaries", () => {
     expect(migration).toContain("resident contact is outside invitation scope");
     expect(migration).toContain("store_invitation_credential");
     expect(migration).not.toContain("event_guest_credential.community_id");
-    expect(mutations).toContain('rpc("create_individual_invitation"');
+    expect(mutations).toContain('rpc("create_arrival_invitation"');
+    expect(read("supabase/migrations/202608260001_arrival_windows.sql")).toContain("public.create_individual_invitation(");
   });
 });

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ChangeEvent, useEffect, useMemo, useRef, useState } from "react";
 
 import { ContactAutocomplete } from "@/components/contacts/contact-autocomplete";
+import { ArrivalWindowFields } from "@/components/invitations/arrival-window-fields";
 import { ResidentPageHeader } from "@/components/resident/resident-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,11 +17,13 @@ import type { ResidentContactViewModel, ResidentRecord, UnitRecord } from "@/lib
 import { EVENT_DRAFT_TRANSFER_KEY, parseEventDraftTransfer } from "@/lib/event-draft-transfer";
 import { APP_TIME_ZONE, formatAppDate, getTimeZoneNowParts } from "@/lib/formatting";
 import { createEventSchema, type EventGuestInput } from "@/lib/schemas/events";
+import { arrivalWindowFieldsSchema, validateArrivalWindow } from "@/lib/schemas/arrival-window";
 import { cn } from "@/lib/utils";
+import { parseVoiceAccessDraft, VOICE_ACCESS_DRAFT_TRANSFER_KEY } from "@/lib/voice/draft-transfer";
 
 type ResidentOption = ResidentRecord & { units: Pick<UnitRecord, "identifier" | "building"> | null };
 type CredentialChoice = "pin" | "qr" | "";
-type FieldErrors = Partial<Record<"residentId" | "name" | "eventDate" | "windowStart" | "windowEndDate" | "windowEnd" | "plannedExitDate" | "plannedExitTime" | "guests" | "credentialType", string>>;
+type FieldErrors = Partial<Record<"residentId" | "name" | "eventDate" | "arrivalStart" | "arrivalEndDate" | "arrivalEnd" | "plannedExitDate" | "plannedExitTime" | "guests" | "credentialType", string>>;
 
 function isDuplicateGuest(candidate: EventGuestInput, guests: EventGuestInput[]) {
   const contactKey = candidate.contactStableId ?? candidate.residentContactId ?? null;
@@ -39,7 +42,7 @@ function defaultWindow(timeZone: string) {
   end.setUTCHours(end.getUTCHours() + 5);
   const date = (value: Date) => `${value.getUTCFullYear()}-${pad(value.getUTCMonth() + 1)}-${pad(value.getUTCDate())}`;
   const time = (value: Date) => `${pad(value.getUTCHours())}:${pad(value.getUTCMinutes())}`;
-  return { eventDate: date(start), windowStart: time(start), windowEndDate: date(end), windowEnd: time(end) };
+  return { minDate: now.date, eventDate: date(start), windowStart: time(start), windowEndDate: date(end), windowEnd: time(end) };
 }
 
 function parseCsvLine(line: string) {
@@ -96,8 +99,8 @@ export function EventForm({ contactAutocomplete = false, residents, timeZone = A
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({
     residentId: residents[0]?.id ?? "", name: "", eventDate: defaults.eventDate,
-    windowStart: defaults.windowStart, windowEndDate: defaults.windowEndDate, windowEnd: defaults.windowEnd,
-    includePlannedExit: false, plannedExitDate: "", plannedExitTime: "", credentialType: "" as CredentialChoice, notes: "", allowsCompanions: false, maxCompanions: 0,
+    arrivalWindowMode: "from_time" as "all_day" | "from_time", arrivalStart: defaults.windowStart, arrivalEndDate: defaults.windowEndDate, arrivalEnd: defaults.windowEnd,
+    plannedExitDate: "", plannedExitTime: "", credentialType: "" as CredentialChoice, notes: "", allowsCompanions: false, maxCompanions: 0,
   });
   const [guests, setGuests] = useState<EventGuestInput[]>([]);
   const [draftGuest, setDraftGuest] = useState<EventGuestInput>({ fullName: "", phone: "", notes: "", allowsCompanions: false, maxCompanions: 0, residentContactId: null, contactStableId: null, contactOrigin: null });
@@ -123,6 +126,15 @@ export function EventForm({ contactAutocomplete = false, residents, timeZone = A
     setCsvMessage(`${transferredGuests.length} personas transferidas. Revisa la lista antes de crear el evento.`);
   }, []);
 
+  useEffect(() => {
+    const transferred = parseVoiceAccessDraft(sessionStorage.getItem(VOICE_ACCESS_DRAFT_TRANSFER_KEY));
+    sessionStorage.removeItem(VOICE_ACCESS_DRAFT_TRANSFER_KEY);
+    if (!transferred || transferred.intent !== "event") return;
+    setForm((current) => ({ ...current, name: transferred.eventName ?? "", eventDate: transferred.visitDate ?? current.eventDate, arrivalWindowMode: transferred.arrivalWindowMode ?? current.arrivalWindowMode, arrivalStart: transferred.arrivalStart ?? "", arrivalEndDate: transferred.arrivalEndDate ?? "", arrivalEnd: transferred.arrivalEnd ?? "", plannedExitDate: transferred.plannedExitDate ?? "", plannedExitTime: transferred.plannedExitTime ?? "", notes: transferred.notes ?? "", allowsCompanions: transferred.allowsCompanions ?? false, maxCompanions: transferred.allowsCompanions ? 1 : 0 }));
+    setGuests(transferred.people.map((person) => ({ fullName: person.name, phone: person.phone, notes: null, allowsCompanions: transferred.allowsCompanions ?? false, maxCompanions: transferred.allowsCompanions ? 1 : 0, residentContactId: person.contactId, contactStableId: person.contactId ? `saved:${person.contactId}` : null, contactOrigin: person.contactId ? "saved" as const : null })));
+    setCsvMessage("Borrador de voz recuperado. Revisa sus cuatro pasos antes de crear el evento.");
+  }, []);
+
   function validateCurrentStep() {
     const nextErrors: FieldErrors = {};
     if (step === 1) {
@@ -130,21 +142,8 @@ export function EventForm({ contactAutocomplete = false, residents, timeZone = A
       if (form.name.trim().length < 2) nextErrors.name = "Escribe el nombre del evento.";
     }
     if (step === 2) {
-      const start = new Date(`${form.eventDate}T${form.windowStart}:00`);
-      const end = new Date(`${form.windowEndDate}T${form.windowEnd}:00`);
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(form.eventDate)) nextErrors.eventDate = "Selecciona una fecha válida.";
-      if (!/^\d{2}:\d{2}$/.test(form.windowStart)) nextErrors.windowStart = "Selecciona una hora válida.";
-      if (!/^\d{4}-\d{2}-\d{2}$/.test(form.windowEndDate)) nextErrors.windowEndDate = "Selecciona una fecha válida.";
-      if (!/^\d{2}:\d{2}$/.test(form.windowEnd)) nextErrors.windowEnd = "Selecciona una hora válida.";
-      if (!Number.isNaN(start.valueOf()) && !Number.isNaN(end.valueOf()) && end <= start) nextErrors.windowEnd = "Válido hasta debe ser posterior a válido desde.";
-      if (form.includePlannedExit) {
-        if (!form.plannedExitDate) nextErrors.plannedExitDate = "Completa la fecha de salida prevista.";
-        if (!form.plannedExitTime) nextErrors.plannedExitTime = "Completa la hora de salida prevista.";
-        if (form.plannedExitDate && form.plannedExitTime) {
-          const planned = new Date(`${form.plannedExitDate}T${form.plannedExitTime}:00`);
-          if (planned < end) nextErrors.plannedExitTime = "La salida prevista debe ser igual o posterior al fin de la vigencia.";
-        }
-      }
+      const parsedWindow = arrivalWindowFieldsSchema.superRefine(validateArrivalWindow).safeParse({ visitDate: form.eventDate, arrivalWindowMode: form.arrivalWindowMode, arrivalStart: form.arrivalStart || null, arrivalEndDate: form.arrivalEndDate || null, arrivalEnd: form.arrivalEnd || null, plannedExitDate: form.plannedExitDate || null, plannedExitTime: form.plannedExitTime || null });
+      if (!parsedWindow.success) parsedWindow.error.issues.forEach((issue) => { const field = issue.path[0] === "visitDate" ? "eventDate" : issue.path[0]; if (typeof field === "string" && !(field in nextErrors)) (nextErrors as Record<string, string>)[field] = issue.message; });
     }
     if (step === 3 && guests.length === 0) nextErrors.guests = "Agrega al menos un invitado.";
     if (step === 4 && !form.credentialType) nextErrors.credentialType = "Elige QR o PIN para continuar.";
@@ -210,10 +209,11 @@ export function EventForm({ contactAutocomplete = false, residents, timeZone = A
   async function createEvent() {
     if (step !== 4 || !validateCurrentStep() || submittingRef.current) return;
     const parsed = createEventSchema.safeParse({
-      residentId: form.residentId, name: form.name, eventDate: form.eventDate, windowStart: form.windowStart,
-      windowEndDate: form.windowEndDate, windowEnd: form.windowEnd,
-      plannedExitDate: form.includePlannedExit ? form.plannedExitDate : null,
-      plannedExitTime: form.includePlannedExit ? form.plannedExitTime : null,
+      residentId: form.residentId, name: form.name, eventDate: form.eventDate,
+      arrivalWindowMode: form.arrivalWindowMode, arrivalStart: form.arrivalStart || null,
+      arrivalEndDate: form.arrivalEndDate || null, arrivalEnd: form.arrivalEnd || null,
+      plannedExitDate: form.plannedExitDate || null,
+      plannedExitTime: form.plannedExitTime || null,
       credentialType: form.credentialType, notes: form.notes, allowsCompanions: form.allowsCompanions, maxCompanions: form.maxCompanions, guests, saveNewContacts,
       idempotencyKey: creationKeyRef.current ?? crypto.randomUUID(),
     });
@@ -231,7 +231,7 @@ export function EventForm({ contactAutocomplete = false, residents, timeZone = A
   }
 
   const stepTitles = ["Datos del evento", "Vigencia del acceso", "Lista de invitados", "Acceso y confirmación"];
-  const plannedExitLabel = form.includePlannedExit && form.plannedExitDate && form.plannedExitTime ? `${formatAppDate(form.plannedExitDate, { dateStyle: "medium" })} · ${form.plannedExitTime}` : "Sin salida prevista";
+  const plannedExitLabel = form.plannedExitDate && form.plannedExitTime ? `${formatAppDate(form.plannedExitDate, { dateStyle: "medium" })} · ${form.plannedExitTime}` : "Sin salida prevista";
 
   return <form className="min-h-[100dvh] bg-background" onSubmit={(event) => event.preventDefault()}>
     <ResidentPageHeader backHref="/app/events" progress={{ current: step, total: 4 }} title="Nuevo evento" />
@@ -245,12 +245,7 @@ export function EventForm({ contactAutocomplete = false, residents, timeZone = A
           <div className="space-y-2"><Label htmlFor="eventNotes">Nota para garita (opcional)</Label><Textarea id="eventNotes" value={form.notes} onChange={(event) => setForm((current) => ({ ...current, notes: event.target.value }))} placeholder="Salón, estacionamiento o referencia útil" /></div>
         </div> : null}
 
-        {step === 2 ? <div className="mt-6 space-y-6">
-          <fieldset><legend className="font-bold">Válido desde</legend><div className="mt-3 grid grid-cols-2 gap-3"><div className="space-y-2"><Label htmlFor="eventDate">Fecha</Label><Input id="eventDate" className="h-14 text-base" type="date" value={form.eventDate} onChange={(event) => setForm((current) => ({ ...current, eventDate: event.target.value }))} /><ErrorText message={fieldErrors.eventDate} /></div><div className="space-y-2"><Label htmlFor="eventStart">Hora</Label><Input id="eventStart" className="h-14 text-base" type="time" value={form.windowStart} onChange={(event) => setForm((current) => ({ ...current, windowStart: event.target.value }))} /><ErrorText message={fieldErrors.windowStart} /></div></div></fieldset>
-          <fieldset><legend className="font-bold">Válido hasta</legend><div className="mt-3 grid grid-cols-2 gap-3"><div className="space-y-2"><Label htmlFor="eventEndDate">Fecha</Label><Input id="eventEndDate" className="h-14 text-base" min={form.eventDate} type="date" value={form.windowEndDate} onChange={(event) => setForm((current) => ({ ...current, windowEndDate: event.target.value }))} /><ErrorText message={fieldErrors.windowEndDate} /></div><div className="space-y-2"><Label htmlFor="eventEnd">Hora</Label><Input id="eventEnd" className="h-14 text-base" type="time" value={form.windowEnd} onChange={(event) => setForm((current) => ({ ...current, windowEnd: event.target.value }))} /><ErrorText message={fieldErrors.windowEnd} /></div></div></fieldset>
-          <label className={cn("flex min-h-14 cursor-pointer items-start gap-3 rounded-2xl border p-4", form.includePlannedExit ? "border-primary bg-secondary" : "border-border bg-surface")}><input className="mt-1 h-5 w-5 accent-[#1446cc]" checked={form.includePlannedExit} onChange={(event) => setForm((current) => ({ ...current, includePlannedExit: event.target.checked, plannedExitDate: event.target.checked ? current.plannedExitDate : "", plannedExitTime: event.target.checked ? current.plannedExitTime : "" }))} type="checkbox" /><span><span className="block font-bold">Agregar salida prevista</span><span className="mt-1 block text-sm text-muted-foreground">Es informativa y no amplía la vigencia de entrada.</span></span></label>
-          {form.includePlannedExit ? <fieldset><legend className="font-bold">Salida prevista</legend><div className="mt-3 grid grid-cols-2 gap-3"><div className="space-y-2"><Label htmlFor="plannedExitDate">Fecha</Label><Input id="plannedExitDate" className="h-14 text-base" min={form.windowEndDate} type="date" value={form.plannedExitDate} onChange={(event) => setForm((current) => ({ ...current, plannedExitDate: event.target.value }))} /><ErrorText message={fieldErrors.plannedExitDate} /></div><div className="space-y-2"><Label htmlFor="plannedExitTime">Hora</Label><Input id="plannedExitTime" className="h-14 text-base" type="time" value={form.plannedExitTime} onChange={(event) => setForm((current) => ({ ...current, plannedExitTime: event.target.value }))} /><ErrorText message={fieldErrors.plannedExitTime} /></div></div></fieldset> : null}
-        </div> : null}
+        {step === 2 ? <div className="mt-6"><ArrivalWindowFields idPrefix="event-arrival" minDate={defaults.minDate} value={{ date: form.eventDate, arrivalWindowMode: form.arrivalWindowMode, arrivalStart: form.arrivalStart || null, arrivalEndDate: form.arrivalEndDate || null, arrivalEnd: form.arrivalEnd || null, plannedExitDate: form.plannedExitDate || null, plannedExitTime: form.plannedExitTime || null }} errors={{ date: fieldErrors.eventDate, arrivalStart: fieldErrors.arrivalStart, arrivalEndDate: fieldErrors.arrivalEndDate, arrivalEnd: fieldErrors.arrivalEnd, plannedExitDate: fieldErrors.plannedExitDate, plannedExitTime: fieldErrors.plannedExitTime }} onChange={(field, nextValue) => setForm((current) => ({ ...current, [field === "date" ? "eventDate" : field]: nextValue ?? "" }))} /></div> : null}
 
         {step === 3 ? <div className="mt-6 space-y-4">
           <div className="rounded-2xl border border-border bg-surface p-4"><label className="flex min-h-11 items-center gap-3 font-bold"><input className="h-5 w-5 accent-[#1446cc]" checked={form.allowsCompanions} onChange={(event) => { const enabled=event.target.checked; setForm((current) => ({ ...current, allowsCompanions: enabled, maxCompanions: enabled ? Math.max(current.maxCompanions,1) : 0 })); setDraftGuest((current) => ({ ...current, allowsCompanions: enabled, maxCompanions: enabled ? Math.max(current.maxCompanions ?? 0,1) : 0 })); }} type="checkbox" />Permitir acompañantes por defecto</label>{form.allowsCompanions ? <div className="mt-3 space-y-2"><Label htmlFor="eventMaxCompanions">Máximo por invitado (1–5)</Label><Input className="h-12" id="eventMaxCompanions" max={5} min={1} type="number" value={form.maxCompanions} onChange={(event) => { const value=Math.min(Math.max(Number(event.target.value)||1,1),5); setForm((current) => ({ ...current,maxCompanions:value })); setDraftGuest((current) => ({...current,maxCompanions:value})); }} /></div> : null}</div>
@@ -278,6 +273,7 @@ export function EventForm({ contactAutocomplete = false, residents, timeZone = A
   </form>;
 }
 
-function EventSummary({ compact = false, form, guestCount, plannedExitLabel }: { compact?: boolean; form: { name: string; eventDate: string; windowStart: string; windowEndDate: string; windowEnd: string; credentialType: CredentialChoice }; guestCount: number; plannedExitLabel: string }) {
-  return <dl className={cn("divide-y divide-border rounded-2xl bg-surface px-4", compact && "mt-3 px-0 text-sm")}><div className="flex justify-between gap-4 py-3"><dt className="text-muted-foreground">Evento</dt><dd className="text-right font-bold">{form.name || "Sin nombre"}</dd></div><div className="flex justify-between gap-4 py-3"><dt className="text-muted-foreground">Válido desde</dt><dd className="text-right font-bold">{form.eventDate} · {form.windowStart}</dd></div><div className="flex justify-between gap-4 py-3"><dt className="text-muted-foreground">Válido hasta</dt><dd className="text-right font-bold">{form.windowEndDate} · {form.windowEnd}</dd></div><div className="flex justify-between gap-4 py-3"><dt className="text-muted-foreground">Salida prevista</dt><dd className="text-right font-bold">{plannedExitLabel}</dd></div><div className="flex justify-between gap-4 py-3"><dt className="text-muted-foreground">Invitados</dt><dd className="font-bold">{guestCount}</dd></div><div className="flex justify-between gap-4 py-3"><dt className="text-muted-foreground">Acceso</dt><dd className="font-bold">{form.credentialType ? form.credentialType.toUpperCase() : "Por elegir"}</dd></div></dl>;
+function EventSummary({ compact = false, form, guestCount, plannedExitLabel }: { compact?: boolean; form: { name: string; eventDate: string; arrivalWindowMode: "all_day" | "from_time"; arrivalStart: string; arrivalEndDate: string; arrivalEnd: string; credentialType: CredentialChoice }; guestCount: number; plannedExitLabel: string }) {
+  const arrivalLabel = form.arrivalWindowMode === "all_day" ? "Todo el día" : form.arrivalEnd ? `${form.arrivalStart} – ${form.arrivalEnd}${form.arrivalEndDate !== form.eventDate ? ` · ${form.arrivalEndDate}` : ""}` : `Desde ${form.arrivalStart}`;
+  return <dl className={cn("divide-y divide-border rounded-2xl bg-surface px-4", compact && "mt-3 px-0 text-sm")}><div className="flex justify-between gap-4 py-3"><dt className="text-muted-foreground">Evento</dt><dd className="text-right font-bold">{form.name || "Sin nombre"}</dd></div><div className="flex justify-between gap-4 py-3"><dt className="text-muted-foreground">Fecha</dt><dd className="text-right font-bold">{form.eventDate}</dd></div><div className="flex justify-between gap-4 py-3"><dt className="text-muted-foreground">Llegada</dt><dd className="text-right font-bold">{arrivalLabel}</dd></div><div className="flex justify-between gap-4 py-3"><dt className="text-muted-foreground">Salida prevista</dt><dd className="text-right font-bold">{plannedExitLabel}</dd></div><div className="flex justify-between gap-4 py-3"><dt className="text-muted-foreground">Invitados</dt><dd className="font-bold">{guestCount}</dd></div><div className="flex justify-between gap-4 py-3"><dt className="text-muted-foreground">Acceso</dt><dd className="font-bold">{form.credentialType ? form.credentialType.toUpperCase() : "Por elegir"}</dd></div></dl>;
 }

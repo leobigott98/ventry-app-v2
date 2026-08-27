@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { requireApiCommunityContext } from "@/lib/auth/api";
 import { updateInvitationWindow } from "@/lib/domain/mutations";
+import { APP_TIME_ZONE } from "@/lib/formatting";
 import { updateInvitationWindowSchema } from "@/lib/schemas/invitations";
 
 export async function PATCH(
@@ -27,10 +28,11 @@ export async function PATCH(
       auth.context.community.id,
       invitationId,
       parsed.data,
+      auth.context.community.time_zone ?? APP_TIME_ZONE,
       auth.sessionUser.role === "resident" ? auth.sessionUser.residentId : null,
     );
     return NextResponse.json({ ok: true, invitation });
   } catch {
-    return NextResponse.json({ error: "No fue posible actualizar la ventana de la invitacion." }, { status: 500 });
+    return NextResponse.json({ error: "No fue posible actualizar el horario de llegada de la invitación." }, { status: 500 });
   }
 }

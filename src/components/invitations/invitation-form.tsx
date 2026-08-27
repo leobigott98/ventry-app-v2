@@ -7,6 +7,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm, type FieldPath } from "react-hook-form";
 
 import { ContactAutocomplete } from "@/components/contacts/contact-autocomplete";
+import { ArrivalWindowFields } from "@/components/invitations/arrival-window-fields";
 import { FormMessage } from "@/components/forms/form-message";
 import { ResidentPageHeader } from "@/components/resident/resident-header";
 import { Button } from "@/components/ui/button";
@@ -21,6 +22,7 @@ import { APP_TIME_ZONE, formatAppDate, getTimeZoneNowParts } from "@/lib/formatt
 import { createInvitationSchema, type CreateInvitationInput } from "@/lib/schemas/invitations";
 import { cn } from "@/lib/utils";
 import { VOICE_MANUAL_FALLBACK_KEY } from "@/lib/voice/manual-fallback";
+import { parseVoiceAccessDraft, VOICE_ACCESS_DRAFT_TRANSFER_KEY } from "@/lib/voice/draft-transfer";
 
 type ResidentOption = ResidentRecord & { units: Pick<UnitRecord, "identifier" | "building"> | null };
 type DraftVisitor = { fullName: string; phone: string; residentContactId?: string | null; contactStableId?: string | null; contactOrigin?: ResidentContactViewModel["origin"] | null };
@@ -66,7 +68,7 @@ export function InvitationForm({ defaultResidentContactId, defaultVisitorName = 
   const defaults = useMemo(() => getDefaultWindow(timeZone), [timeZone]);
   const { register, watch, trigger, handleSubmit, setValue, formState: { errors } } = useForm<CreateInvitationInput>({
     resolver: zodResolver(createInvitationSchema), mode: "onTouched",
-    defaultValues: { idempotencyKey: creationKeyRef.current, residentId: residents[0]?.id ?? "", residentContactId: defaultResidentContactId ?? null, saveContact: false, visitorName: defaultVisitorName, visitorPhone: defaultVisitorPhone, accessType: "visitor", visitDate: defaults.date, windowStart: defaults.start, windowEndDate: defaults.endDate, windowEnd: defaults.end, noTimeLimit: false, notes: "" },
+    defaultValues: { idempotencyKey: creationKeyRef.current, residentId: residents[0]?.id ?? "", residentContactId: defaultResidentContactId ?? null, saveContact: false, visitorName: defaultVisitorName, visitorPhone: defaultVisitorPhone, accessType: "visitor", visitDate: defaults.date, arrivalWindowMode: "all_day", arrivalStart: null, arrivalEndDate: null, arrivalEnd: null, plannedExitDate: null, plannedExitTime: null, notes: "" },
   });
   const values = watch();
   const singleResident = residents.length === 1;
@@ -79,6 +81,25 @@ export function InvitationForm({ defaultResidentContactId, defaultVisitorName = 
     const value = sessionStorage.getItem(VOICE_MANUAL_FALLBACK_KEY);
     if (value) { setVoiceFallbackPhrase(value); sessionStorage.removeItem(VOICE_MANUAL_FALLBACK_KEY); }
   }, []);
+
+  useEffect(() => {
+    const transferred = parseVoiceAccessDraft(sessionStorage.getItem(VOICE_ACCESS_DRAFT_TRANSFER_KEY));
+    sessionStorage.removeItem(VOICE_ACCESS_DRAFT_TRANSFER_KEY);
+    if (!transferred || transferred.intent === "event") return;
+    setVisitors(transferred.people.map((person) => ({ fullName: person.name, phone: person.phone ?? "", residentContactId: person.contactId, contactStableId: person.contactId ? `saved:${person.contactId}` : null, contactOrigin: person.contactId ? "saved" as const : null })));
+    setValue("visitorName", transferred.people[0]?.name ?? "");
+    setValue("visitorPhone", transferred.people[0]?.phone ?? "");
+    setValue("residentContactId", transferred.people[0]?.contactId ?? null);
+    setValue("accessType", transferred.accessType ?? "visitor");
+    if (transferred.visitDate) setValue("visitDate", transferred.visitDate);
+    setValue("arrivalWindowMode", transferred.arrivalWindowMode ?? "all_day");
+    setValue("arrivalStart", transferred.arrivalStart);
+    setValue("arrivalEndDate", transferred.arrivalEndDate);
+    setValue("arrivalEnd", transferred.arrivalEnd);
+    setValue("plannedExitDate", transferred.plannedExitDate);
+    setValue("plannedExitTime", transferred.plannedExitTime);
+    setValue("notes", transferred.notes ?? "");
+  }, [setValue]);
 
   function addDraftVisitor() {
     const fullName = draftName.trim();
@@ -115,8 +136,8 @@ export function InvitationForm({ defaultResidentContactId, defaultVisitorName = 
       setVisitorError(null);
     }
     const fields: FieldPath<CreateInvitationInput>[] = step === 1
-      ? ["residentId", "visitorName", "visitDate", "windowStart", "windowEnd"]
-      : ["accessType", "windowEndDate", "noTimeLimit"];
+      ? ["residentId", "visitorName", "visitDate", "arrivalWindowMode", "arrivalStart"]
+      : ["accessType", "arrivalEndDate", "arrivalEnd", "plannedExitDate", "plannedExitTime"];
     if (await trigger(fields, { shouldFocus: true })) setStep((current) => Math.min(current + 1, 3));
   }
 
@@ -166,9 +187,7 @@ export function InvitationForm({ defaultResidentContactId, defaultVisitorName = 
           <ErrorText message={visitorError ?? errors.visitorName?.message} />
           {visitors.length >= 9 ? <div className="rounded-xl bg-secondary px-3 py-3 text-sm text-muted-foreground"><p><UsersRound className="mr-2 inline h-4 w-4 text-primary" />¿Es una celebración o reunión grande? Event Mode ofrece seguimiento por lista.</p><button className="mt-2 inline-flex min-h-11 items-center font-bold text-primary underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary" onClick={continueAsEvent} type="button">Crear como evento con estas {visitors.length} personas</button></div> : null}
         </div>
-        <div className="space-y-2.5"><Label className="text-lg font-bold" htmlFor="visitDate">¿Cuándo?</Label><Input className="h-14 rounded-2xl px-4" id="visitDate" min={defaults.date} type="date" {...register("visitDate")} /><ErrorText message={errors.visitDate?.message} /></div>
-        <fieldset><legend className="text-lg font-bold">¿En qué horario?</legend><div className="mt-2.5 grid grid-cols-2 gap-3"><div className="space-y-2"><Label className="font-medium text-muted-foreground" htmlFor="windowStart">Desde</Label><Input className="h-14 rounded-2xl px-3" id="windowStart" type="time" {...register("windowStart")} /><ErrorText message={errors.windowStart?.message} /></div><div className="space-y-2"><Label className="font-medium text-muted-foreground" htmlFor="windowEnd">Hasta</Label><Input className="h-14 rounded-2xl px-3" disabled={values.noTimeLimit} id="windowEnd" type="time" {...register("windowEnd")} /><ErrorText message={errors.windowEnd?.message} /></div></div></fieldset>
-        <details className="group mt-5 rounded-2xl bg-surface px-4 py-1"><summary className="flex min-h-12 cursor-pointer list-none items-center justify-between font-semibold">Opciones de horario <ChevronDown className="h-5 w-5 transition group-open:rotate-180" /></summary><div className="space-y-4 border-t border-border py-4"><div className="space-y-2"><Label htmlFor="windowEndDate">Fecha de cierre</Label><Input className="h-14 rounded-2xl" disabled={values.noTimeLimit} id="windowEndDate" min={values.visitDate} type="date" {...register("windowEndDate")} /><ErrorText message={errors.windowEndDate?.message} /></div><label className={cn("flex cursor-pointer gap-3 rounded-xl border p-4", values.noTimeLimit ? "border-primary bg-secondary" : "border-border")}><input className="mt-1 h-5 w-5" type="checkbox" {...register("noTimeLimit")} /><span><span className="block font-semibold">Sin límite de tiempo</span><span className="mt-1 block text-sm leading-5 text-muted-foreground">Permanece activo desde el inicio hasta usarse o revocarse.</span></span></label></div></details>
+        <ArrivalWindowFields idPrefix="invitation-arrival" minDate={defaults.date} value={{ date: values.visitDate, arrivalWindowMode: values.arrivalWindowMode, arrivalStart: values.arrivalStart, arrivalEndDate: values.arrivalEndDate, arrivalEnd: values.arrivalEnd, plannedExitDate: values.plannedExitDate, plannedExitTime: values.plannedExitTime }} errors={{ date: errors.visitDate?.message, arrivalStart: errors.arrivalStart?.message, arrivalEndDate: errors.arrivalEndDate?.message, arrivalEnd: errors.arrivalEnd?.message, plannedExitDate: errors.plannedExitDate?.message, plannedExitTime: errors.plannedExitTime?.message }} onChange={(field, nextValue) => { if (field === "date") setValue("visitDate", nextValue as string, { shouldDirty: true, shouldValidate: true }); else setValue(field, nextValue as never, { shouldDirty: true, shouldValidate: true }); }} />
       </div> : null}
 
       {step === 2 ? <div>
@@ -178,10 +197,10 @@ export function InvitationForm({ defaultResidentContactId, defaultVisitorName = 
 
       {step === 3 ? <div>
         <h2 className="text-xl font-bold">Revisa antes de confirmar</h2>
-        <div className="mt-5 rounded-2xl bg-surface px-5 py-3"><dl className="divide-y divide-border text-[15px]"><div className="flex justify-between gap-4 py-4"><dt className="text-muted-foreground">{visitors.length > 1 ? "Grupo" : "Visitante"}</dt><dd className="text-right font-bold">{visitors.length > 1 ? `Invitacion para ${visitors.length} personas` : visitors[0]?.fullName}</dd></div><div className="flex justify-between gap-4 py-4"><dt className="text-muted-foreground">Fecha</dt><dd className="text-right font-bold">{formatAppDate(values.visitDate, { dateStyle: "long" })}</dd></div><div className="flex justify-between gap-4 py-4"><dt className="text-muted-foreground">Horario</dt><dd className="text-right font-bold">{values.noTimeLimit ? `Desde ${values.windowStart}` : `${values.windowStart} – ${values.windowEnd}`}</dd></div><div className="flex justify-between gap-4 py-4"><dt className="text-muted-foreground">Tipo</dt><dd className="text-right font-bold">{invitationAccessTypeOptions.find((item) => item.value === values.accessType)?.label}</dd></div></dl></div>
+        <div className="mt-5 rounded-2xl bg-surface px-5 py-3"><dl className="divide-y divide-border text-[15px]"><div className="flex justify-between gap-4 py-4"><dt className="text-muted-foreground">{visitors.length > 1 ? "Grupo" : "Visitante"}</dt><dd className="text-right font-bold">{visitors.length > 1 ? `Invitación para ${visitors.length} personas` : visitors[0]?.fullName}</dd></div><div className="flex justify-between gap-4 py-4"><dt className="text-muted-foreground">Fecha</dt><dd className="text-right font-bold">{formatAppDate(values.visitDate, { dateStyle: "long" })}</dd></div><div className="flex justify-between gap-4 py-4"><dt className="text-muted-foreground">Llegada</dt><dd className="text-right font-bold">{values.arrivalWindowMode === "all_day" ? "Todo el día" : values.arrivalEnd ? `${values.arrivalStart} – ${values.arrivalEnd}` : `Desde ${values.arrivalStart}`}</dd></div>{values.plannedExitTime ? <div className="flex justify-between gap-4 py-4"><dt className="text-muted-foreground">Salida prevista</dt><dd className="text-right font-bold">{values.plannedExitDate} · {values.plannedExitTime}</dd></div> : null}<div className="flex justify-between gap-4 py-4"><dt className="text-muted-foreground">Tipo</dt><dd className="text-right font-bold">{invitationAccessTypeOptions.find((item) => item.value === values.accessType)?.label}</dd></div></dl></div>
         <fieldset className="mt-5"><legend className="font-bold">Credencial</legend><p className="mt-1 text-sm text-muted-foreground">Elige cómo recibirá el acceso. No se crea nada hasta confirmar.</p><div className="mt-3 grid grid-cols-2 gap-3">{credentialTypeOptions.map((option) => <label className={cn("cursor-pointer rounded-2xl border-2 p-4", values.credentialType === option.value ? "border-primary bg-secondary/55" : "border-border bg-surface")} key={option.value}><input checked={values.credentialType === option.value} className="mr-2 accent-[#1446cc]" name="credentialType" onChange={() => setValue("credentialType", option.value, { shouldDirty: true, shouldValidate: true })} type="radio" value={option.value} /><span className="font-bold">{option.value === "pin" ? "PIN" : "QR"}</span></label>)}</div><ErrorText message={errors.credentialType?.message} /></fieldset>
         <details className="group mt-5 rounded-2xl bg-surface px-4 py-1"><summary className="flex min-h-12 cursor-pointer list-none items-center justify-between font-semibold">Agregar nota para garita <ChevronDown className="h-5 w-5 transition group-open:rotate-180" /></summary><div className="border-t border-border py-4"><Textarea id="notes" placeholder="Placa, motivo o referencia útil" {...register("notes")} /><ErrorText message={errors.notes?.message} /></div></details>
-        <div className="mt-5 rounded-2xl bg-secondary p-4 text-sm leading-6 text-muted-foreground">La credencial será válida únicamente durante la ventana indicada y podrá revocarse desde el detalle.</div>
+        <div className="mt-5 rounded-2xl bg-secondary p-4 text-sm leading-6 text-muted-foreground">La credencial será válida únicamente durante el horario de llegada indicado y podrá revocarse desde el detalle.</div>
       </div> : null}
       <FormMessage message={serverError} variant="error" />
     </div>

@@ -51,7 +51,7 @@ type GuardEventMatch = ResidentEventRecord & {
 
 export type PublicEventRecord = Pick<
   ResidentEventRecord,
-  "name" | "event_date" | "window_start" | "window_end_date" | "window_end" | "planned_exit_date" | "planned_exit_time" | "status"
+  "name" | "event_date" | "window_start" | "window_end_date" | "window_end" | "planned_exit_date" | "planned_exit_time" | "arrival_window_mode" | "arrival_start" | "arrival_end_date" | "arrival_end" | "status"
 > & {
   residents: Pick<ResidentRecord, "full_name"> | null;
   units: Pick<UnitRecord, "identifier"> | null;
@@ -62,7 +62,7 @@ export type PublicEventRecord = Pick<
   guest_count: number;
 };
 
-export type PublicEventGuestRecord = Pick<ResidentEventRecord, "event_date" | "window_start" | "window_end_date" | "window_end" | "planned_exit_date" | "planned_exit_time"> & {
+export type PublicEventGuestRecord = Pick<ResidentEventRecord, "event_date" | "window_start" | "window_end_date" | "window_end" | "planned_exit_date" | "planned_exit_time" | "arrival_window_mode" | "arrival_start" | "arrival_end_date" | "arrival_end"> & {
   event_name: string;
   guest_name: string;
   resident_name: string;
@@ -199,6 +199,10 @@ export async function getEventByShareToken(shareToken: string) {
     window_end: string;
     planned_exit_date: string | null;
     planned_exit_time: string | null;
+    arrival_window_mode: ResidentEventRecord["arrival_window_mode"];
+    arrival_start: string | null;
+    arrival_end_date: string | null;
+    arrival_end: string | null;
     status: ResidentEventRecord["status"];
     resident_name: string;
     unit_identifier: string | null;
@@ -216,6 +220,10 @@ export async function getEventByShareToken(shareToken: string) {
     window_end: dto.window_end,
     planned_exit_date: dto.planned_exit_date,
     planned_exit_time: dto.planned_exit_time,
+    arrival_window_mode: dto.arrival_window_mode,
+    arrival_start: dto.arrival_start,
+    arrival_end_date: dto.arrival_end_date,
+    arrival_end: dto.arrival_end,
     status: dto.status,
     residents: { full_name: dto.resident_name },
     units: dto.unit_identifier ? { identifier: dto.unit_identifier } : null,
@@ -234,10 +242,11 @@ export async function getEventByShareToken(shareToken: string) {
 export async function createResidentEvent(communityId: string, input: CreateEventInput) {
   const supabase = await createServerSupabaseClient();
   const guests = input.guests.map((guest) => ({ fullName: guest.fullName, phone: guest.phone, notes: guest.notes, allowsCompanions: guest.allowsCompanions ?? input.allowsCompanions, maxCompanions: guest.maxCompanions ?? input.maxCompanions }));
-  const { data: eventId, error } = await supabase.rpc("create_individual_resident_event", {
+  const { data: eventId, error } = await supabase.rpc("create_arrival_resident_event", {
     p_community_id: communityId, p_resident_id: input.residentId, p_name: input.name,
-    p_event_date: input.eventDate, p_window_start: input.windowStart,
-    p_window_end_date: input.windowEndDate, p_window_end: input.windowEnd,
+    p_event_date: input.eventDate, p_arrival_window_mode: input.arrivalWindowMode,
+    p_arrival_start: input.arrivalStart, p_arrival_end_date: input.arrivalEndDate,
+    p_arrival_end: input.arrivalEnd,
     p_planned_exit_date: input.plannedExitDate, p_planned_exit_time: input.plannedExitTime,
     p_notes: input.notes, p_credential_type: input.credentialType, p_guests: guests,
     p_idempotency_key: input.idempotencyKey,

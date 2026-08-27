@@ -6,6 +6,6 @@ export class FakeTranscriptionProvider implements TranscriptionProvider {
 }
 
 export class FakeInvitationExtractionProvider implements InvitationExtractionProvider {
-  constructor(private readonly result: ProviderExtraction) {}
-  async extract() { return structuredClone(this.result); }
+  constructor(private readonly result: ProviderExtraction | Record<string, unknown>) {}
+  async extract() { return structuredClone(this.result) as ProviderExtraction; }
 }

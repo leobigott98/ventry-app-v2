@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { requireApiCommunityContext } from "@/lib/auth/api";
 import { searchInvitationsForGuard } from "@/lib/domain/guards";
+import { APP_TIME_ZONE } from "@/lib/formatting";
 import { guardSearchSchema } from "@/lib/schemas/guards";
 
 export async function GET(request: NextRequest) {
@@ -19,7 +20,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const results = await searchInvitationsForGuard(auth.context.community.id, parsed.data.q);
+    const results = await searchInvitationsForGuard(auth.context.community.id, parsed.data.q, auth.context.community.time_zone ?? APP_TIME_ZONE);
     return NextResponse.json({ results });
   } catch {
     return NextResponse.json(

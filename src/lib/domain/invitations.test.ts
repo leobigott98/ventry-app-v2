@@ -117,7 +117,7 @@ describe("getInvitationWindowLabel", () => {
     ).toBe("17 ago. 2026, 22:00 – 18 ago. 2026, 06:00");
   });
 
-  it("explica una invitacion sin limite", () => {
+  it("señala una vigencia antigua sin perpetuar esa opción en la UX", () => {
     expect(
       getInvitationWindowLabel({
         visit_date: "2026-08-17",
@@ -126,6 +126,6 @@ describe("getInvitationWindowLabel", () => {
         window_end_date: null,
         no_time_limit: true,
       }),
-    ).toBe("Desde 17 ago. 2026 a las 09:00, sin límite");
+    ).toBe("Vigencia antigua pendiente de revisión");
   });
 });

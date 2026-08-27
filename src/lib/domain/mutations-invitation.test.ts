@@ -22,14 +22,16 @@ describe("createInvitation", () => {
       accessType: "visitor",
       credentialType: "pin",
       visitDate: "2026-08-23",
-      windowStart: "10:00",
-      windowEndDate: "2026-08-23",
-      windowEnd: "12:00",
-      noTimeLimit: false,
+      arrivalWindowMode: "from_time",
+      arrivalStart: "10:00",
+      arrivalEndDate: "2026-08-23",
+      arrivalEnd: "12:00",
+      plannedExitDate: null,
+      plannedExitTime: null,
       notes: null,
     })).resolves.toEqual({ id: "invitation-1" });
 
-    expect(rpc).toHaveBeenCalledWith("create_individual_invitation", expect.objectContaining({
+    expect(rpc).toHaveBeenCalledWith("create_arrival_invitation", expect.objectContaining({
       p_community_id: "community-1",
       p_resident_id: "22222222-2222-4222-8222-222222222222",
       p_resident_contact_id: "33333333-3333-4333-8333-333333333333",

@@ -15,7 +15,7 @@ import { FakeInvitationExtractionProvider, FakeTranscriptionProvider } from "@/t
 vi.mock("@/lib/auth/api", () => ({ requireApiCommunityContext: vi.fn() }));
 vi.mock("@/lib/domain/contacts", () => ({ searchResidentContactViews: vi.fn() }));
 
-const extraction = { draft: { visitorName: "Pedro Pérez", contactId: null, visitDate: "2026-08-24", windowStart: "14:00", windowEndDate: "2026-08-24", windowEnd: "16:00", accessType: "visitor" as const, noTimeLimit: false, notes: null }, ambiguities: [] };
+const extraction = { draft: { intent: "individual_invitation" as const, eventName: null, people: [{ name: "Pedro Pérez", phone: null }], accessType: "visitor" as const, dateText: "mañana", arrivalText: "a las dos de la tarde", plannedExitText: null, notes: null, allowsCompanions: null, tooManyPeople: false }, ambiguities: [] };
 const context = { sessionUser: { role: "resident", residentId: "11111111-1111-4111-8111-111111111111" }, context: { community: { id: "22222222-2222-4222-8222-222222222222", time_zone: "America/Caracas" } } } as never;
 const fixture = (name: string) => new Uint8Array(readFileSync(path.join(process.cwd(), "src", "test", "fixtures", "voice", name)));
 
@@ -65,7 +65,7 @@ describe("POST /api/invitations/voice/transcribe", () => {
   it("procesa audio válido con adaptadores falsos sin crear invitaciones", async () => {
     const acquireSlot = vi.fn(); const releaseSlot = vi.fn();
     const response = await createVoiceTranscriptionHandler({ providerConfigured: () => true, transcriptionProvider: new FakeTranscriptionProvider(), extractionProvider: new FakeInvitationExtractionProvider(extraction), acquireSlot, releaseSlot, now: () => new Date("2026-08-23T12:00:00.000Z") })(requestWithAudio());
-    expect(response.status).toBe(200); const payload = await response.json(); expect(payload).toMatchObject({ transcript: expect.any(String), draft: { visitorName: "Pedro Pérez" }, timeZone: "America/Caracas" });
+    expect(response.status).toBe(200); const payload = await response.json(); expect(payload).toMatchObject({ transcript: expect.any(String), draft: { intent: "individual_invitation", people: [{ name: "Pedro Pérez" }] }, timeZone: "America/Caracas" });
     expect(acquireSlot).toHaveBeenCalledOnce(); expect(releaseSlot).toHaveBeenCalledWith(expect.any(String), expect.any(String), "success");
     expect(searchResidentContactViews).toHaveBeenCalledWith("22222222-2222-4222-8222-222222222222", "11111111-1111-4111-8111-111111111111", "Pedro Pérez", 5);
   });

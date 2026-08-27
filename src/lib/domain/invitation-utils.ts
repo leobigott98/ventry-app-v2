@@ -3,6 +3,8 @@ import type {
   InvitationStatus,
 } from "@/lib/domain/types";
 import { formatAppDate, parseAppLocalDateTime } from "@/lib/formatting";
+import { formatArrivalTime, getArrivalEffectiveStatus } from "@/lib/arrival-window";
+import { APP_TIME_ZONE } from "@/lib/formatting";
 
 export function getInvitationEndDate(
   invitation: Pick<InvitationRecord, "visit_date" | "window_end_date">,
@@ -13,11 +15,25 @@ export function getInvitationEndDate(
 export function getInvitationWindowLabel(
   invitation: Pick<
     InvitationRecord,
-    "visit_date" | "window_start" | "window_end" | "window_end_date" | "no_time_limit"
+    "visit_date" | "window_start" | "window_end" | "window_end_date" | "no_time_limit" |
+    "arrival_window_mode" | "arrival_start" | "arrival_end_date" | "arrival_end" |
+    "planned_exit_date" | "planned_exit_time"
   >,
 ) {
+  if (invitation.arrival_window_mode === "all_day") {
+    return `Todo el día · ${formatAppDate(invitation.visit_date, { dateStyle: "long" })}`;
+  }
+  if (invitation.arrival_window_mode === "from_time" && invitation.arrival_start) {
+    const start = formatArrivalTime(invitation.arrival_start);
+    if (!invitation.arrival_end) return `Puede llegar desde las ${start}`;
+    const end = formatArrivalTime(invitation.arrival_end);
+    const date = invitation.arrival_end_date && invitation.arrival_end_date !== invitation.visit_date
+      ? ` del ${formatAppDate(invitation.arrival_end_date, { dateStyle: "medium" })}`
+      : "";
+    return `Llegada entre ${start} y ${end}${date}`;
+  }
   if (invitation.no_time_limit) {
-    return `Desde ${formatAppDate(invitation.visit_date, { dateStyle: "medium" })} a las ${invitation.window_start}, sin límite`;
+    return "Vigencia antigua pendiente de revisión";
   }
 
   const endDate = getInvitationEndDate(invitation);
@@ -30,17 +46,32 @@ export function getInvitationWindowLabel(
 }
 
 export function getInvitationEffectiveStatus(invitation: {
-  status: InvitationRecord["status"];
+  status: InvitationStatus;
   visit_date: string;
   window_start: string;
   window_end: string;
   window_end_date?: string | null;
   no_time_limit?: boolean | null;
-}): InvitationStatus {
-  if (invitation.status === "revoked" || invitation.status === "used") {
-    return invitation.status;
-  }
+  arrival_window_mode?: InvitationRecord["arrival_window_mode"];
+  arrival_start?: string | null;
+  arrival_end_date?: string | null;
+  arrival_end?: string | null;
+}, timeZone = APP_TIME_ZONE, now = new Date()): InvitationStatus {
+  if (invitation.status === "scheduled" || invitation.status === "expired") return invitation.status;
+  if (invitation.status === "revoked" || invitation.status === "used") return invitation.status;
 
+  if (invitation.arrival_window_mode) {
+    return getArrivalEffectiveStatus({
+      status: invitation.status,
+      visitDate: invitation.visit_date,
+      arrivalWindowMode: invitation.arrival_window_mode,
+      arrivalStart: invitation.arrival_start ?? null,
+      arrivalEndDate: invitation.arrival_end_date ?? null,
+      arrivalEnd: invitation.arrival_end ?? null,
+      plannedExitDate: null,
+      plannedExitTime: null,
+    }, timeZone, now);
+  }
   const start = parseAppLocalDateTime(invitation.visit_date, invitation.window_start);
   if (!Number.isNaN(start.valueOf()) && start.getTime() > Date.now()) return "scheduled";
   if (invitation.no_time_limit) return "active";
@@ -49,6 +80,13 @@ export function getInvitationEffectiveStatus(invitation: {
   return !Number.isNaN(end.valueOf()) && end.getTime() < Date.now()
     ? "expired"
     : "active";
+}
+
+export function getInvitationPlannedExitLabel(
+  invitation: Pick<InvitationRecord, "planned_exit_date" | "planned_exit_time">,
+) {
+  if (!invitation.planned_exit_date || !invitation.planned_exit_time) return null;
+  return `${formatAppDate(invitation.planned_exit_date, { dateStyle: "medium" })} · ${formatArrivalTime(invitation.planned_exit_time)}`;
 }
 
 export function getInvitationStatusLabel(status: InvitationStatus) {
@@ -80,11 +118,11 @@ export function getInvitationStatusVariant(status: InvitationStatus) {
   }
 }
 
-export function classifyInvitations<T extends Parameters<typeof getInvitationEffectiveStatus>[0]>(invitations: T[]) {
+export function classifyInvitations<T extends Parameters<typeof getInvitationEffectiveStatus>[0]>(invitations: T[], timeZone = APP_TIME_ZONE) {
   const current: T[] = [];
   const history: T[] = [];
   for (const invitation of invitations) {
-    const status = getInvitationEffectiveStatus(invitation);
+    const status = getInvitationEffectiveStatus(invitation, timeZone);
     if (status === "active" || status === "scheduled") current.push(invitation);
     else history.push(invitation);
   }

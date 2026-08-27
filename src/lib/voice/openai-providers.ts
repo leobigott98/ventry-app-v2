@@ -4,7 +4,7 @@ import OpenAI, { toFile } from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
 
 import { VoiceError, voiceSafeMessages } from "@/lib/voice/errors";
-import { providerExtractionSchema, type ExtractionInput, type InvitationExtractionProvider, type TranscriptionInput, type TranscriptionProvider } from "@/lib/voice/types";
+import { providerExtractionSchema, type ExtractionInput, type TranscriptionInput, type TranscriptionProvider, type VoiceAccessExtractionProvider } from "@/lib/voice/types";
 
 function getClient() {
   const apiKey = process.env.OPENAI_API_KEY?.trim();
@@ -39,15 +39,15 @@ export class OpenAITranscriptionProvider implements TranscriptionProvider {
   }
 }
 
-const extractionInstructions = `Extrae un borrador de invitación residencial desde español venezolano.
-No inventes identidad, fecha, hora, AM/PM ni datos ausentes. contactId siempre debe ser null.
-Usa fechas YYYY-MM-DD y horas HH:mm de 24 horas. noTimeLimit solo es true si se dijo explícitamente "sin límite" o equivalente.
-Para una hora sin mañana/tarde/noche ni formato 24 horas, conserva una hora tentativa y agrega AM_PM_AMBIGUOUS.
-Para "el viernes" devuelve la fecha concreta; si hay dos interpretaciones razonables agrega DATE_AMBIGUOUS.
-Si la ventana cruza medianoche, usa windowEndDate. Si el final no es posterior al inicio agrega END_BEFORE_START.
-Tipos permitidos: visitor, delivery, service_provider, frequent_visitor. No confundas "una sola vez" con un tipo inexistente.`;
+const extractionInstructions = `Extrae intención y texto literal para un acceso residencial en español venezolano.
+No inventes identidades, nombre de evento, fecha, hora, acompañantes ni datos ausentes. Nunca devuelvas IDs de contactos.
+Intenciones: individual_invitation, group_invitation, event o ambiguous. Una mención inequívoca de evento, fiesta, cumpleaños, reunión o celebración es event.
+Devuelve todas las personas identificadas, hasta 25. Si hay más, conserva las identificadas y marca tooManyPeople=true; nunca trunques sin avisar.
+dateText, arrivalText y plannedExitText deben conservar las expresiones temporales originales; el servidor hará la interpretación determinista final.
+allowsCompanions solo puede ser true o false si se mencionó explícitamente; en otro caso null.
+Tipos permitidos: visitor, delivery, service_provider, frequent_visitor. No conviertas un grupo en evento automáticamente.`;
 
-export class OpenAIInvitationExtractionProvider implements InvitationExtractionProvider {
+export class OpenAIVoiceAccessExtractionProvider implements VoiceAccessExtractionProvider {
   async extract(input: ExtractionInput) {
     try {
       const client = getClient();
@@ -57,7 +57,7 @@ export class OpenAIInvitationExtractionProvider implements InvitationExtractionP
         reasoning: { effort: "low" },
         instructions: extractionInstructions,
         input: `Reloj del servidor: ${input.referenceTime}\nZona horaria IANA: ${input.timeZone}\nFecha local de referencia: ${input.referenceLocalDate}\nIdioma: español, contexto Venezuela.\nMensaje: ${input.transcript}`,
-        text: { format: zodTextFormat(providerExtractionSchema, "voice_invitation_draft") },
+        text: { format: zodTextFormat(providerExtractionSchema, "voice_access_draft") },
       }, { signal: input.signal });
       const parsed = response.output_parsed;
       if (!parsed) throw new VoiceError("EXTRACTION_INVALID", 422, voiceSafeMessages.EXTRACTION_INVALID);
@@ -70,6 +70,8 @@ export class OpenAIInvitationExtractionProvider implements InvitationExtractionP
     }
   }
 }
+
+export class OpenAIInvitationExtractionProvider extends OpenAIVoiceAccessExtractionProvider {}
 
 export function voiceProviderConfigured() { return Boolean(process.env.OPENAI_API_KEY?.trim()); }
 

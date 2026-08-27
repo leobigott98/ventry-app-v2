@@ -53,7 +53,7 @@ export async function getRecentGuardInvitations(communityId: string) {
   return (data ?? []) as InvitationLookupRecord[];
 }
 
-export async function searchInvitationsForGuard(communityId: string, query: string) {
+export async function searchInvitationsForGuard(communityId: string, query: string, timeZone: string) {
   const supabase = await createServerSupabaseClient();
   const normalizedQuery = query.replace(/[(),]/g, " ").trim().replace(/\s+/g, " ");
 
@@ -95,8 +95,8 @@ export async function searchInvitationsForGuard(communityId: string, query: stri
 
   return ((data ?? []) as InvitationLookupRecord[]).map((invitation) => ({
     ...invitation,
-    effective_status: getInvitationEffectiveStatus(invitation),
-    status_label: getInvitationStatusLabel(getInvitationEffectiveStatus(invitation)),
+    effective_status: getInvitationEffectiveStatus(invitation, timeZone),
+    status_label: getInvitationStatusLabel(getInvitationEffectiveStatus(invitation, timeZone)),
   }));
 }
 

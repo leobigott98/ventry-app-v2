@@ -7,9 +7,12 @@ const valid = {
   residentId: "11111111-1111-4111-8111-111111111111",
   name: "Reunión familiar",
   eventDate: "2026-08-20",
-  windowStart: "10:00",
-  windowEndDate: "2026-08-20",
-  windowEnd: "18:00",
+  arrivalWindowMode: "from_time",
+  arrivalStart: "10:00",
+  arrivalEndDate: "2026-08-20",
+  arrivalEnd: "18:00",
+  plannedExitDate: null,
+  plannedExitTime: null,
   credentialType: "qr",
   notes: null,
   guests: [{ fullName: "Carlos Rojas", phone: null, notes: null }],
@@ -22,7 +25,7 @@ describe("createEventSchema", () => {
   });
 
   it("rechaza un final anterior al inicio", () => {
-    const result = createEventSchema.safeParse({ ...valid, windowEnd: "09:59" });
+    const result = createEventSchema.safeParse({ ...valid, arrivalEnd: "09:59" });
     expect(result.success).toBe(false);
   });
 
@@ -32,9 +35,10 @@ describe("createEventSchema", () => {
     if (!result.success) expect(result.error.issues[0]?.path).toContain("plannedExitTime");
   });
 
-  it("rechaza una salida prevista anterior al fin de vigencia", () => {
+  it("permite salir antes del cierre de llegada y rechaza salir antes del inicio", () => {
     const result = createEventSchema.safeParse({ ...valid, plannedExitDate: "2026-08-20", plannedExitTime: "17:59" });
-    expect(result.success).toBe(false);
+    expect(result.success).toBe(true);
+    expect(createEventSchema.safeParse({ ...valid, plannedExitDate: "2026-08-20", plannedExitTime: "09:59" }).success).toBe(false);
   });
 
   it("valida acompanantes generales y excepciones por invitado", () => {

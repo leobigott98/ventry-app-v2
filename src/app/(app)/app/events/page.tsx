@@ -31,8 +31,8 @@ export default async function EventsPage() {
     context.community.id,
     sessionUser.role === "resident" ? sessionUser.residentId : null,
   );
-  const active = events.filter((event) => ["scheduled", "active"].includes(getEventEffectiveStatus(event)));
-  const past = events.filter((event) => !["scheduled", "active"].includes(getEventEffectiveStatus(event)));
+  const active = events.filter((event) => ["scheduled", "active"].includes(getEventEffectiveStatus(event, context.community.time_zone)));
+  const past = events.filter((event) => !["scheduled", "active"].includes(getEventEffectiveStatus(event, context.community.time_zone)));
 
   return (
     <section className="min-h-[100dvh]">
@@ -82,7 +82,7 @@ export default async function EventsPage() {
                         <div className="truncate font-display text-lg font-semibold">{event.name}</div>
                         <div className="mt-1 text-sm text-muted-foreground">{getEventWindowLabel(event)}</div>
                       </div>
-                      <Badge variant={getEventEffectiveStatus(event) === "active" ? "success" : "default"}>{getEventStatusLabel(getEventEffectiveStatus(event))}</Badge>
+                      <Badge variant={getEventEffectiveStatus(event, context.community.time_zone) === "active" ? "success" : "default"}>{getEventStatusLabel(getEventEffectiveStatus(event, context.community.time_zone))}</Badge>
                     </div>
                     <div className="mt-4 flex flex-wrap items-center gap-3 text-sm text-muted-foreground">
                       <span className="inline-flex items-center gap-1.5">
@@ -110,7 +110,7 @@ export default async function EventsPage() {
           <CardContent className="space-y-3">
             {past.length ? (
               past.map((event) => {
-                const status = getEventEffectiveStatus(event);
+                const status = getEventEffectiveStatus(event, context.community.time_zone);
                 return (
                   <Link
                     key={event.id}

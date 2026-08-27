@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { initialVoiceMachineState, voiceMachineReducer } from "@/lib/voice/machine";
 import type { VoiceTranscriptionResponse } from "@/lib/voice/types";
 
-const result = { transcript: "Invita a Pedro", draft: { visitorName: "Pedro", contactId: null, visitDate: "2026-08-24", windowStart: "14:00", windowEndDate: "2026-08-24", windowEnd: "16:00", accessType: "visitor", noTimeLimit: false, notes: null }, missingFields: [], ambiguities: [], contactCandidates: [], timeZone: "America/Caracas", referenceTime: "2026-08-23T12:00:00.000Z", referenceLocalDate: "2026-08-23" } satisfies VoiceTranscriptionResponse;
+const result = { transcript: "Invita a Pedro", draft: { intent: "individual_invitation", eventName: null, people: [{ personId: "11111111-1111-4111-8111-111111111111", name: "Pedro", phone: null, contactId: null, contactCandidates: [], needsContactClarification: false }], visitDate: "2026-08-24", arrivalWindowMode: "from_time", arrivalStart: "14:00", arrivalEndDate: null, arrivalEnd: null, plannedExitDate: null, plannedExitTime: null, accessType: "visitor", notes: null, allowsCompanions: null, recommendEvent: false, tooManyPeople: false }, missingFields: [], ambiguities: [], timeZone: "America/Caracas", referenceTime: "2026-08-23T12:00:00.000Z", referenceLocalDate: "2026-08-23" } satisfies VoiceTranscriptionResponse;
 
 describe("voice invitation machine", () => {
   it("recorre permiso, grabación, carga, transcripción y confirmación", () => {

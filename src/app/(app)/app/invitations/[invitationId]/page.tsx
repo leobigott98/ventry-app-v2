@@ -12,7 +12,7 @@ import { ShareInvitationActions } from "@/components/invitations/share-invitatio
 import { SectionShell } from "@/components/layout/section-shell";
 import { ResidentPageHeader } from "@/components/resident/resident-header";
 import { getInvitationAccessEventsPage } from "@/lib/domain/access-log";
-import { buildInvitationShareText, getInvitationAccessTypeLabel, getInvitationById, getInvitationEffectiveStatus, getInvitationEventsPage, getInvitationStatusLabel, getInvitationWindowLabel } from "@/lib/domain/invitations";
+import { buildInvitationShareText, getInvitationAccessTypeLabel, getInvitationById, getInvitationEffectiveStatus, getInvitationEventsPage, getInvitationPlannedExitLabel, getInvitationStatusLabel, getInvitationWindowLabel } from "@/lib/domain/invitations";
 import { getCommunityContextOrRedirect } from "@/lib/domain/session-context";
 import { formatAppDateTime } from "@/lib/formatting";
 
@@ -38,10 +38,10 @@ export default async function InvitationDetailPage({ params, searchParams }: { p
     getInvitationEventsPage(invitation.id, eventPage, 5),
     getInvitationAccessEventsPage(context.community.id, invitation.id, movementPage, 5),
   ]);
-  const status = getInvitationEffectiveStatus(invitation);
+  const status = getInvitationEffectiveStatus(invitation, context.community.time_zone);
   const canModify = status === "active" || status === "scheduled";
   const requestHeaders = await headers();
-  const shareText = buildInvitationShareText(invitation, `${getBaseUrl(requestHeaders)}/invite/${invitation.share_token}`);
+  const shareText = buildInvitationShareText(invitation, `${getBaseUrl(requestHeaders)}/invite/${invitation.share_token}`, context.community.time_zone);
   const qrImageDataUrl = invitation.access_credentials?.credential_type === "qr" && invitation.access_credentials.qr_payload ? await QRCode.toDataURL(invitation.access_credentials.qr_payload, { margin: 1, width: 280, color: { dark: "#0c1221", light: "#ffffff" } }) : null;
 
   const body = <div className="space-y-4">
@@ -49,11 +49,11 @@ export default async function InvitationDetailPage({ params, searchParams }: { p
     <section className="rounded-2xl bg-surface p-5 shadow-[0_6px_20px_rgba(12,18,33,0.05)]">
       <div className="flex items-start justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-[0.12em] text-muted-foreground">Acceso Ventry</p><h2 className="mt-2 text-xl font-bold">{invitation.visitor_name || "Acceso rápido"}</h2></div><InvitationStatusBadge status={status} /></div>
       {invitation.access_credentials?.credential_type === "qr" ? <div className="mx-auto mt-5 flex w-fit justify-center rounded-2xl border-2 border-border bg-white p-3">{qrImageDataUrl ? <Image alt="QR de acceso" className="h-44 w-44" height={176} src={qrImageDataUrl} unoptimized width={176} /> : <div className="flex h-44 w-44 items-center justify-center text-sm text-muted-foreground">QR no disponible</div>}</div> : invitation.access_credentials ? <div className="mt-5 rounded-2xl bg-muted px-4 py-5 text-center"><p className="text-sm text-muted-foreground">#&nbsp; PIN de entrada</p><p className="mt-3 font-mono text-[2.35rem] font-semibold tracking-[0.24em]">{invitation.access_credentials.credential_value}</p></div> : <div className="mt-5 rounded-2xl bg-muted p-5 text-center text-sm text-muted-foreground">Credencial no disponible.</div>}
-      <dl className="mt-5 divide-y divide-border text-sm"><div className="flex justify-between gap-4 py-3"><dt className="text-muted-foreground">Ventana</dt><dd className="max-w-[65%] text-right font-semibold">{getInvitationWindowLabel(invitation)}</dd></div><div className="flex justify-between gap-4 py-3"><dt className="text-muted-foreground">Estado</dt><dd className="font-semibold">{getInvitationStatusLabel(status)}</dd></div></dl>
+      <dl className="mt-5 divide-y divide-border text-sm"><div className="flex justify-between gap-4 py-3"><dt className="text-muted-foreground">Llegada</dt><dd className="max-w-[65%] text-right font-semibold">{getInvitationWindowLabel(invitation)}</dd></div>{getInvitationPlannedExitLabel(invitation) ? <div className="flex justify-between gap-4 py-3"><dt className="text-muted-foreground">Salida prevista</dt><dd className="max-w-[65%] text-right font-semibold">{getInvitationPlannedExitLabel(invitation)}</dd></div> : null}<div className="flex justify-between gap-4 py-3"><dt className="text-muted-foreground">Estado</dt><dd className="font-semibold">{getInvitationStatusLabel(status)}</dd></div></dl>
     </section>
 
     <details className="rounded-2xl bg-surface px-4"><summary className="flex min-h-14 cursor-pointer list-none items-center font-bold">Compartir y copiar</summary><div className="border-t border-border py-4"><ShareInvitationActions invitationId={invitation.id} mode="secondary" shareText={shareText} /></div></details>
-    {sessionUser.role !== "guard" && canModify ? <details className="rounded-2xl bg-surface px-4"><summary className="flex min-h-14 cursor-pointer list-none items-center font-bold">Modificar ventana</summary><div className="border-t border-border py-4"><InvitationWindowForm invitation={invitation} /></div></details> : null}
+    {sessionUser.role !== "guard" && canModify ? <details className="rounded-2xl bg-surface px-4"><summary className="flex min-h-14 cursor-pointer list-none items-center font-bold">Modificar llegada</summary><div className="border-t border-border py-4"><InvitationWindowForm invitation={invitation} /></div></details> : null}
     {sessionUser.role !== "guard" && canModify ? <details className="rounded-2xl bg-surface px-4"><summary className="flex min-h-14 cursor-pointer list-none items-center font-bold text-danger">Revocar invitación</summary><div className="border-t border-border py-4"><RevokeInvitationButton invitationId={invitation.id} /></div></details> : null}
 
     <details className="rounded-2xl bg-surface px-4"><summary className="flex min-h-14 cursor-pointer list-none items-center justify-between font-bold"><span>Historial</span><span className="text-xs font-medium text-muted-foreground">{eventResult.total}</span></summary><div className="space-y-3 border-t border-border py-4">{eventResult.items.length ? eventResult.items.map((event) => <div className="border-b border-border pb-3 last:border-0" key={event.id}><div className="font-semibold">{event.event_label}</div><div className="mt-1 text-xs text-muted-foreground">{formatAppDateTime(event.created_at, { dateStyle: "medium", timeStyle: "short" })}</div>{eventSummary(event.payload) ? <div className="mt-1 text-sm text-muted-foreground">{eventSummary(event.payload)}</div> : null}</div>) : <p className="py-4 text-sm text-muted-foreground">Sin eventos registrados.</p>}<Pager current={eventResult.page} href={(page) => detailHref(invitation.id, page, movementPage)} total={eventResult.totalPages} /></div></details>
@@ -61,7 +61,7 @@ export default async function InvitationDetailPage({ params, searchParams }: { p
   </div>;
 
   if (sessionUser.role === "resident") return <section className="min-h-[100dvh] pb-28 md:pb-0"><ResidentPageHeader backHref="/app/invitations" subtitle={`${getInvitationStatusLabel(status)} · ${getInvitationAccessTypeLabel(invitation.access_type)}`} title={invitation.visitor_name || "Detalle de invitación"} /><div className="space-y-4 px-3 py-4 sm:px-6 md:max-w-3xl md:px-8 md:py-6 xl:px-10">{body}</div>{canModify ? <div className="fixed inset-x-0 bottom-0 z-50 w-full border-t border-border bg-surface p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] md:sticky md:inset-auto md:max-w-3xl md:px-8 xl:px-10"><ShareInvitationActions invitationId={invitation.id} mode="whatsapp" shareText={shareText} /></div> : null}</section>;
-  return <SectionShell eyebrow={getInvitationStatusLabel(status)} title={invitation.visitor_name || "Detalle de invitación"} description="Credencial, ventana e historial del acceso.">{body}</SectionShell>;
+  return <SectionShell eyebrow={getInvitationStatusLabel(status)} title={invitation.visitor_name || "Detalle de invitación"} description="Credencial, llegada e historial del acceso.">{body}</SectionShell>;
 }
 
 function Pager({ current, href, total }: { current: number; href: (page: number) => string; total: number }) {

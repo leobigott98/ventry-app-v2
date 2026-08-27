@@ -5,6 +5,7 @@ import type {
   InvitationEventRecord,
   InvitationGroupRecord,
   InvitationRecord,
+  InvitationStatus,
   ResidentRecord,
   UnitRecord,
 } from "@/lib/domain/types";
@@ -12,10 +13,11 @@ import { createServerSupabaseClient } from "@/lib/supabase/server";
 import {
   getInvitationAccessTypeLabel,
   getInvitationEffectiveStatus,
+  getInvitationPlannedExitLabel,
   getInvitationStatusLabel,
   getInvitationWindowLabel,
 } from "@/lib/domain/invitation-utils";
-import { getAppLocalNowParts } from "@/lib/formatting";
+import { APP_TIME_ZONE, getTimeZoneNowParts } from "@/lib/formatting";
 import { normalizePagination } from "@/lib/pagination";
 import { getResidentContactViews } from "@/lib/domain/contacts";
 
@@ -23,6 +25,7 @@ export {
   classifyInvitations,
   getInvitationAccessTypeLabel,
   getInvitationEffectiveStatus,
+  getInvitationPlannedExitLabel,
   getInvitationStatusLabel,
   getInvitationStatusVariant,
   getInvitationWindowLabel,
@@ -70,8 +73,14 @@ export type PublicInvitationRecord = Pick<
   | "window_end"
   | "window_end_date"
   | "no_time_limit"
-  | "status"
+  | "arrival_window_mode"
+  | "arrival_start"
+  | "arrival_end_date"
+  | "arrival_end"
+  | "planned_exit_date"
+  | "planned_exit_time"
 > & {
+  status: InvitationStatus;
   residents: Pick<ResidentRecord, "full_name"> | null;
   units: Pick<UnitRecord, "identifier" | "building"> | null;
   access_credentials: Pick<
@@ -142,7 +151,7 @@ export async function getPaginatedInvitations(
 }
 
 export type InvitationGroupSummary = { total: number; current: number; used: number; expired: number; revoked: number };
-export async function getInvitationGroupSummaries(communityId: string, groupIds: string[], residentId?: string | null) {
+export async function getInvitationGroupSummaries(communityId: string, groupIds: string[], timeZone: string, residentId?: string | null) {
   const ids = [...new Set(groupIds.filter(Boolean))].slice(0, 25);
   if (!ids.length) return new Map<string, InvitationGroupSummary>();
   const supabase = await createServerSupabaseClient();
@@ -151,7 +160,7 @@ export async function getInvitationGroupSummaries(communityId: string, groupIds:
   const { data, error } = await query;
   if (error) throw new Error(error.message);
   const summaries = new Map<string, InvitationGroupSummary>();
-  for (const item of data ?? []) if (item.group_id) { const summary=summaries.get(item.group_id)??{total:0,current:0,used:0,expired:0,revoked:0}; const effective=getInvitationEffectiveStatus(item as InvitationRecord); summary.total+=1; if(effective==="active"||effective==="scheduled")summary.current+=1;else summary[effective]+=1; summaries.set(item.group_id,summary); }
+  for (const item of data ?? []) if (item.group_id) { const summary=summaries.get(item.group_id)??{total:0,current:0,used:0,expired:0,revoked:0}; const effective=getInvitationEffectiveStatus(item as InvitationRecord,timeZone); summary.total+=1; if(effective==="active"||effective==="scheduled")summary.current+=1;else summary[effective]+=1; summaries.set(item.group_id,summary); }
   return summaries;
 }
 
@@ -169,9 +178,9 @@ export async function getInvitationGroupById(communityId: string, groupId: strin
   return { ...raw, residents: Array.isArray(raw.residents) ? raw.residents[0] ?? null : raw.residents, units: Array.isArray(raw.units) ? raw.units[0] ?? null : raw.units, invitations } satisfies InvitationGroupDetailRecord;
 }
 
-export async function getResidentDashboardSnapshot(communityId: string, residentId: string) {
+export async function getResidentDashboardSnapshot(communityId: string, residentId: string, timeZone = APP_TIME_ZONE) {
   const supabase = await createServerSupabaseClient();
-  const now = getAppLocalNowParts();
+  const now = getTimeZoneNowParts(timeZone);
   const [activeResult, currentResult, contacts] = await Promise.all([
     supabase
       .from("invitations")
@@ -201,8 +210,9 @@ export async function getResidentDashboardSnapshot(communityId: string, resident
 export function buildInvitationShareText(
   invitation: InvitationDetailRecord,
   shareUrl: string,
+  timeZone = APP_TIME_ZONE,
 ) {
-  const status = getInvitationEffectiveStatus(invitation);
+  const status = getInvitationEffectiveStatus(invitation, timeZone);
   const credential = invitation.access_credentials;
   const credentialLine = credential
     ? credential.credential_type === "pin"
@@ -214,7 +224,8 @@ export function buildInvitationShareText(
     `Acceso Ventry para ${invitation.visitor_name || "tu visita"}`,
     `Tipo: ${getInvitationAccessTypeLabel(invitation.access_type)}`,
     `Residente: ${invitation.residents?.full_name || "Sin residente"}`,
-    `Ventana: ${getInvitationWindowLabel(invitation)}`,
+    `Llegada: ${getInvitationWindowLabel(invitation)}`,
+    getInvitationPlannedExitLabel(invitation) ? `Salida prevista: ${getInvitationPlannedExitLabel(invitation)}` : null,
     `Estado: ${getInvitationStatusLabel(status)}`,
     credentialLine,
     `Detalle: ${shareUrl}`,
@@ -343,7 +354,13 @@ export async function getInvitationByShareToken(shareToken: string) {
     window_end: string;
     window_end_date: string | null;
     no_time_limit: boolean;
-    status: InvitationRecord["status"];
+    arrival_window_mode: InvitationRecord["arrival_window_mode"];
+    arrival_start: string | null;
+    arrival_end_date: string | null;
+    arrival_end: string | null;
+    planned_exit_date: string | null;
+    planned_exit_time: string | null;
+    status: InvitationStatus;
     resident_name: string;
     unit_identifier: string | null;
     unit_building: string | null;
@@ -362,6 +379,12 @@ export async function getInvitationByShareToken(shareToken: string) {
     window_end: dto.window_end,
     window_end_date: dto.window_end_date,
     no_time_limit: dto.no_time_limit,
+    arrival_window_mode: dto.arrival_window_mode,
+    arrival_start: dto.arrival_start,
+    arrival_end_date: dto.arrival_end_date,
+    arrival_end: dto.arrival_end,
+    planned_exit_date: dto.planned_exit_date,
+    planned_exit_time: dto.planned_exit_time,
     status: dto.status,
     residents: { full_name: dto.resident_name },
     units: dto.unit_identifier

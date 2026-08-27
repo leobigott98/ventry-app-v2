@@ -37,6 +37,12 @@ describe("InvitationForm", () => {
     sessionStorage.clear();
   });
 
+  it("selecciona Todo el día por defecto y no muestra una vigencia indefinida", () => {
+    render(<InvitationForm residents={[resident]} />);
+    expect(screen.getByRole("radio", { name: /Todo el día/i })).toBeChecked();
+    expect(screen.queryByText(/Sin límite de tiempo/i)).not.toBeInTheDocument();
+  });
+
   it("prellena nombre y teléfono de un contacto y conserva su id al crear", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({ redirectTo: "/app/invitations/invitation-1" }), { status: 200, headers: { "Content-Type": "application/json" } }));
     vi.stubGlobal("fetch", fetchMock);
@@ -216,7 +222,7 @@ describe("InvitationForm", () => {
     await user.type(screen.getByLabelText(/Quién va a visitarte/), "Luisa Rojas");
     await user.click(screen.getByRole("button", { name: /Continuar/ }));
     await user.click(screen.getByRole("button", { name: /Continuar/ }));
-    expect(screen.getByText("Invitacion para 2 personas")).toBeInTheDocument();
+    expect(screen.getByText("Invitación para 2 personas")).toBeInTheDocument();
     await user.click(screen.getByRole("radio", { name: "QR" }));
     await user.click(screen.getByRole("button", { name: "Crear invitación" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());

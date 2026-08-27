@@ -3,16 +3,9 @@ import { z } from "zod";
 import { credentialTypeOptions } from "@/lib/domain/types";
 import { normalizePhoneNumber } from "@/lib/contacts/phone";
 import { nullableOptionalText } from "@/lib/schemas/community";
+import { arrivalWindowFieldsSchema, validateArrivalWindow } from "@/lib/schemas/arrival-window";
 
 const eventDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Selecciona una fecha valida.");
-const eventTime = z.string().regex(/^\d{2}:\d{2}$/, "Selecciona una hora valida.");
-const optionalEventDate = z
-  .union([eventDate, z.literal(""), z.null(), z.undefined()])
-  .transform((value) => value || null);
-const optionalEventTime = z
-  .union([eventTime, z.literal(""), z.null(), z.undefined()])
-  .transform((value) => value || null);
-
 export const eventGuestSchema = z.object({
   fullName: z.string().trim().min(2, "Cada invitado necesita un nombre.").max(120),
   phone: nullableOptionalText,
@@ -24,17 +17,18 @@ export const eventGuestSchema = z.object({
   contactOrigin: z.enum(["history", "saved", "both"]).optional().nullable(),
 });
 
-export const createEventSchema = z
+function normalizeLegacyEventWindow(value: unknown) {
+  if (!value || typeof value !== "object") return value;
+  const input = value as Record<string, unknown>;
+  if (input.arrivalWindowMode || !("windowStart" in input)) return value;
+  return { ...input, arrivalWindowMode: "from_time", arrivalStart: input.windowStart ?? null, arrivalEndDate: input.windowEndDate ?? null, arrivalEnd: input.windowEnd ?? null };
+}
+
+const createEventCoreSchema = z
   .object({
     idempotencyKey: z.string().uuid("La clave de reintento no es valida."),
     residentId: z.string().uuid("Selecciona un residente."),
     name: z.string().trim().min(2, "Escribe el nombre del evento.").max(120),
-    eventDate,
-    windowStart: eventTime,
-    windowEndDate: eventDate,
-    windowEnd: eventTime,
-    plannedExitDate: optionalEventDate,
-    plannedExitTime: optionalEventTime,
     credentialType: z.enum(
       credentialTypeOptions.map((option) => option.value) as [string, ...string[]],
     ),
@@ -43,36 +37,9 @@ export const createEventSchema = z
     maxCompanions: z.number().int().min(0).max(5).default(0),
     saveNewContacts: z.boolean().optional().default(false),
     guests: z.array(eventGuestSchema).min(1, "Agrega al menos un invitado.").max(500),
-  })
+  }).merge(arrivalWindowFieldsSchema.omit({ visitDate: true }).extend({ eventDate }))
   .superRefine((input, ctx) => {
-    const start = new Date(`${input.eventDate}T${input.windowStart}:00`);
-    const end = new Date(`${input.windowEndDate}T${input.windowEnd}:00`);
-    if (Number.isNaN(start.valueOf()) || Number.isNaN(end.valueOf()) || end <= start) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["windowEnd"],
-        message: "La fecha y hora final deben ser posteriores al inicio.",
-      });
-    }
-
-    const hasPlannedExitDate = Boolean(input.plannedExitDate);
-    const hasPlannedExitTime = Boolean(input.plannedExitTime);
-    if (hasPlannedExitDate !== hasPlannedExitTime) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: [hasPlannedExitDate ? "plannedExitTime" : "plannedExitDate"],
-        message: "Completa la fecha y la hora de salida prevista.",
-      });
-    } else if (input.plannedExitDate && input.plannedExitTime) {
-      const plannedExit = new Date(`${input.plannedExitDate}T${input.plannedExitTime}:00`);
-      if (Number.isNaN(plannedExit.valueOf()) || plannedExit < end) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["plannedExitTime"],
-          message: "La salida prevista debe ser igual o posterior al fin de la vigencia.",
-        });
-      }
-    }
+    validateArrivalWindow({ ...input, visitDate: input.eventDate }, ctx);
 
     const seenContacts = new Set<string>();
     const seenPhones = new Set<string>();
@@ -100,6 +67,7 @@ export const createEventSchema = z
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["maxCompanions"], message: "Configura entre 1 y 5 acompanantes, o desactivalos." });
     }
   });
+export const createEventSchema = z.preprocess(normalizeLegacyEventWindow, createEventCoreSchema);
 
 export const registerEventGuestSchema = z.object({
   eventId: z.string().uuid("Evento invalido."),

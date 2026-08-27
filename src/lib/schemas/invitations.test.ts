@@ -13,10 +13,12 @@ const validInvitation = {
   accessType: "visitor",
   credentialType: "pin",
   visitDate: "2026-08-17",
-  windowStart: "09:00",
-  windowEndDate: "2026-08-17",
-  windowEnd: "11:00",
-  noTimeLimit: false,
+  arrivalWindowMode: "from_time",
+  arrivalStart: "09:00",
+  arrivalEndDate: "2026-08-17",
+  arrivalEnd: "11:00",
+  plannedExitDate: null,
+  plannedExitTime: null,
   notes: "Vehiculo azul",
 };
 
@@ -47,20 +49,35 @@ describe("esquemas de invitaciones", () => {
       createInvitationSchema.safeParse({ ...validInvitation, visitDate: "17/08/2026" }).success,
     ).toBe(false);
     expect(createInvitationSchema.safeParse({ ...validInvitation, visitDate: "2026-02-30" }).success).toBe(false);
-    expect(createInvitationSchema.safeParse({ ...validInvitation, windowStart: "29:70" }).success).toBe(false);
+    expect(createInvitationSchema.safeParse({ ...validInvitation, arrivalStart: "29:70" }).success).toBe(false);
     expect(
-      createInvitationSchema.safeParse({ ...validInvitation, windowEnd: "08:59" }).success,
+      createInvitationSchema.safeParse({ ...validInvitation, arrivalEnd: "08:59" }).success,
     ).toBe(false);
   });
 
-  it("permite actualizar a una ventana sin limite", () => {
-    expect(
-      updateInvitationWindowSchema.safeParse({
+  it("rechaza horas fuera del reloj aunque tengan forma HH:mm", () => {
+    expect(createInvitationSchema.safeParse({
+      ...validInvitation,
+      arrivalStart: "24:00",
+    }).success).toBe(false);
+  });
+
+  it("permite una salida prevista anterior al cierre de llegada pero posterior al inicio", () => {
+    expect(createInvitationSchema.safeParse({
+      ...validInvitation,
+      plannedExitDate: "2026-08-17",
+      plannedExitTime: "10:00",
+    }).success).toBe(true);
+  });
+
+  it("convierte una actualización legacy sin límite en todo el día finito", () => {
+    const result = updateInvitationWindowSchema.safeParse({
         visitDate: "2026-08-17",
         windowStart: "09:00",
         noTimeLimit: true,
-      }).success,
-    ).toBe(true);
+      });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data).toMatchObject({ arrivalWindowMode: "all_day", arrivalStart: null, arrivalEnd: null });
   });
 
   it("permite nombres iguales nuevos pero rechaza contacto o teléfono repetido en grupos", () => {

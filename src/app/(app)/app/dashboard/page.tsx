@@ -236,7 +236,7 @@ export default async function DashboardPage() {
     }
 
     const [snapshot, resident] = await Promise.all([
-      getResidentDashboardSnapshot(context.community.id, sessionUser.residentId),
+      getResidentDashboardSnapshot(context.community.id, sessionUser.residentId, context.community.time_zone),
       getResidentById(context.community.id, sessionUser.residentId),
     ]);
     const unit = resident?.unit_id ? await getUnitById(context.community.id, resident.unit_id) : null;
@@ -245,7 +245,7 @@ export default async function DashboardPage() {
     const notifications = snapshot.currentInvitations.map((invitation) => ({
       id: invitation.id,
       title: invitation.visitor_name || "Visita sin nombre",
-      detail: `${getInvitationEffectiveStatus(invitation) === "scheduled" ? "Programada" : "Activa"} · ${getInvitationWindowLabel(invitation)}`,
+      detail: `${getInvitationEffectiveStatus(invitation, context.community.time_zone) === "scheduled" ? "Programada" : "Activa"} · ${getInvitationWindowLabel(invitation)}`,
       href: `/app/invitations/${invitation.id}`,
     }));
     return <ResidentDashboard activeCount={snapshot.activeCount} communityName={context.community.name} contacts={snapshot.contacts} firstName={firstName} greeting={getGreeting()} notifications={notifications} unitLabel={unitLabel} />;

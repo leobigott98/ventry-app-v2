@@ -48,7 +48,7 @@ export default async function EventDetailPage({
   );
   if (!event) notFound();
 
-  const status = getEventEffectiveStatus(event);
+  const status = getEventEffectiveStatus(event, context.community.time_zone);
   const requestHeaders = await headers();
   const origin = baseUrl(requestHeaders);
   const credential = event.event_credentials;

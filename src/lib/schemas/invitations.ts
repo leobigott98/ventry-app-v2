@@ -5,6 +5,7 @@ import {
   invitationAccessTypeOptions,
 } from "@/lib/domain/types";
 import { normalizePhoneNumber } from "@/lib/contacts/phone";
+import { arrivalWindowFieldsSchema, validateArrivalWindow } from "@/lib/schemas/arrival-window";
 import { nullableOptionalText } from "@/lib/schemas/community";
 
 function isCalendarDate(value: string) {
@@ -34,43 +35,15 @@ export const invitationVisitorSchema = z.object({
   contactOrigin: z.enum(["history", "saved", "both"]).optional().nullable(),
 });
 
-function validateWindow(
-  input: {
-    visitDate: string;
-    windowStart: string;
-    windowEndDate?: string;
-    windowEnd?: string;
-    noTimeLimit: boolean;
-  },
-  ctx: z.RefinementCtx,
-) {
-  if (input.noTimeLimit) {
-    return;
-  }
-
-  if (!input.windowEnd) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["windowEnd"],
-      message: "Selecciona la hora final.",
-    });
-    return;
-  }
-
-  const endDate = input.windowEndDate ?? input.visitDate;
-  const start = new Date(`${input.visitDate}T${input.windowStart}:00`);
-  const end = new Date(`${endDate}T${input.windowEnd}:00`);
-
-  if (Number.isNaN(start.valueOf()) || Number.isNaN(end.valueOf()) || end <= start) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: ["windowEnd"],
-      message: "La fecha y hora final deben ser posteriores al inicio.",
-    });
-  }
+function normalizeLegacyWindow(value: unknown) {
+  if (!value || typeof value !== "object") return value;
+  const input = value as Record<string, unknown>;
+  if (input.arrivalWindowMode || !("windowStart" in input || "noTimeLimit" in input)) return value;
+  const allDay = input.noTimeLimit === true;
+  return { ...input, arrivalWindowMode: allDay ? "all_day" : "from_time", arrivalStart: allDay ? null : input.windowStart ?? null, arrivalEndDate: allDay ? null : input.windowEndDate ?? input.visitDate ?? null, arrivalEnd: allDay ? null : input.windowEnd ?? null, plannedExitDate: input.plannedExitDate ?? null, plannedExitTime: input.plannedExitTime ?? null };
 }
 
-export const createInvitationSchema = z
+const createInvitationCoreSchema = z
   .object({
     idempotencyKey: z.string().uuid("La clave de reintento no es válida."),
     residentId: z.string().uuid("Selecciona un residente."),
@@ -84,13 +57,8 @@ export const createInvitationSchema = z
     credentialType: z.enum(
       credentialTypeOptions.map((option) => option.value) as [string, ...string[]],
     ),
-    visitDate: invitationDateSchema,
-    windowStart: invitationTimeSchema,
-    windowEndDate: invitationDateSchema.optional(),
-    windowEnd: invitationTimeSchema.optional(),
-    noTimeLimit: z.boolean().default(false),
     notes: nullableOptionalText,
-  })
+  }).merge(arrivalWindowFieldsSchema)
   .superRefine((input, ctx) => {
     if (input.accessType !== "delivery" && !input.visitorName) {
       ctx.addIssue({
@@ -100,10 +68,11 @@ export const createInvitationSchema = z
       });
     }
 
-    validateWindow(input, ctx);
+    validateArrivalWindow(input, ctx);
   });
+export const createInvitationSchema = z.preprocess(normalizeLegacyWindow, createInvitationCoreSchema);
 
-export const createInvitationGroupSchema = z
+const createInvitationGroupCoreSchema = z
   .object({
     idempotencyKey: z.string().uuid("La clave de reintento no es válida."),
     residentId: z.string().uuid("Selecciona un residente."),
@@ -113,17 +82,12 @@ export const createInvitationGroupSchema = z
     credentialType: z.enum(
       credentialTypeOptions.map((option) => option.value) as [string, ...string[]],
     ),
-    visitDate: invitationDateSchema,
-    windowStart: invitationTimeSchema,
-    windowEndDate: invitationDateSchema.optional(),
-    windowEnd: invitationTimeSchema.optional(),
-    noTimeLimit: z.boolean().default(false),
     notes: nullableOptionalText,
     saveNewContacts: z.boolean().optional().default(false),
     visitors: z.array(invitationVisitorSchema).min(2, "Agrega al menos dos personas.").max(25),
-  })
+  }).merge(arrivalWindowFieldsSchema)
   .superRefine((input, ctx) => {
-    validateWindow(input, ctx);
+    validateArrivalWindow(input, ctx);
     const seenContacts = new Set<string>();
     const seenPhones = new Set<string>();
     input.visitors.forEach((visitor, index) => {
@@ -136,16 +100,12 @@ export const createInvitationGroupSchema = z
       if (phone) seenPhones.add(phone);
     });
   });
+export const createInvitationGroupSchema = z.preprocess(normalizeLegacyWindow, createInvitationGroupCoreSchema);
 
-export const updateInvitationWindowSchema = z
-  .object({
-    visitDate: invitationDateSchema,
-    windowStart: invitationTimeSchema,
-    windowEndDate: invitationDateSchema.optional(),
-    windowEnd: invitationTimeSchema.optional(),
-    noTimeLimit: z.boolean().default(false),
-  })
-  .superRefine(validateWindow);
+const updateInvitationWindowCoreSchema = z
+  .object({}).merge(arrivalWindowFieldsSchema)
+  .superRefine(validateArrivalWindow);
+export const updateInvitationWindowSchema = z.preprocess(normalizeLegacyWindow, updateInvitationWindowCoreSchema);
 
 export type CreateInvitationInput = z.infer<typeof createInvitationSchema>;
 export type CreateInvitationGroupInput = z.infer<typeof createInvitationGroupSchema>;
