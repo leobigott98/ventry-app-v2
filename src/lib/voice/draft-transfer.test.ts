@@ -8,7 +8,7 @@ const draft: VoiceAccessDraft = {
   arrivalWindowMode: "all_day", arrivalStart: null, arrivalEndDate: null, arrivalEnd: null,
   plannedExitDate: null, plannedExitTime: null, notes: null, allowsCompanions: null,
   recommendEvent: false, tooManyPeople: false,
-  people: [{ personId: "11111111-1111-4111-8111-111111111111", name: "Ana", phone: null, contactId: null, contactCandidates: [], needsContactClarification: false }],
+  people: [{ personId: "11111111-1111-4111-8111-111111111111", name: "Ana", phone: null, contactId: null, selectedContactStableId: null, continueAsNew: true, contactCandidates: [], needsContactClarification: false }],
 };
 
 describe("transferencia temporal de borradores de voz", () => {

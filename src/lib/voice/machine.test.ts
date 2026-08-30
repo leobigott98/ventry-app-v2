@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { initialVoiceMachineState, voiceMachineReducer } from "@/lib/voice/machine";
 import type { VoiceTranscriptionResponse } from "@/lib/voice/types";
 
-const result = { transcript: "Invita a Pedro", draft: { intent: "individual_invitation", eventName: null, people: [{ personId: "11111111-1111-4111-8111-111111111111", name: "Pedro", phone: null, contactId: null, contactCandidates: [], needsContactClarification: false }], visitDate: "2026-08-24", arrivalWindowMode: "from_time", arrivalStart: "14:00", arrivalEndDate: null, arrivalEnd: null, plannedExitDate: null, plannedExitTime: null, accessType: "visitor", notes: null, allowsCompanions: null, recommendEvent: false, tooManyPeople: false }, missingFields: [], ambiguities: [], timeZone: "America/Caracas", referenceTime: "2026-08-23T12:00:00.000Z", referenceLocalDate: "2026-08-23" } satisfies VoiceTranscriptionResponse;
+const result = { transcript: "Invita a Pedro", draft: { intent: "individual_invitation", eventName: null, people: [{ personId: "11111111-1111-4111-8111-111111111111", name: "Pedro", phone: null, contactId: null, selectedContactStableId: null, continueAsNew: true, contactCandidates: [], needsContactClarification: false }], visitDate: "2026-08-24", arrivalWindowMode: "from_time", arrivalStart: "14:00", arrivalEndDate: null, arrivalEnd: null, plannedExitDate: null, plannedExitTime: null, accessType: "visitor", notes: null, allowsCompanions: null, recommendEvent: false, tooManyPeople: false }, missingFields: [], ambiguities: [], timeZone: "America/Caracas", referenceTime: "2026-08-23T12:00:00.000Z", referenceLocalDate: "2026-08-23" } satisfies VoiceTranscriptionResponse;
 
 describe("voice invitation machine", () => {
   it("recorre permiso, grabación, carga, transcripción y confirmación", () => {
@@ -27,6 +27,11 @@ describe("voice invitation machine", () => {
     const confirming = { ...requesting, phase: "confirm" as const, result };
     const creating = voiceMachineReducer(confirming, { type: "CREATE" });
     expect(voiceMachineReducer(creating, { type: "CREATE" })).toEqual(creating);
+  });
+
+  it("permite crear desde una aclaración resuelta sin abandonar la confirmación", () => {
+    const clarifying = { ...initialVoiceMachineState, phase: "needs-clarification" as const, result };
+    expect(voiceMachineReducer(clarifying, { type: "CREATE" }).phase).toBe("creating");
   });
 });
 

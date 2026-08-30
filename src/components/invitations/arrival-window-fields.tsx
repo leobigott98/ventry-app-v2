@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 
 export type ArrivalWindowEditorValue = {
   date: string;
-  arrivalWindowMode: ArrivalWindowMode;
+  arrivalWindowMode: ArrivalWindowMode | null;
   arrivalStart: string | null;
   arrivalEndDate: string | null;
   arrivalEnd: string | null;

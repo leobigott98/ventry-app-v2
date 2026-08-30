@@ -18,7 +18,7 @@ export function voiceMachineReducer(state: VoiceMachineState, event: VoiceMachin
     case "UPLOADED": return state.phase === "uploading" ? { ...state, phase: "transcribing" } : state;
     case "RESULT": return ["uploading", "transcribing"].includes(state.phase) ? { ...state, result: event.result, phase: event.result.ambiguities.length || event.result.missingFields.length ? "needs-clarification" : "confirm" } : state;
     case "READY": return state.result && ["needs-clarification", "confirm", "creating"].includes(state.phase) ? { ...state, phase: "confirm" } : state;
-    case "CREATE": return state.phase === "confirm" ? { ...state, phase: "creating" } : state;
+    case "CREATE": return ["needs-clarification", "confirm"].includes(state.phase) ? { ...state, phase: "creating" } : state;
     case "ERROR": return { ...state, phase: "error", errorCode: event.code ?? null, errorMessage: event.message, retryable: event.retryable ?? true };
     case "RESET": case "CANCEL": return initialVoiceMachineState;
     default: return state;

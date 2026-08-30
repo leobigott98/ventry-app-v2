@@ -9,7 +9,7 @@ const EVENT_WORDS = /\b(evento|fiesta|cumpleaños|cumpleanos|reunión|reunion|ce
 
 function minimalCandidate(contact: ResidentContactViewModel): VoiceContactCandidate {
   const digits = contact.phone?.replace(/\D/g, "") ?? "";
-  return { stableId: contact.stableId, contactId: contact.savedContactId, name: contact.name, relationshipLabel: contact.relationshipLabel, phoneLastDigits: digits.length >= 4 ? digits.slice(-4) : null, origin: contact.origin, isFavorite: contact.isFavorite };
+  return { stableId: contact.stableId, contactId: contact.savedContactId, name: contact.name, relationshipLabel: contact.relationshipLabel, phone: contact.phone, phoneLastDigits: digits.length >= 4 ? digits.slice(-4) : null, origin: contact.origin, isFavorite: contact.isFavorite };
 }
 
 function decideIntent(providerIntent: VoiceAccessIntent, transcript: string, peopleCount: number) {
@@ -25,7 +25,17 @@ async function resolvePerson(name: string, phone: string | null, findContacts: (
   const exact = contacts.filter((contact) => normalizeContactName(contact.name) === normalized);
   const selectedPool = exact.length ? exact : contacts;
   const candidates = selectedPool.slice(0, 5).map(minimalCandidate);
-  return { personId: crypto.randomUUID(), name, phone, contactId: exact.length === 1 ? exact[0]?.savedContactId ?? null : null, contactCandidates: candidates, needsContactClarification: exact.length > 1 };
+  const selected = exact.length === 1 ? exact[0] : null;
+  return {
+    personId: crypto.randomUUID(),
+    name: selected?.name ?? name,
+    phone: selected?.phone ?? phone,
+    contactId: selected?.savedContactId ?? null,
+    selectedContactStableId: selected?.stableId ?? null,
+    continueAsNew: candidates.length === 0,
+    contactCandidates: candidates,
+    needsContactClarification: candidates.length > 0 && !selected,
+  };
 }
 
 function duplicateIssues(people: VoicePerson[]) {
@@ -49,15 +59,18 @@ export async function interpretVoiceAccess(args: {
   if (!transcript) throw new VoiceError("TRANSCRIPTION_EMPTY", 422, voiceSafeMessages.TRANSCRIPTION_EMPTY);
   const clock = getVoiceReferenceClock(args.timeZone, args.now);
   const extraction = await args.extractionProvider.extract({ transcript, ...clock, signal: args.signal });
-  const temporal = interpretVenezuelanTemporal({ transcript, referenceLocalDate: clock.referenceLocalDate, dateText: extraction.draft.dateText, arrivalText: extraction.draft.arrivalText, plannedExitText: extraction.draft.plannedExitText });
+  const parsedTemporal = interpretVenezuelanTemporal({ transcript, referenceLocalDate: clock.referenceLocalDate, dateText: extraction.draft.dateText, arrivalText: extraction.draft.arrivalText, plannedExitText: extraction.draft.plannedExitText });
   const people = await Promise.all(extraction.draft.people.map((person) => resolvePerson(person.name, person.phone, args.findContacts)));
   const intent = decideIntent(extraction.draft.intent, transcript, people.length);
+  const temporal = intent.intent !== "event" && !parsedTemporal.arrivalWindowMode
+    ? { ...parsedTemporal, arrivalWindowMode: "all_day" as const, arrivalStart: null, arrivalEndDate: null, arrivalEnd: null }
+    : parsedTemporal;
   const ambiguities: ClarificationIssue[] = temporal.ambiguities.map((issue) => ({ ...issue }));
   extraction.ambiguities.forEach((issue) => ambiguities.push({ field: issue.field, code: issue.code, question: issue.detail }));
   people.filter((person) => person.needsContactClarification).forEach((person) => ambiguities.push({
     field: `people.${person.personId}.contactId`, personId: person.personId, code: "CONTACT_AMBIGUOUS",
     question: `Encontramos ${person.contactCandidates.length} contactos llamados ${person.name}. ¿Cuál deseas invitar?`,
-    options: [{ value: "new", label: "Continuar como persona nueva" }, ...person.contactCandidates.map((candidate) => ({ value: candidate.contactId ?? candidate.stableId, label: candidate.name, description: [candidate.relationshipLabel, candidate.phoneLastDigits ? `tel. ···${candidate.phoneLastDigits}` : null].filter(Boolean).join(" · ") || undefined }))],
+    options: [{ value: "new", label: "Continuar como persona nueva" }, ...person.contactCandidates.map((candidate) => ({ value: candidate.stableId, label: candidate.name, description: [candidate.relationshipLabel, candidate.phoneLastDigits ? `tel. ···${candidate.phoneLastDigits}` : null].filter(Boolean).join(" · ") || undefined }))],
   }));
   ambiguities.push(...duplicateIssues(people));
   if (intent.intent === "ambiguous") ambiguities.push({ field: "intent", code: "INTENT_AMBIGUOUS", question: "¿Quieres crear una invitación grupal o un evento?", options: [{ value: "group_invitation", label: "Invitación grupal" }, { value: "event", label: "Evento" }] });

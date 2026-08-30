@@ -19,11 +19,14 @@ export const providerExtractionSchema = z.object({
 
 export const voiceContactCandidateSchema = z.object({
   stableId: z.string(), contactId: z.string().uuid().nullable(), name: z.string(), relationshipLabel: z.string().nullable(),
-  phoneLastDigits: z.string().nullable(), origin: z.enum(["history", "saved", "both"]), isFavorite: z.boolean(),
+  phone: z.string().trim().max(40).nullable().default(null), phoneLastDigits: z.string().nullable(),
+  origin: z.enum(["history", "saved", "both"]), isFavorite: z.boolean(),
 });
 export const voicePersonSchema = z.object({
   personId: z.string().uuid(), name: z.string().trim().min(1).max(120), phone: z.string().trim().max(40).nullable(),
-  contactId: z.string().uuid().nullable(), contactCandidates: z.array(voiceContactCandidateSchema).max(5), needsContactClarification: z.boolean(),
+  contactId: z.string().uuid().nullable(), selectedContactStableId: z.string().nullable().default(null),
+  continueAsNew: z.boolean().default(false), contactCandidates: z.array(voiceContactCandidateSchema).max(5),
+  needsContactClarification: z.boolean(),
 });
 export const voiceAccessDraftSchema = z.object({
   intent: voiceAccessIntentSchema, eventName: z.string().trim().max(120).nullable(), people: z.array(voicePersonSchema).max(25),

@@ -15,8 +15,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { normalizeContactName, normalizePhoneNumber } from "@/lib/contacts/phone";
 import { invitationAccessTypeOptions } from "@/lib/domain/types";
 import { arrivalWindowFieldsSchema, validateArrivalWindow } from "@/lib/schemas/arrival-window";
+import { createEventSchema } from "@/lib/schemas/events";
+import { createInvitationGroupSchema, createInvitationSchema } from "@/lib/schemas/invitations";
 import { MAX_VOICE_BYTES, MAX_VOICE_SECONDS } from "@/lib/voice/audio-limits";
-import { serializeVoiceAccessDraft, VOICE_ACCESS_DRAFT_TRANSFER_KEY } from "@/lib/voice/draft-transfer";
 import { initialVoiceMachineState, voiceMachineReducer } from "@/lib/voice/machine";
 import { VOICE_MANUAL_FALLBACK_KEY } from "@/lib/voice/manual-fallback";
 import { voiceTranscriptionResponseSchema, type VoiceAccessDraft, type VoicePerson, type VoiceTranscriptionResponse } from "@/lib/voice/types";
@@ -24,7 +25,7 @@ import { voiceTranscriptionResponseSchema, type VoiceAccessDraft, type VoicePers
 const mimeCandidates = ["audio/webm;codecs=opus", "audio/mp4;codecs=mp4a.40.2", "audio/mp4", "audio/webm"];
 const VOICE_AUDIO_BITS_PER_SECOND = 64_000;
 const emptyDraft: VoiceAccessDraft = { intent: "ambiguous", eventName: null, people: [], accessType: "visitor", visitDate: null, arrivalWindowMode: null, arrivalStart: null, arrivalEndDate: null, arrivalEnd: null, plannedExitDate: null, plannedExitTime: null, notes: null, allowsCompanions: null, recommendEvent: false, tooManyPeople: false };
-const guardedPhases = ["recording", "uploading", "transcribing", "needs-clarification", "confirm"];
+const guardedPhases = ["recording", "uploading", "transcribing", "needs-clarification", "confirm", "creating"];
 const extensionForMime = (mime: string) => mime.includes("mp4") ? "mp4" : mime.includes("mpeg") ? "mp3" : mime.includes("wav") ? "wav" : "webm";
 const formatSeconds = (value: number) => `0:${String(value).padStart(2, "0")}`;
 
@@ -70,13 +71,23 @@ function hasDuplicatePeople(people: VoicePerson[]) {
   return false;
 }
 
-export function VoiceInvitation({ providerAvailable }: { providerAvailable: boolean; residentId: string }) {
+function normalizeDraftForConfirmation(draft: VoiceAccessDraft): VoiceAccessDraft {
+  if (!["individual_invitation", "group_invitation"].includes(draft.intent) || draft.arrivalWindowMode) return draft;
+  return { ...draft, arrivalWindowMode: "all_day", arrivalStart: null, arrivalEndDate: null, arrivalEnd: null };
+}
+
+function selectedCandidate(person: VoicePerson) {
+  return person.contactCandidates.find((candidate) => candidate.stableId === person.selectedContactStableId) ?? null;
+}
+
+export function VoiceInvitation({ providerAvailable, residentId }: { providerAvailable: boolean; residentId: string }) {
   const router = useRouter();
   const [machine, dispatch] = useReducer(voiceMachineReducer, initialVoiceMachineState);
   const [elapsed, setElapsed] = useState(0);
   const [draft, setDraft] = useState<VoiceAccessDraft>(emptyDraft);
   const [transcript, setTranscript] = useState("");
   const [writtenPhrase, setWrittenPhrase] = useState("");
+  const [credentialType, setCredentialType] = useState<"pin" | "qr">("pin");
   const [formError, setFormError] = useState<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -84,8 +95,11 @@ export function VoiceInvitation({ providerAvailable }: { providerAvailable: bool
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const stopTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const createAbortRef = useRef<AbortController | null>(null);
   const requestGenerationRef = useRef(0);
   const busyRef = useRef(false);
+  const creatingRef = useRef(false);
+  const creationKeyRef = useRef<string | null>(null);
   const appendModeRef = useRef(false);
 
   const cleanupMedia = useCallback(() => {
@@ -97,10 +111,10 @@ export function VoiceInvitation({ providerAvailable }: { providerAvailable: bool
   }, []);
 
   const cancelAll = useCallback(() => {
-    requestGenerationRef.current += 1; abortRef.current?.abort(); abortRef.current = null;
+    requestGenerationRef.current += 1; abortRef.current?.abort(); abortRef.current = null; createAbortRef.current?.abort(); createAbortRef.current = null;
     const recorder = mediaRecorderRef.current;
     if (recorder?.state === "recording") { recorder.ondataavailable = null; recorder.onstop = null; recorder.stop(); }
-    cleanupMedia(); chunksRef.current = []; busyRef.current = false; appendModeRef.current = false; setElapsed(0); setDraft(emptyDraft); setTranscript(""); setFormError(null); dispatch({ type: "CANCEL" });
+    cleanupMedia(); chunksRef.current = []; busyRef.current = false; creatingRef.current = false; creationKeyRef.current = null; appendModeRef.current = false; setElapsed(0); setDraft(emptyDraft); setTranscript(""); setCredentialType("pin"); setFormError(null); dispatch({ type: "CANCEL" });
   }, [cleanupMedia]);
 
   useEffect(() => () => cancelAll(), [cancelAll]);
@@ -129,7 +143,9 @@ export function VoiceInvitation({ providerAvailable }: { providerAvailable: bool
       if (appendModeRef.current && draft.people.length) {
         result = { ...result, transcript: `${transcript}\n${parsed.data.transcript}`.trim(), draft: { ...draft, people: mergePeople(draft.people, parsed.data.draft.people), tooManyPeople: draft.tooManyPeople || parsed.data.draft.tooManyPeople }, missingFields: [], ambiguities: parsed.data.ambiguities.filter((issue) => issue.personId) };
       }
-      appendModeRef.current = false; setDraft(result.draft); setTranscript(result.transcript); setFormError(null); dispatch({ type: "RESULT", result });
+      const normalizedDraft = normalizeDraftForConfirmation(result.draft);
+      result = { ...result, draft: normalizedDraft, missingFields: normalizedDraft.intent === "event" ? result.missingFields : result.missingFields.filter((field) => field !== "arrivalWindowMode") };
+      appendModeRef.current = false; creationKeyRef.current = null; setDraft(normalizedDraft); setTranscript(result.transcript); setFormError(null); dispatch({ type: "RESULT", result });
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
       dispatch({ type: "ERROR", message: "No pudimos conectar con el servicio. Revisa tu conexión e intenta de nuevo." });
@@ -186,7 +202,7 @@ export function VoiceInvitation({ providerAvailable }: { providerAvailable: bool
 
   function resolveQuickOption(field: string, value: string) {
     setDraft((current) => {
-      if (field === "intent") return { ...current, intent: value as VoiceAccessDraft["intent"], recommendEvent: false };
+      if (field === "intent") return normalizeDraftForConfirmation({ ...current, intent: value as VoiceAccessDraft["intent"], recommendEvent: false });
       if (field === "arrivalStart") return { ...current, arrivalStart: value };
       return current;
     });
@@ -194,6 +210,8 @@ export function VoiceInvitation({ providerAvailable }: { providerAvailable: bool
 
   const unresolvedContacts = draft.people.some((person) => person.needsContactClarification);
   const peopleAreValid = draft.people.every((person) => person.name.trim().length >= 2 && person.name.trim().length <= 120);
+  const peopleCountIsValid = draft.intent === "individual_invitation" ? draft.people.length === 1 : draft.intent === "group_invitation" ? draft.people.length >= 2 : draft.people.length >= 1;
+  const dateIsCurrent = Boolean(draft.visitDate && machine.result?.referenceLocalDate && draft.visitDate >= machine.result.referenceLocalDate);
   const arrivalIsValid = arrivalWindowFieldsSchema.superRefine(validateArrivalWindow).safeParse({
     visitDate: draft.visitDate,
     arrivalWindowMode: draft.arrivalWindowMode,
@@ -206,19 +224,94 @@ export function VoiceInvitation({ providerAvailable }: { providerAvailable: bool
   const canContinue = Boolean(
     draft.intent !== "ambiguous"
       && !draft.recommendEvent
+      && dateIsCurrent
       && arrivalIsValid
-      && (draft.intent === "event" ? draft.eventName?.trim().length && peopleAreValid : draft.people.length && peopleAreValid && draft.accessType)
+      && peopleCountIsValid
+      && (draft.intent === "event" ? draft.eventName?.trim().length && peopleAreValid : peopleAreValid && draft.accessType)
       && !unresolvedContacts
       && !hasDuplicatePeople(draft.people),
   );
-  const arrivalValue = useMemo(() => ({ date: draft.visitDate ?? "", arrivalWindowMode: draft.arrivalWindowMode ?? "all_day" as const, arrivalStart: draft.arrivalStart, arrivalEndDate: draft.arrivalEndDate, arrivalEnd: draft.arrivalEnd, plannedExitDate: draft.plannedExitDate, plannedExitTime: draft.plannedExitTime }), [draft]);
+  const arrivalValue = useMemo(() => ({ date: draft.visitDate ?? "", arrivalWindowMode: draft.arrivalWindowMode, arrivalStart: draft.arrivalStart, arrivalEndDate: draft.arrivalEndDate, arrivalEnd: draft.arrivalEnd, plannedExitDate: draft.plannedExitDate, plannedExitTime: draft.plannedExitTime }), [draft]);
 
-  function continueToForm() {
-    if (!canContinue) { setFormError("Resuelve los datos pendientes antes de continuar al formulario."); return; }
+  async function createAccess() {
+    if (!canContinue || creatingRef.current || !["needs-clarification", "confirm"].includes(machine.phase)) {
+      setFormError("Resuelve los datos pendientes antes de crear el acceso.");
+      return;
+    }
+    const idempotencyKey = creationKeyRef.current ?? crypto.randomUUID();
+    creationKeyRef.current = idempotencyKey;
+    const commonWindow = {
+      arrivalWindowMode: draft.arrivalWindowMode,
+      arrivalStart: draft.arrivalStart,
+      arrivalEndDate: draft.arrivalEndDate,
+      arrivalEnd: draft.arrivalEnd,
+      plannedExitDate: draft.plannedExitDate,
+      plannedExitTime: draft.plannedExitTime,
+    };
+    const people = draft.people.map((person) => {
+      const candidate = selectedCandidate(person);
+      return {
+        fullName: person.name,
+        phone: person.phone,
+        residentContactId: person.contactId,
+        contactStableId: candidate?.stableId ?? null,
+        contactOrigin: candidate?.origin ?? null,
+      };
+    });
+    const companionsAllowed = draft.allowsCompanions ?? false;
+    const maxCompanions = companionsAllowed ? 1 : 0;
+    const request = draft.intent === "individual_invitation"
+      ? {
+          endpoint: "/api/invitations",
+          parsed: createInvitationSchema.safeParse({ idempotencyKey, residentId, residentContactId: people[0]?.residentContactId ?? null, saveContact: false, visitorName: people[0]?.fullName ?? null, visitorPhone: people[0]?.phone ?? null, accessType: draft.accessType, credentialType, notes: draft.notes, visitDate: draft.visitDate, ...commonWindow }),
+        }
+      : draft.intent === "group_invitation"
+        ? {
+            endpoint: "/api/invitation-groups",
+            parsed: createInvitationGroupSchema.safeParse({ idempotencyKey, residentId, accessType: draft.accessType, credentialType, notes: draft.notes, saveNewContacts: false, visitors: people, visitDate: draft.visitDate, ...commonWindow }),
+          }
+        : {
+            endpoint: "/api/events",
+            parsed: createEventSchema.safeParse({ idempotencyKey, residentId, name: draft.eventName, credentialType, notes: draft.notes, allowsCompanions: companionsAllowed, maxCompanions, saveNewContacts: false, guests: people.map((person) => ({ ...person, notes: null, allowsCompanions: companionsAllowed, maxCompanions })), eventDate: draft.visitDate, ...commonWindow }),
+          };
+    if (!request.parsed.success) {
+      setFormError(request.parsed.error.issues[0]?.message ?? "Revisa los datos antes de crear el acceso.");
+      return;
+    }
+    creatingRef.current = true;
+    dispatch({ type: "CREATE" });
+    setFormError(null);
+    const generation = requestGenerationRef.current;
+    const controller = new AbortController();
+    createAbortRef.current = controller;
     try {
-      sessionStorage.setItem(VOICE_ACCESS_DRAFT_TRANSFER_KEY, serializeVoiceAccessDraft(draft));
-      router.push(draft.intent === "event" ? "/app/events/new?source=voice" : "/app/invitations/new?source=voice");
-    } catch { setFormError("No pudimos transferir el borrador en este navegador. Puedes continuar manualmente."); }
+      const response = await fetch(request.endpoint, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(request.parsed.data), signal: controller.signal });
+      const payload = await readJsonResponse(response);
+      if (generation !== requestGenerationRef.current || controller.signal.aborted) return;
+      const result = payload && typeof payload === "object" ? payload as { error?: unknown; redirectTo?: unknown } : null;
+      if (!response.ok) {
+        setFormError(typeof result?.error === "string" ? result.error : "No fue posible crear el acceso. Revisa los datos e intenta de nuevo.");
+        dispatch({ type: "READY" });
+        return;
+      }
+      if (typeof result?.redirectTo !== "string" || !result.redirectTo.startsWith("/app/")) {
+        setFormError("El acceso fue procesado, pero no recibimos un destino válido. Revisa tu lista antes de reintentar.");
+        dispatch({ type: "READY" });
+        return;
+      }
+      router.push(result.redirectTo);
+      router.refresh();
+    } catch (error) {
+      if (!(error instanceof DOMException && error.name === "AbortError")) {
+        setFormError("No pudimos conectar para crear el acceso. Tus cambios siguen aquí; intenta de nuevo.");
+        dispatch({ type: "READY" });
+      }
+    } finally {
+      if (generation === requestGenerationRef.current) {
+        createAbortRef.current = null;
+        creatingRef.current = false;
+      }
+    }
   }
 
   const manualHref = draft.intent === "event" ? "/app/events/new" : "/app/invitations/new";
@@ -231,20 +324,20 @@ export function VoiceInvitation({ providerAvailable }: { providerAvailable: bool
       {machine.phase === "recording" ? <section className="text-center"><div className="mx-auto flex h-40 w-40 items-center justify-center rounded-full bg-danger/10 motion-safe:animate-pulse"><Mic className="h-16 w-16 text-danger" /></div><p className="mt-6 text-xl font-extrabold" role="timer">Grabando · {formatSeconds(elapsed)}</p><p className="mt-1 text-muted-foreground">Quedan {MAX_VOICE_SECONDS - elapsed} segundos</p><Button className="mt-7 w-full bg-danger hover:bg-danger/90" size="lg" onClick={() => void finishRecording()}><Square className="h-5 w-5 fill-current" /> Detener</Button><Button className="mt-3 w-full" variant="ghost" onClick={cancelAll}><X className="h-5 w-5" /> Cancelar</Button></section> : null}
       {["uploading", "transcribing"].includes(machine.phase) ? <section aria-busy="true" className="py-16 text-center"><Loader2 className="mx-auto h-14 w-14 animate-spin text-primary motion-reduce:animate-none" /><h2 className="mt-6 text-xl font-extrabold">{machine.phase === "uploading" ? "Enviando la grabación…" : "Entendiendo tu mensaje…"}</h2><Button className="mt-7" variant="ghost" onClick={cancelAll}>Cancelar</Button></section> : null}
       {machine.phase === "error" ? <ErrorPanel manualHref={manualHref} message={machine.errorMessage ?? "No pudimos continuar."} onReset={() => dispatch({ type: "RESET" })} retryable={machine.retryable} /> : null}
-      {(machine.phase === "needs-clarification" || machine.phase === "confirm") && machine.result ? <section className="space-y-7">
+      {(["needs-clarification", "confirm", "creating"].includes(machine.phase)) && machine.result ? <section><fieldset aria-busy={machine.phase === "creating"} className="space-y-7" disabled={machine.phase === "creating"}>
         <div><p className="text-sm font-bold uppercase tracking-wide text-primary">{draft.intent === "event" ? "Evento detectado" : draft.intent === "group_invitation" ? "Invitación grupal detectada" : draft.intent === "individual_invitation" ? "Invitación individual detectada" : "Tipo por confirmar"}</p><h2 className="mt-1 text-2xl font-extrabold">Revisa el borrador</h2><p className="mt-1 text-muted-foreground">Todavía no se ha creado ninguna fila ni credencial.</p></div>
         {machine.result.ambiguities.length || machine.result.missingFields.length ? <div className="rounded-2xl border border-warning/30 bg-warning/10 p-4"><h3 className="font-bold">Necesitamos confirmar</h3><ul className="mt-2 space-y-3 text-sm">{machine.result.ambiguities.filter((issue) => issue.code !== "CONTACT_AMBIGUOUS").map((issue) => <li key={`${issue.field}-${issue.code}`}><p>{issue.question}</p>{issue.options?.length ? <div className="mt-2 flex flex-wrap gap-2">{issue.options.map((option) => <button className="min-h-11 rounded-xl border border-primary/25 bg-surface px-4 font-semibold text-primary" key={option.value} onClick={() => resolveQuickOption(issue.field, option.value)} type="button">{option.label}</button>)}</div> : null}</li>)}</ul></div> : null}
-        <div className="grid gap-4 md:grid-cols-2"><Field label="Tipo de acceso"><Select value={draft.intent} onChange={(event) => setDraft((current) => ({ ...current, intent: event.target.value as VoiceAccessDraft["intent"], recommendEvent: false }))}><option value="ambiguous">Selecciona</option><option value="individual_invitation">Invitación individual</option><option value="group_invitation">Invitación grupal</option><option value="event">Evento</option></Select></Field>{draft.intent === "event" ? <Field label="Nombre del evento"><Input value={draft.eventName ?? ""} onChange={(event) => setDraft((current) => ({ ...current, eventName: event.target.value || null }))} /></Field> : <Field label="Tipo de visita"><Select value={draft.accessType ?? ""} onChange={(event) => setDraft((current) => ({ ...current, accessType: event.target.value as VoiceAccessDraft["accessType"] }))}><option value="">Selecciona</option>{invitationAccessTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</Select></Field>}</div>
+        <div className="grid gap-4 md:grid-cols-2"><Field label="Tipo de acceso"><Select value={draft.intent} onChange={(event) => setDraft((current) => normalizeDraftForConfirmation({ ...current, intent: event.target.value as VoiceAccessDraft["intent"], recommendEvent: false }))}><option value="ambiguous">Selecciona</option><option value="individual_invitation">Invitación individual</option><option value="group_invitation">Invitación grupal</option><option value="event">Evento</option></Select></Field>{draft.intent === "event" ? <Field label="Nombre del evento"><Input value={draft.eventName ?? ""} onChange={(event) => setDraft((current) => ({ ...current, eventName: event.target.value || null }))} /></Field> : <Field label="Tipo de visita"><Select value={draft.accessType ?? ""} onChange={(event) => setDraft((current) => ({ ...current, accessType: event.target.value as VoiceAccessDraft["accessType"] }))}><option value="">Selecciona</option>{invitationAccessTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</Select></Field>}<Field label="Credencial individual"><Select value={credentialType} onChange={(event) => setCredentialType(event.target.value as "pin" | "qr")}><option value="pin">PIN de un solo uso</option><option value="qr">Código QR</option></Select></Field></div>
         <ArrivalWindowFields idPrefix="voice-arrival" minDate={machine.result.referenceLocalDate} value={arrivalValue} onChange={(field, value) => setDraft((current) => ({ ...current, [field === "date" ? "visitDate" : field]: value }))} />
-        <div><div className="flex items-center justify-between gap-3"><h3 className="text-xl font-extrabold">{draft.intent === "event" ? "Invitados iniciales" : "Visitantes"}</h3><span className="text-sm text-muted-foreground">{draft.people.length}/25</span></div><div className="mt-3 space-y-3">{draft.people.map((person) => <div className="rounded-2xl border border-border bg-surface p-4" key={person.personId}><div className="flex gap-3"><div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-2"><Field label="Nombre"><Input value={person.name} onChange={(event) => updatePerson(person.personId, { name: event.target.value })} /></Field><Field label="Teléfono opcional"><Input inputMode="tel" value={person.phone ?? ""} onChange={(event) => updatePerson(person.personId, { phone: event.target.value || null })} /></Field></div><Button aria-label={`Eliminar ${person.name}`} onClick={() => setDraft((current) => ({ ...current, people: current.people.filter((item) => item.personId !== person.personId) }))} size="icon" variant="ghost"><Trash2 className="h-4 w-4" /></Button></div>{person.contactCandidates.length ? <div className="mt-3"><Label htmlFor={`contact-${person.personId}`}>{person.needsContactClarification ? `¿Cuál ${person.name}?` : "Contacto encontrado"}</Label><Select className="mt-2" id={`contact-${person.personId}`} value={person.needsContactClarification ? "" : person.contactId ?? "new"} onChange={(event) => { const selected = person.contactCandidates.find((item) => (item.contactId ?? item.stableId) === event.target.value); updatePerson(person.personId, { contactId: selected?.contactId ?? null, name: selected?.name ?? person.name, needsContactClarification: false }); }}><option disabled value="">Selecciona una coincidencia</option><option value="new">Continuar como persona nueva</option>{person.contactCandidates.map((candidate) => <option key={candidate.stableId} value={candidate.contactId ?? candidate.stableId}>{candidate.name}{candidate.phoneLastDigits ? ` · ···${candidate.phoneLastDigits}` : ""}</option>)}</Select></div> : null}</div>)}</div>
+        <div><div className="flex items-center justify-between gap-3"><h3 className="text-xl font-extrabold">{draft.intent === "event" ? "Invitados iniciales" : "Visitantes"}</h3><span className="text-sm text-muted-foreground">{draft.people.length}/25</span></div><div className="mt-3 space-y-3">{draft.people.map((person) => <div className="rounded-2xl border border-border bg-surface p-4" key={person.personId}><div className="flex gap-3"><div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-2"><Field label="Nombre"><Input value={person.name} onChange={(event) => updatePerson(person.personId, { name: event.target.value, contactId: null, selectedContactStableId: null, continueAsNew: true, needsContactClarification: false })} /></Field><Field label="Teléfono opcional"><Input inputMode="tel" value={person.phone ?? ""} onChange={(event) => updatePerson(person.personId, { phone: event.target.value || null })} /></Field></div><Button aria-label={`Eliminar ${person.name}`} onClick={() => setDraft((current) => ({ ...current, people: current.people.filter((item) => item.personId !== person.personId) }))} size="icon" variant="ghost"><Trash2 className="h-4 w-4" /></Button></div>{person.contactCandidates.length ? <div className="mt-3"><Label htmlFor={`contact-${person.personId}`}>{person.needsContactClarification ? `¿Cuál ${person.name}?` : "Contacto encontrado"}</Label><Select className="mt-2" id={`contact-${person.personId}`} value={person.needsContactClarification ? "" : person.continueAsNew ? "new" : person.selectedContactStableId ?? ""} onChange={(event) => { const selected = person.contactCandidates.find((item) => item.stableId === event.target.value); updatePerson(person.personId, { contactId: selected?.contactId ?? null, selectedContactStableId: selected?.stableId ?? null, continueAsNew: !selected, name: selected?.name ?? person.name, phone: selected?.phone ?? person.phone, needsContactClarification: false }); }}><option disabled value="">Selecciona una coincidencia</option><option value="new">Continuar como persona nueva</option>{person.contactCandidates.map((candidate) => <option key={candidate.stableId} value={candidate.stableId}>{candidate.name}{candidate.phoneLastDigits ? ` · ···${candidate.phoneLastDigits}` : ""}</option>)}</Select></div> : null}</div>)}</div>
           {draft.tooManyPeople ? <p className="mt-3 rounded-xl bg-warning/10 p-3 text-sm">La lista supera lo seguro para un clip. Conservamos lo identificado; completa con contactos, entrada manual o CSV en eventos.</p> : null}
           <Button className="mt-4 w-full" disabled={draft.people.length >= 25} onClick={beginAppend} variant="outline"><Mic className="h-5 w-5" /> Agregar más invitados por voz</Button>
         </div>
         <Field label="Notas compartidas"><Textarea value={draft.notes ?? ""} onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value || null }))} /></Field>
         <div><div className="flex items-center justify-between gap-3"><h3 className="text-lg font-bold">Lo que escuchamos</h3><Button size="sm" variant="ghost" onClick={() => void reinterpret()}><RotateCcw className="h-4 w-4" /> Interpretar de nuevo</Button></div><Textarea aria-label="Transcripción editable" className="mt-2 min-h-24" value={transcript} onChange={(event) => setTranscript(event.target.value)} /></div>
         {formError ? <p className="rounded-xl bg-danger/10 p-3 text-sm font-semibold text-danger" role="alert">{formError}</p> : null}
-        <Button className="w-full" disabled={!canContinue} size="lg" onClick={continueToForm}><CheckCircle2 className="h-5 w-5" /> Continuar al formulario y confirmar</Button><Button className="w-full" variant="ghost" onClick={cancelAll}>Descartar borrador</Button>
-      </section> : null}
+        <Button className="w-full" disabled={!canContinue || machine.phase === "creating"} size="lg" onClick={() => void createAccess()}>{machine.phase === "creating" ? <Loader2 className="h-5 w-5 animate-spin motion-reduce:animate-none" /> : <CheckCircle2 className="h-5 w-5" />} {machine.phase === "creating" ? "Creando…" : draft.intent === "event" ? "Crear evento" : draft.intent === "group_invitation" ? "Crear invitaciones" : "Crear invitación"}</Button><Button className="w-full" variant="ghost" onClick={cancelAll}>Descartar borrador</Button>
+      </fieldset></section> : null}
       {(machine.phase === "idle" || machine.phase === "error") ? <section className="mx-auto mt-9 max-w-md border-t border-border pt-7"><h2 className="font-extrabold">También puedes escribirlo</h2><Textarea className="mt-3" placeholder="Invita a Ana y Carlos mañana en la tarde" value={writtenPhrase} onChange={(event) => setWrittenPhrase(event.target.value)} /><Button className="mt-3 w-full" disabled={!writtenPhrase.trim()} variant="outline" onClick={() => void interpretWritten()}><Keyboard className="h-5 w-5" /> Interpretar texto</Button><Button asChild className="mt-3 w-full" variant="ghost"><Link href={manualHref}>Completar formulario manual</Link></Button></section> : null}
     </div>
   </main>;
