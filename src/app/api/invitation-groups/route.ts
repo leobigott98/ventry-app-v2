@@ -4,6 +4,7 @@ import { requireApiCommunityContext } from "@/lib/auth/api";
 import { createInvitationGroup } from "@/lib/domain/mutations";
 import { findOrCreateResidentContact, linkInvitationToResidentContact, residentContactIdsBelongToResident } from "@/lib/domain/contacts";
 import { createInvitationGroupSchema } from "@/lib/schemas/invitations";
+import { logOperationError } from "@/lib/server/operation-error";
 
 export async function POST(request: NextRequest) {
   const auth = await requireApiCommunityContext(request, ["admin", "resident"]);
@@ -35,7 +36,8 @@ export async function POST(request: NextRequest) {
       }));
     }
     return NextResponse.json({ ok: true, groupId: group.groupId, invitationIds: group.invitationIds, warning: contactWarning ? "La invitación grupal se creó, pero algunos contactos no pudieron guardarse." : undefined, redirectTo: `/app/invitation-groups/${group.groupId}${contactWarning ? "?contactWarning=1" : ""}` });
-  } catch {
+  } catch (error) {
+    logOperationError("create_invitation_group", error);
     return NextResponse.json({ error: "No fue posible crear la invitacion grupal. Revisa los datos e intenta nuevamente." }, { status: 500 });
   }
 }

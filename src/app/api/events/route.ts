@@ -4,6 +4,7 @@ import { requireApiCommunityContext } from "@/lib/auth/api";
 import { findOrCreateResidentContact, residentContactIdsBelongToResident } from "@/lib/domain/contacts";
 import { createResidentEvent } from "@/lib/domain/events";
 import { createEventSchema } from "@/lib/schemas/events";
+import { logOperationError } from "@/lib/server/operation-error";
 
 export async function POST(request: NextRequest) {
   const auth = await requireApiCommunityContext(request, ["admin", "resident"]);
@@ -55,7 +56,8 @@ export async function POST(request: NextRequest) {
       warning: contactWarning ? "El evento se creó, pero algunos contactos no pudieron guardarse." : undefined,
       redirectTo: `/app/events/${event.id}${contactWarning ? "?contactWarning=1" : ""}`,
     });
-  } catch {
+  } catch (error) {
+    logOperationError("create_resident_event", error);
     return NextResponse.json(
       { error: "No fue posible crear el evento. Revisa los datos e intenta nuevamente." },
       { status: 500 },

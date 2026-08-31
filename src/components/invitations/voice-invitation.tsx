@@ -1,11 +1,12 @@
 "use client";
 
-import { AlertCircle, CheckCircle2, Keyboard, Loader2, Mic, RotateCcw, Square, Trash2, X } from "lucide-react";
+import { AlertCircle, CheckCircle2, Keyboard, Loader2, Mic, Plus, RotateCcw, Square, Trash2, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 
 import { ArrivalWindowFields } from "@/components/invitations/arrival-window-fields";
+import { ContactAutocomplete } from "@/components/contacts/contact-autocomplete";
 import { ResidentPageHeader } from "@/components/resident/resident-header";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,11 +14,12 @@ import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { normalizeContactName, normalizePhoneNumber } from "@/lib/contacts/phone";
-import { invitationAccessTypeOptions } from "@/lib/domain/types";
+import { invitationAccessTypeOptions, type ResidentContactViewModel } from "@/lib/domain/types";
 import { arrivalWindowFieldsSchema, validateArrivalWindow } from "@/lib/schemas/arrival-window";
 import { createEventSchema } from "@/lib/schemas/events";
 import { createInvitationGroupSchema, createInvitationSchema } from "@/lib/schemas/invitations";
 import { MAX_VOICE_BYTES, MAX_VOICE_SECONDS } from "@/lib/voice/audio-limits";
+import { serializeVoiceAccessDraft, VOICE_ACCESS_DRAFT_TRANSFER_KEY } from "@/lib/voice/draft-transfer";
 import { initialVoiceMachineState, voiceMachineReducer } from "@/lib/voice/machine";
 import { VOICE_MANUAL_FALLBACK_KEY } from "@/lib/voice/manual-fallback";
 import { voiceTranscriptionResponseSchema, type VoiceAccessDraft, type VoicePerson, type VoiceTranscriptionResponse } from "@/lib/voice/types";
@@ -88,6 +90,11 @@ export function VoiceInvitation({ providerAvailable, residentId }: { providerAva
   const [transcript, setTranscript] = useState("");
   const [writtenPhrase, setWrittenPhrase] = useState("");
   const [credentialType, setCredentialType] = useState<"pin" | "qr">("pin");
+  const [eventDefaultMaxCompanions, setEventDefaultMaxCompanions] = useState(0);
+  const [eventGuestOverrides, setEventGuestOverrides] = useState<Record<string, number>>({});
+  const [newPersonName, setNewPersonName] = useState("");
+  const [newPersonPhone, setNewPersonPhone] = useState("");
+  const [newPersonContact, setNewPersonContact] = useState<ResidentContactViewModel | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -114,7 +121,7 @@ export function VoiceInvitation({ providerAvailable, residentId }: { providerAva
     requestGenerationRef.current += 1; abortRef.current?.abort(); abortRef.current = null; createAbortRef.current?.abort(); createAbortRef.current = null;
     const recorder = mediaRecorderRef.current;
     if (recorder?.state === "recording") { recorder.ondataavailable = null; recorder.onstop = null; recorder.stop(); }
-    cleanupMedia(); chunksRef.current = []; busyRef.current = false; creatingRef.current = false; creationKeyRef.current = null; appendModeRef.current = false; setElapsed(0); setDraft(emptyDraft); setTranscript(""); setCredentialType("pin"); setFormError(null); dispatch({ type: "CANCEL" });
+    cleanupMedia(); chunksRef.current = []; busyRef.current = false; creatingRef.current = false; creationKeyRef.current = null; appendModeRef.current = false; setElapsed(0); setDraft(emptyDraft); setTranscript(""); setCredentialType("pin"); setEventDefaultMaxCompanions(0); setEventGuestOverrides({}); setNewPersonName(""); setNewPersonPhone(""); setNewPersonContact(null); setFormError(null); dispatch({ type: "CANCEL" });
   }, [cleanupMedia]);
 
   useEffect(() => () => cancelAll(), [cancelAll]);
@@ -140,12 +147,15 @@ export function VoiceInvitation({ providerAvailable, residentId }: { providerAva
       const parsed = voiceTranscriptionResponseSchema.safeParse(payload);
       if (!parsed.success) { dispatch({ type: "ERROR", code: "EXTRACTION_INVALID", message: "No pudimos organizar los datos. Puedes completarlos manualmente." }); return; }
       let result: VoiceTranscriptionResponse = parsed.data;
-      if (appendModeRef.current && draft.people.length) {
+      const appending = appendModeRef.current;
+      if (appending && draft.people.length) {
         result = { ...result, transcript: `${transcript}\n${parsed.data.transcript}`.trim(), draft: { ...draft, people: mergePeople(draft.people, parsed.data.draft.people), tooManyPeople: draft.tooManyPeople || parsed.data.draft.tooManyPeople }, missingFields: [], ambiguities: parsed.data.ambiguities.filter((issue) => issue.personId) };
       }
       const normalizedDraft = normalizeDraftForConfirmation(result.draft);
       result = { ...result, draft: normalizedDraft, missingFields: normalizedDraft.intent === "event" ? result.missingFields : result.missingFields.filter((field) => field !== "arrivalWindowMode") };
-      appendModeRef.current = false; creationKeyRef.current = null; setDraft(normalizedDraft); setTranscript(result.transcript); setFormError(null); dispatch({ type: "RESULT", result });
+      appendModeRef.current = false; creationKeyRef.current = null; setDraft(normalizedDraft); setTranscript(result.transcript);
+      if (!appending) { setEventDefaultMaxCompanions(normalizedDraft.allowsCompanions ? 1 : 0); setEventGuestOverrides({}); }
+      setFormError(null); dispatch({ type: "RESULT", result });
     } catch (error) {
       if (error instanceof DOMException && error.name === "AbortError") return;
       dispatch({ type: "ERROR", message: "No pudimos conectar con el servicio. Revisa tu conexión e intenta de nuevo." });
@@ -198,6 +208,36 @@ export function VoiceInvitation({ providerAvailable, residentId }: { providerAva
 
   function beginAppend() {
     appendModeRef.current = true; dispatch({ type: "RESET" }); queueMicrotask(() => dispatch({ type: "REQUEST_PERMISSION" }));
+  }
+
+  function addManualPerson() {
+    const name = newPersonName.trim();
+    if (name.length < 2 || draft.people.length >= 25) { setFormError("Escribe un nombre válido para agregar a la persona."); return; }
+    const candidate = newPersonContact;
+    const contactCandidate = candidate ? {
+      stableId: candidate.stableId,
+      contactId: candidate.savedContactId,
+      name: candidate.name,
+      relationshipLabel: candidate.relationshipLabel,
+      phone: candidate.phone,
+      phoneLastDigits: candidate.phone?.replace(/\D/g, "").slice(-4) || null,
+      origin: candidate.origin,
+      isFavorite: candidate.isFavorite,
+    } : null;
+    const added: VoicePerson = {
+      personId: crypto.randomUUID(), name, phone: newPersonPhone.trim() || null,
+      contactId: candidate?.savedContactId ?? null, selectedContactStableId: candidate?.stableId ?? null,
+      continueAsNew: !candidate, contactCandidates: contactCandidate ? [contactCandidate] : [], needsContactClarification: false,
+    };
+    const people = mergePeople(draft.people, [added]);
+    if (people.length === draft.people.length) { setFormError("Esta persona ya está en la lista."); return; }
+    setDraft((current) => ({ ...current, people }));
+    setNewPersonName(""); setNewPersonPhone(""); setNewPersonContact(null); setFormError(null);
+  }
+
+  function completeEventInForm() {
+    sessionStorage.setItem(VOICE_ACCESS_DRAFT_TRANSFER_KEY, serializeVoiceAccessDraft({ ...draft, allowsCompanions: eventDefaultMaxCompanions > 0 }));
+    router.push("/app/events/new");
   }
 
   function resolveQuickOption(field: string, value: string) {
@@ -258,8 +298,8 @@ export function VoiceInvitation({ providerAvailable, residentId }: { providerAva
         contactOrigin: candidate?.origin ?? null,
       };
     });
-    const companionsAllowed = draft.allowsCompanions ?? false;
-    const maxCompanions = companionsAllowed ? 1 : 0;
+    const maxCompanions = draft.intent === "event" ? eventDefaultMaxCompanions : 0;
+    const companionsAllowed = maxCompanions > 0;
     const request = draft.intent === "individual_invitation"
       ? {
           endpoint: "/api/invitations",
@@ -272,7 +312,7 @@ export function VoiceInvitation({ providerAvailable, residentId }: { providerAva
           }
         : {
             endpoint: "/api/events",
-            parsed: createEventSchema.safeParse({ idempotencyKey, residentId, name: draft.eventName, credentialType, notes: draft.notes, allowsCompanions: companionsAllowed, maxCompanions, saveNewContacts: false, guests: people.map((person) => ({ ...person, notes: null, allowsCompanions: companionsAllowed, maxCompanions })), eventDate: draft.visitDate, ...commonWindow }),
+            parsed: createEventSchema.safeParse({ idempotencyKey, residentId, name: draft.eventName, credentialType, notes: draft.notes, allowsCompanions: companionsAllowed, maxCompanions, saveNewContacts: false, guests: people.map((person, index) => { const guestMax = eventGuestOverrides[draft.people[index]?.personId ?? ""] ?? maxCompanions; return { ...person, notes: null, allowsCompanions: guestMax > 0, maxCompanions: guestMax }; }), eventDate: draft.visitDate, ...commonWindow }),
           };
     if (!request.parsed.success) {
       setFormError(request.parsed.error.issues[0]?.message ?? "Revisa los datos antes de crear el acceso.");
@@ -329,14 +369,16 @@ export function VoiceInvitation({ providerAvailable, residentId }: { providerAva
         {machine.result.ambiguities.length || machine.result.missingFields.length ? <div className="rounded-2xl border border-warning/30 bg-warning/10 p-4"><h3 className="font-bold">Necesitamos confirmar</h3><ul className="mt-2 space-y-3 text-sm">{machine.result.ambiguities.filter((issue) => issue.code !== "CONTACT_AMBIGUOUS").map((issue) => <li key={`${issue.field}-${issue.code}`}><p>{issue.question}</p>{issue.options?.length ? <div className="mt-2 flex flex-wrap gap-2">{issue.options.map((option) => <button className="min-h-11 rounded-xl border border-primary/25 bg-surface px-4 font-semibold text-primary" key={option.value} onClick={() => resolveQuickOption(issue.field, option.value)} type="button">{option.label}</button>)}</div> : null}</li>)}</ul></div> : null}
         <div className="grid gap-4 md:grid-cols-2"><Field label="Tipo de acceso"><Select value={draft.intent} onChange={(event) => setDraft((current) => normalizeDraftForConfirmation({ ...current, intent: event.target.value as VoiceAccessDraft["intent"], recommendEvent: false }))}><option value="ambiguous">Selecciona</option><option value="individual_invitation">Invitación individual</option><option value="group_invitation">Invitación grupal</option><option value="event">Evento</option></Select></Field>{draft.intent === "event" ? <Field label="Nombre del evento"><Input value={draft.eventName ?? ""} onChange={(event) => setDraft((current) => ({ ...current, eventName: event.target.value || null }))} /></Field> : <Field label="Tipo de visita"><Select value={draft.accessType ?? ""} onChange={(event) => setDraft((current) => ({ ...current, accessType: event.target.value as VoiceAccessDraft["accessType"] }))}><option value="">Selecciona</option>{invitationAccessTypeOptions.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</Select></Field>}<Field label="Credencial individual"><Select value={credentialType} onChange={(event) => setCredentialType(event.target.value as "pin" | "qr")}><option value="pin">PIN de un solo uso</option><option value="qr">Código QR</option></Select></Field></div>
         <ArrivalWindowFields idPrefix="voice-arrival" minDate={machine.result.referenceLocalDate} value={arrivalValue} onChange={(field, value) => setDraft((current) => ({ ...current, [field === "date" ? "visitDate" : field]: value }))} />
-        <div><div className="flex items-center justify-between gap-3"><h3 className="text-xl font-extrabold">{draft.intent === "event" ? "Invitados iniciales" : "Visitantes"}</h3><span className="text-sm text-muted-foreground">{draft.people.length}/25</span></div><div className="mt-3 space-y-3">{draft.people.map((person) => <div className="rounded-2xl border border-border bg-surface p-4" key={person.personId}><div className="flex gap-3"><div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-2"><Field label="Nombre"><Input value={person.name} onChange={(event) => updatePerson(person.personId, { name: event.target.value, contactId: null, selectedContactStableId: null, continueAsNew: true, needsContactClarification: false })} /></Field><Field label="Teléfono opcional"><Input inputMode="tel" value={person.phone ?? ""} onChange={(event) => updatePerson(person.personId, { phone: event.target.value || null })} /></Field></div><Button aria-label={`Eliminar ${person.name}`} onClick={() => setDraft((current) => ({ ...current, people: current.people.filter((item) => item.personId !== person.personId) }))} size="icon" variant="ghost"><Trash2 className="h-4 w-4" /></Button></div>{person.contactCandidates.length ? <div className="mt-3"><Label htmlFor={`contact-${person.personId}`}>{person.needsContactClarification ? `¿Cuál ${person.name}?` : "Contacto encontrado"}</Label><Select className="mt-2" id={`contact-${person.personId}`} value={person.needsContactClarification ? "" : person.continueAsNew ? "new" : person.selectedContactStableId ?? ""} onChange={(event) => { const selected = person.contactCandidates.find((item) => item.stableId === event.target.value); updatePerson(person.personId, { contactId: selected?.contactId ?? null, selectedContactStableId: selected?.stableId ?? null, continueAsNew: !selected, name: selected?.name ?? person.name, phone: selected?.phone ?? person.phone, needsContactClarification: false }); }}><option disabled value="">Selecciona una coincidencia</option><option value="new">Continuar como persona nueva</option>{person.contactCandidates.map((candidate) => <option key={candidate.stableId} value={candidate.stableId}>{candidate.name}{candidate.phoneLastDigits ? ` · ···${candidate.phoneLastDigits}` : ""}</option>)}</Select></div> : null}</div>)}</div>
+        {draft.intent === "event" ? <Field label="Acompañantes predeterminados"><Select value={String(eventDefaultMaxCompanions)} onChange={(event) => { const value = Number(event.target.value); setEventDefaultMaxCompanions(value); setDraft((current) => ({ ...current, allowsCompanions: value > 0 })); }}><option value="0">Sin acompañantes</option>{[1, 2, 3, 4, 5].map((amount) => <option key={amount} value={amount}>{amount} {amount === 1 ? "acompañante" : "acompañantes"}</option>)}</Select></Field> : null}
+        <div><div className="flex items-center justify-between gap-3"><h3 className="text-xl font-extrabold">{draft.intent === "event" ? "Invitados iniciales" : "Visitantes"}</h3><span className="text-sm text-muted-foreground">{draft.people.length}/25</span></div><div className="mt-3 space-y-3">{draft.people.map((person) => { const hasOverride = Object.prototype.hasOwnProperty.call(eventGuestOverrides, person.personId); return <div className="min-w-0 max-w-full rounded-2xl border border-border bg-surface p-4" key={person.personId}><div className="flex min-w-0 max-w-full gap-3"><div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-2"><Field label="Nombre"><Input className="w-full min-w-0 max-w-full" value={person.name} onChange={(event) => updatePerson(person.personId, { name: event.target.value, contactId: null, selectedContactStableId: null, continueAsNew: true, needsContactClarification: false })} /></Field><Field label="Teléfono opcional"><Input className="w-full min-w-0 max-w-full" inputMode="tel" value={person.phone ?? ""} onChange={(event) => updatePerson(person.personId, { phone: event.target.value || null })} /></Field></div><Button className="shrink-0" aria-label={`Eliminar ${person.name}`} onClick={() => { setDraft((current) => ({ ...current, people: current.people.filter((item) => item.personId !== person.personId) })); setEventGuestOverrides((current) => { const next = { ...current }; delete next[person.personId]; return next; }); }} size="icon" variant="ghost"><Trash2 className="h-4 w-4" /></Button></div>{person.contactCandidates.length ? <div className="mt-3"><Label htmlFor={`contact-${person.personId}`}>{person.needsContactClarification ? `¿Cuál ${person.name}?` : "Contacto encontrado"}</Label><Select className="mt-2 w-full min-w-0 max-w-full" id={`contact-${person.personId}`} value={person.needsContactClarification ? "" : person.continueAsNew ? "new" : person.selectedContactStableId ?? ""} onChange={(event) => { const selected = person.contactCandidates.find((item) => item.stableId === event.target.value); updatePerson(person.personId, { contactId: selected?.contactId ?? null, selectedContactStableId: selected?.stableId ?? null, continueAsNew: !selected, name: selected?.name ?? person.name, phone: selected?.phone ?? person.phone, needsContactClarification: false }); }}><option disabled value="">Selecciona una coincidencia</option><option value="new">Continuar como persona nueva</option>{person.contactCandidates.map((candidate) => <option key={candidate.stableId} value={candidate.stableId}>{candidate.name}{candidate.phoneLastDigits ? ` · ···${candidate.phoneLastDigits}` : ""}</option>)}</Select></div> : null}{draft.intent === "event" ? <div className="mt-3">{hasOverride ? <div className="space-y-2"><Label htmlFor={`companions-${person.personId}`}>Acompañantes para {person.name}</Label><Select id={`companions-${person.personId}`} value={String(eventGuestOverrides[person.personId])} onChange={(event) => setEventGuestOverrides((current) => ({ ...current, [person.personId]: Number(event.target.value) }))}><option value="0">Sin acompañantes</option>{[1, 2, 3, 4, 5].map((amount) => <option key={amount} value={amount}>{amount} {amount === 1 ? "acompañante" : "acompañantes"}</option>)}</Select><Button size="sm" type="button" variant="ghost" onClick={() => setEventGuestOverrides((current) => { const next = { ...current }; delete next[person.personId]; return next; })}>Usar configuración general</Button></div> : <Button size="sm" type="button" variant="outline" onClick={() => setEventGuestOverrides((current) => ({ ...current, [person.personId]: eventDefaultMaxCompanions }))}>Cambiar para esta persona</Button>}</div> : null}</div>; })}</div>
           {draft.tooManyPeople ? <p className="mt-3 rounded-xl bg-warning/10 p-3 text-sm">La lista supera lo seguro para un clip. Conservamos lo identificado; completa con contactos, entrada manual o CSV en eventos.</p> : null}
           <Button className="mt-4 w-full" disabled={draft.people.length >= 25} onClick={beginAppend} variant="outline"><Mic className="h-5 w-5" /> Agregar más invitados por voz</Button>
+          {draft.intent === "event" ? <div className="mt-4 min-w-0 max-w-full space-y-3 rounded-2xl border border-border p-4"><h4 className="font-bold">Agregar por contacto o nombre</h4><ContactAutocomplete ariaLabel="Nombre del nuevo invitado" className="w-full min-w-0 max-w-full" id="voice-new-person" value={newPersonName} onChange={(value) => { setNewPersonName(value); setNewPersonContact(null); }} onEnter={addManualPerson} onSelect={(contact) => { setNewPersonName(contact.name); setNewPersonPhone(contact.phone ?? ""); setNewPersonContact(contact); return null; }} /><Input aria-label="Teléfono del nuevo invitado (opcional)" className="w-full min-w-0 max-w-full" inputMode="tel" value={newPersonPhone} onChange={(event) => setNewPersonPhone(event.target.value)} /><Button className="w-full" disabled={draft.people.length >= 25 || newPersonName.trim().length < 2} onClick={addManualPerson} type="button" variant="outline"><Plus className="h-4 w-4" /> Agregar invitado</Button></div> : null}
         </div>
         <Field label="Notas compartidas"><Textarea value={draft.notes ?? ""} onChange={(event) => setDraft((current) => ({ ...current, notes: event.target.value || null }))} /></Field>
         <div><div className="flex items-center justify-between gap-3"><h3 className="text-lg font-bold">Lo que escuchamos</h3><Button size="sm" variant="ghost" onClick={() => void reinterpret()}><RotateCcw className="h-4 w-4" /> Interpretar de nuevo</Button></div><Textarea aria-label="Transcripción editable" className="mt-2 min-h-24" value={transcript} onChange={(event) => setTranscript(event.target.value)} /></div>
         {formError ? <p className="rounded-xl bg-danger/10 p-3 text-sm font-semibold text-danger" role="alert">{formError}</p> : null}
-        <Button className="w-full" disabled={!canContinue || machine.phase === "creating"} size="lg" onClick={() => void createAccess()}>{machine.phase === "creating" ? <Loader2 className="h-5 w-5 animate-spin motion-reduce:animate-none" /> : <CheckCircle2 className="h-5 w-5" />} {machine.phase === "creating" ? "Creando…" : draft.intent === "event" ? "Crear evento" : draft.intent === "group_invitation" ? "Crear invitaciones" : "Crear invitación"}</Button><Button className="w-full" variant="ghost" onClick={cancelAll}>Descartar borrador</Button>
+        <Button className="w-full" disabled={!canContinue || machine.phase === "creating"} size="lg" onClick={() => void createAccess()}>{machine.phase === "creating" ? <Loader2 className="h-5 w-5 animate-spin motion-reduce:animate-none" /> : <CheckCircle2 className="h-5 w-5" />} {machine.phase === "creating" ? "Creando…" : draft.intent === "event" ? "Crear evento" : draft.intent === "group_invitation" ? "Crear invitaciones" : "Crear invitación"}</Button>{draft.intent === "event" ? <Button className="w-full" type="button" variant="outline" onClick={completeEventInForm}>Completar en el formulario</Button> : null}<Button className="w-full" variant="ghost" onClick={cancelAll}>Descartar borrador</Button>
       </fieldset></section> : null}
       {(machine.phase === "idle" || machine.phase === "error") ? <section className="mx-auto mt-9 max-w-md border-t border-border pt-7"><h2 className="font-extrabold">También puedes escribirlo</h2><Textarea className="mt-3" placeholder="Invita a Ana y Carlos mañana en la tarde" value={writtenPhrase} onChange={(event) => setWrittenPhrase(event.target.value)} /><Button className="mt-3 w-full" disabled={!writtenPhrase.trim()} variant="outline" onClick={() => void interpretWritten()}><Keyboard className="h-5 w-5" /> Interpretar texto</Button><Button asChild className="mt-3 w-full" variant="ghost"><Link href={manualHref}>Completar formulario manual</Link></Button></section> : null}
     </div>

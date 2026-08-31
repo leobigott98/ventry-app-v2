@@ -1,4 +1,5 @@
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { operationErrorFrom } from "@/lib/server/operation-error";
 import { getInvitationEffectiveStatus } from "@/lib/domain/invitations";
 import { getInvitationById } from "@/lib/domain/invitations";
 import { getVisitorEntryById } from "@/lib/domain/guards";
@@ -280,7 +281,8 @@ export async function createInvitationGroup(communityId: string, input: CreateIn
     p_visitors: input.visitors.map((visitor) => ({ fullName: visitor.fullName, phone: visitor.phone })),
     p_idempotency_key: input.idempotencyKey,
   });
-  if (error || !data) throw new Error(error?.message ?? "No fue posible crear la invitacion grupal.");
+  if (error) throw operationErrorFrom(error, "No fue posible crear la invitacion grupal.");
+  if (!data) throw operationErrorFrom(null, "La creación grupal no devolvió un resultado.");
   return data as { groupId: string; invitationIds: string[] };
 }
 

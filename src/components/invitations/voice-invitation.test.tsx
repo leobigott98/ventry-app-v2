@@ -4,6 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { VoiceInvitation } from "@/components/invitations/voice-invitation";
 import { MAX_VOICE_BYTES } from "@/lib/voice/audio-limits";
+import { VOICE_ACCESS_DRAFT_TRANSFER_KEY } from "@/lib/voice/draft-transfer";
 import type { VoiceContactCandidate, VoiceTranscriptionResponse } from "@/lib/voice/types";
 
 const RESIDENT_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -67,6 +68,40 @@ describe("VoiceInvitation", () => {
     const user = await write(payload, "Crea el cumpleaños de Ana mañana en la tarde"); if (credentialType === "qr") await user.selectOptions(screen.getByLabelText("Credencial individual"), "qr");
     vi.mocked(fetch).mockResolvedValueOnce(jsonResponse({ redirectTo: `/app/events/${credentialType}` })); await user.click(screen.getByRole("button", { name: "Crear evento" }));
     await waitFor(() => expect(router.push).toHaveBeenCalledWith(`/app/events/${credentialType}`)); expect(vi.mocked(fetch).mock.calls[1]?.[0]).toBe("/api/events"); expect(requestBody()).toMatchObject({ name: "Cumpleaños de Ana", credentialType, allowsCompanions: false, maxCompanions: 0 });
+  });
+
+  it("aplica acompañantes globales, una excepción por invitado y permite agregar manualmente", async () => {
+    const payload = structuredClone(responsePayload); payload.draft.intent = "event"; payload.draft.eventName = "Cumpleaños de Ana";
+    const user = await write(payload, "Crea el cumpleaños de Ana mañana en la tarde");
+    await user.selectOptions(screen.getByLabelText("Acompañantes predeterminados"), "3");
+    await user.click(screen.getAllByRole("button", { name: "Cambiar para esta persona" })[0]!);
+    await user.selectOptions(screen.getByLabelText("Acompañantes para Ana"), "5");
+    vi.mocked(fetch).mockImplementation((input) => String(input).startsWith("/api/contacts/suggestions")
+      ? Promise.resolve(jsonResponse({ items: [] }))
+      : Promise.resolve(jsonResponse({ redirectTo: "/app/events/result" })));
+    await user.type(screen.getByLabelText("Nombre del nuevo invitado"), "María Nueva");
+    await user.type(screen.getByLabelText("Teléfono del nuevo invitado (opcional)"), "04120000000");
+    await user.click(screen.getByRole("button", { name: "Agregar invitado" }));
+    await user.click(screen.getByRole("button", { name: "Crear evento" }));
+
+    await waitFor(() => expect(router.push).toHaveBeenCalledWith("/app/events/result"));
+    const eventCall = vi.mocked(fetch).mock.calls.find(([url]) => url === "/api/events");
+    const body = JSON.parse(String((eventCall?.[1] as RequestInit).body));
+    expect(body).toMatchObject({ allowsCompanions: true, maxCompanions: 3 });
+    expect(body.guests).toEqual(expect.arrayContaining([
+      expect.objectContaining({ fullName: "Ana", allowsCompanions: true, maxCompanions: 5 }),
+      expect.objectContaining({ fullName: "Carlos", allowsCompanions: true, maxCompanions: 3 }),
+      expect.objectContaining({ fullName: "María Nueva", allowsCompanions: true, maxCompanions: 3 }),
+    ]));
+  }, 20_000);
+
+  it("ofrece el formulario de eventos como salida secundaria conservando el borrador", async () => {
+    const payload = structuredClone(responsePayload); payload.draft.intent = "event"; payload.draft.eventName = "Cena vecinal";
+    const user = await write(payload, "Crea una cena vecinal mañana en la tarde");
+    await user.click(screen.getByRole("button", { name: "Completar en el formulario" }));
+    expect(router.push).toHaveBeenCalledWith("/app/events/new");
+    expect(sessionStorage.getItem(VOICE_ACCESS_DRAFT_TRANSFER_KEY)).toContain("Cena vecinal");
+    expect(vi.mocked(fetch).mock.calls.some(([url]) => url === "/api/events")).toBe(false);
   });
 
   it("no navega a formularios manuales ni guarda un borrador de transferencia", async () => {

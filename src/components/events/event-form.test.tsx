@@ -115,7 +115,44 @@ describe("EventForm", () => {
     await user.click(await screen.findByRole("option", { name: /María José Pérez/ }));
     expect(screen.getByText("Este contacto ya está incluido")).toBeInTheDocument();
   }, 25_000);
+
+  it("usa selectores estables de 1 a 5 y envía la excepción del invitado", async () => {
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({ redirectTo: "/app/events/event-1" }));
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+    render(<EventForm residents={[resident]} />);
+
+    await user.type(screen.getByLabelText("Nombre"), "Reunión familiar");
+    await user.click(screen.getByRole("button", { name: "Continuar" }));
+    await user.click(screen.getByRole("button", { name: "Continuar" }));
+    expect(screen.queryByLabelText("Máximo por invitado")).not.toBeInTheDocument();
+    await user.click(screen.getByRole("checkbox", { name: "Permitir acompañantes por defecto" }));
+    const globalLimit = screen.getByLabelText("Máximo por invitado");
+    expect(globalLimit).toHaveValue("1");
+    expect(globalLimit.querySelectorAll("option")).toHaveLength(5);
+    await user.selectOptions(globalLimit, "4");
+    await user.type(screen.getByLabelText("Nombre completo"), "Carlos Rojas");
+    await user.click(screen.getByRole("button", { name: "Agregar a la lista" }));
+    await user.click(screen.getByRole("button", { name: "Editar a Carlos Rojas" }));
+    await user.selectOptions(screen.getByLabelText("Máximo de acompañantes para esta persona"), "2");
+    await user.click(screen.getByRole("button", { name: "Agregar a la lista" }));
+    await user.click(screen.getByRole("button", { name: "Continuar" }));
+    await user.click(screen.getByRole("radio", { name: "PIN individual" }));
+    await user.click(screen.getByRole("button", { name: "Crear evento" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledOnce());
+    const request = fetchMock.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(request.body))).toMatchObject({
+      allowsCompanions: true,
+      maxCompanions: 4,
+      guests: [{ fullName: "Carlos Rojas", allowsCompanions: true, maxCompanions: 2 }],
+    });
+  }, 25_000);
 });
+
+function jsonResponse(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+}
 
 async function reachConfirmationAfterName(user: ReturnType<typeof userEvent.setup>) {
   await user.click(screen.getByRole("button", { name: "Continuar" }));

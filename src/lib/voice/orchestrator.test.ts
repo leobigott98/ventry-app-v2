@@ -25,6 +25,29 @@ describe("orquestación unificada de voz", () => {
     expect(event.missingFields).toContain("arrivalWindowMode");
   });
 
+  it("conserva la hora hablada aunque el campo auxiliar del proveedor sea incompleto", async () => {
+    const result = await interpretVoiceAccess({
+      transcript: "Mañana a las once de la mañana viene Dana a mi casa",
+      timeZone: "America/Caracas",
+      now: new Date("2026-08-26T12:00:00Z"),
+      extractionProvider: provider(["Dana"], "individual_invitation", { dateText: "mañana", arrivalText: "todo el día" }),
+      findContacts: async () => [],
+    });
+    expect(result.draft).toMatchObject({ visitDate: "2026-08-27", arrivalWindowMode: "from_time", arrivalStart: "11:00", arrivalEnd: null });
+  });
+
+  it("no usa Todo el día si el transcript contiene una hora no interpretable", async () => {
+    const result = await interpretVoiceAccess({
+      transcript: "Mañana a las trece de la mañana viene Dana",
+      timeZone: "America/Caracas",
+      now: new Date("2026-08-26T12:00:00Z"),
+      extractionProvider: provider(["Dana"], "individual_invitation", { dateText: "mañana", arrivalText: null }),
+      findContacts: async () => [],
+    });
+    expect(result.draft.arrivalWindowMode).toBeNull();
+    expect(result.ambiguities).toEqual(expect.arrayContaining([expect.objectContaining({ code: "TIME_UNRESOLVED" })]));
+  });
+
   it("una intención explícita de cumpleaños produce evento", async () => {
     const result = await interpretVoiceAccess({ transcript: "Crea un evento para el cumpleaños de Ana mañana en la tarde", timeZone: "America/Caracas", extractionProvider: provider([], "event", { eventName: "Cumpleaños de Ana" }), findContacts: async () => [] });
     expect(result.draft).toMatchObject({ intent: "event", eventName: "Cumpleaños de Ana", allowsCompanions: null });

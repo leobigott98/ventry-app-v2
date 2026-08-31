@@ -62,7 +62,8 @@ export async function interpretVoiceAccess(args: {
   const parsedTemporal = interpretVenezuelanTemporal({ transcript, referenceLocalDate: clock.referenceLocalDate, dateText: extraction.draft.dateText, arrivalText: extraction.draft.arrivalText, plannedExitText: extraction.draft.plannedExitText });
   const people = await Promise.all(extraction.draft.people.map((person) => resolvePerson(person.name, person.phone, args.findContacts)));
   const intent = decideIntent(extraction.draft.intent, transcript, people.length);
-  const temporal = intent.intent !== "event" && !parsedTemporal.arrivalWindowMode
+  const hasUnresolvedSpokenTime = parsedTemporal.ambiguities.some((issue) => ["TIME_INVALID", "TIME_UNRESOLVED", "AM_PM_AMBIGUOUS", "ARRIVAL_START_MISSING"].includes(issue.code));
+  const temporal = intent.intent !== "event" && !parsedTemporal.arrivalWindowMode && !hasUnresolvedSpokenTime
     ? { ...parsedTemporal, arrivalWindowMode: "all_day" as const, arrivalStart: null, arrivalEndDate: null, arrivalEnd: null }
     : parsedTemporal;
   const ambiguities: ClarificationIssue[] = temporal.ambiguities.map((issue) => ({ ...issue }));

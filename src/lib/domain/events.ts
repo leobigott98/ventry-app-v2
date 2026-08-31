@@ -13,6 +13,7 @@ import type {
 } from "@/lib/domain/types";
 import type { CreateEventInput } from "@/lib/schemas/events";
 import { createServerSupabaseClient } from "@/lib/supabase/server";
+import { operationErrorFrom } from "@/lib/server/operation-error";
 import {
   getEventPlannedExitLabel,
   getEventWindowLabel,
@@ -251,7 +252,8 @@ export async function createResidentEvent(communityId: string, input: CreateEven
     p_notes: input.notes, p_credential_type: input.credentialType, p_guests: guests,
     p_idempotency_key: input.idempotencyKey,
   });
-  if (error || !eventId) throw new Error(error?.message ?? "No fue posible crear el evento.");
+  if (error) throw operationErrorFrom(error, "No fue posible crear el evento.");
+  if (!eventId) throw operationErrorFrom(null, "La creación del evento no devolvió un identificador.");
   return { id: String(eventId) } as ResidentEventRecord;
 }
 

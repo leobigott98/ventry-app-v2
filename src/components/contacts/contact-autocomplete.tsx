@@ -116,7 +116,7 @@ export function ContactAutocomplete({
 
   const showPanel = enabled && open && Boolean(value.trim());
   const activeId = activeIndex >= 0 ? `${listboxId}-option-${activeIndex}` : undefined;
-  return <div className="relative" ref={rootRef}>
+  return <div className="relative min-w-0 max-w-full" ref={rootRef}>
     <Input
       aria-activedescendant={activeId}
       aria-autocomplete="list"
