@@ -23,11 +23,11 @@ export function AuthShell({ title, description, children, eyebrow }: AuthShellPr
             </Badge>
             <div className="space-y-4">
               <h1 className="max-w-xl font-display text-4xl font-bold tracking-tight text-foreground md:text-5xl">
-                Acceso claro, rapido y auditable para la porteria real.
+                Acceso claro, rápido y auditable para la portería real.
               </h1>
               <p className="max-w-xl text-base leading-7 text-muted-foreground">
-                Ventry esta disenado para residencias con porteria real: validaciones
-                rapidas, historial claro, invitaciones simples y operacion tolerante a
+                Ventry esta diseñado para residencias con portería real: validaciones
+                rápidas, historial claro, invitaciones simples y operación tolerante a
                 conectividad inestable.
               </p>
             </div>
@@ -36,12 +36,12 @@ export function AuthShell({ title, description, children, eyebrow }: AuthShellPr
         <div className="hidden md:grid gap-4 sm:grid-cols-3">
           {[
             ["Invitaciones", "QR o PIN listos para compartir por WhatsApp."],
-            ["Bitacora", "Entradas y salidas con hora, estado y trazabilidad."],
-            ["Porteria", "Flujos claros para guardias, sin pantallas recargadas."],
+            ["Bitácora", "Entradas y salidas con hora, estado y trazabilidad."],
+            ["Portería", "Flujos claros para guardias, sin pantallas recargadas."],
           ].map(([label, copy]) => (
             <div
               key={label}
-              className="rounded-2xl border border-border bg-[#1A2235]/80 p-4 backdrop-blur"
+              className="rounded-2xl border border-border bg-surface p-4 backdrop-blur"
             >
               <div className="text-sm font-semibold text-foreground">{label}</div>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">{copy}</p>

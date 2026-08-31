@@ -12,10 +12,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { type SignupInput, signupSchema } from "@/lib/schemas/auth";
 
+import { Eye, EyeOff } from "lucide-react";
+
 export function SignupForm() {
   const router = useRouter();
   const [serverError, setServerError] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isShowingPassword, setIsShowingPassword] = useState(false);
 
   const {
     register,
@@ -75,13 +78,24 @@ export function SignupForm() {
         <p className="text-sm text-danger">{errors.email?.message}</p>
       </div>
       <div className="space-y-2">
-        <Label htmlFor="password">Contrasena</Label>
-        <Input
+        <Label htmlFor="password">Contraseña</Label>
+        <div className="relative">
+          <Input
           id="password"
-          type="password"
-          placeholder="Crea una contrasena"
+          type={isShowingPassword ? "text" : "password"}
+          placeholder="Crea una contraseña"
           {...register("password")}
-        />
+          />
+          <button
+            type="button"
+            aria-label={isShowingPassword ? "Ocultar contraseña" : "Mostrar contraseña"}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground transition hover:text-foreground"
+            onClick={() => setIsShowingPassword(!isShowingPassword)}
+          >
+            {isShowingPassword ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
+          </button>
+        </div>
+        
         <p className="text-sm text-danger">{errors.password?.message}</p>
       </div>
       <FormMessage message={serverError} variant="error" />
@@ -89,13 +103,13 @@ export function SignupForm() {
         {isSubmitting ? "Creando cuenta..." : "Crear cuenta"}
       </Button>
       <div className="rounded-xl border border-border bg-secondary/50 px-4 py-3 text-sm text-muted-foreground">
-        Este registro crea el acceso del administrador principal. Los demas usuarios se habilitan
-        despues desde Ajustes o Residentes.
+        Este registro crea el acceso del administrador principal. Los demás usuarios se habilitan
+        después desde Ajustes o Residentes.
       </div>
       <p className="text-center text-sm text-muted-foreground">
         Ya tienes acceso?{" "}
         <Link href="/login" className="font-semibold text-primary hover:text-primary/80">
-          Iniciar sesion
+          Iniciar sesión
         </Link>
       </p>
     </form>

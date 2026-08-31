@@ -7,8 +7,8 @@ export default function LoginPage() {
   return (
     <AuthShell
       eyebrow="Acceso seguro"
-      title="Iniciar sesion"
-      description="Entra a tu operacion de acceso, revisa actividad y prepara el siguiente visitante."
+      title="Iniciar sesión"
+      description="Entra a tu operación de acceso, revisa actividad y prepara el siguiente visitante."
     >
       <Suspense
         fallback={

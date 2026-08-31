@@ -177,13 +177,13 @@ function getOperationsQuickActions(role: CommunityRole): QuickAction[] {
       },
       {
         href: "/app/invitations",
-        label: "Buscar invitacion",
+        label: "Buscar invitación",
         description: "Ubica rapido un visitante o residente.",
         icon: KeyRound,
       },
       {
         href: "/app/access-log",
-        label: "Bitacora",
+        label: "Bitácora",
         description: "Entradas, salidas y validaciones del turno.",
         icon: ClipboardList,
       },
@@ -218,7 +218,7 @@ function getOperationsQuickActions(role: CommunityRole): QuickAction[] {
     },
     {
       href: "/app/access-log",
-      label: "Bitacora",
+      label: "Bitácora",
       description: "Audita eventos y movimientos recientes.",
       icon: ClipboardList,
     },
@@ -265,12 +265,12 @@ export default async function DashboardPage() {
           },
           {
             label: "Trazabilidad activa",
-            description: "La bitacora central esta lista para revisar entradas, salidas y validaciones del turno.",
+            description: "La bitácora central está lista para revisar entradas, salidas y validaciones del turno.",
             variant: "outline",
           },
           {
             label: "Contexto de comunidad",
-            description: `${summary.activeResidentsCount} residentes activos y politica ${context.community.access_policy_mode === "invitation_only" ? "solo invitacion" : "mixta"}.`,
+            description: `${summary.activeResidentsCount} residentes activos y política ${context.community.access_policy_mode === "invitation_only" ? "solo invitacion" : "mixta"}.`,
             variant: "outline",
           },
         ]
@@ -282,7 +282,7 @@ export default async function DashboardPage() {
                 variant: "warning",
               }
             : {
-                label: "Base al dia",
+                label: "Base al día",
                 description: "Las unidades planificadas ya estan cargadas y listas para operar.",
                 variant: "success",
               },
@@ -299,7 +299,7 @@ export default async function DashboardPage() {
               },
           {
             label: "Equipo operativo",
-            description: `${roleMembers.length} miembros con rol admin o guardia sostienen la operacion actual.`,
+            description: `${roleMembers.length} miembros con rol admin o guardia sostienen la operación actual.`,
             variant: "outline",
           },
         ];
@@ -316,18 +316,18 @@ export default async function DashboardPage() {
       helper: `${summary.inactiveResidentsCount} inactivos pendientes de revisar.`,
     },
     {
-      label: "Politica",
+      label: "Política",
       value: context.community.access_policy_mode === "invitation_only" ? "Solo invitacion" : "Mixta",
-      helper: "Configuracion visible para todo el equipo.",
+      helper: "Configuración visible para todo el equipo.",
     },
   ];
 
   const secondaryActions: QuickAction[] =
     sessionUser.role === "guard"
       ? [
-          { href: "/app/guards?action=pin", label: "Ir a validacion", description: "", icon: ShieldCheck },
+          { href: "/app/guards?action=pin", label: "Ir a validación", description: "", icon: ShieldCheck },
           { href: "/app/invitations", label: "Buscar accesos", description: "", icon: KeyRound },
-          { href: "/app/access-log", label: "Abrir bitacora", description: "", icon: ClipboardList },
+          { href: "/app/access-log", label: "Abrir bitácora", description: "", icon: ClipboardList },
           { href: "/app/events", label: "Revisar eventos", description: "", icon: PartyPopper },
         ]
       : [
@@ -341,7 +341,7 @@ export default async function DashboardPage() {
     <SectionShell
       eyebrow={context.community.location_label}
       title={context.community.name}
-      description="Panel principal compacto para resolver operaciones, ver alertas y moverte mas rapido por el conjunto."
+      description="Panel principal compacto para resolver operaciones, ver alertas y moverte más rápido por el conjunto."
     >
       <QuickActionGrid actions={getOperationsQuickActions(sessionUser.role)} />
 
@@ -349,12 +349,12 @@ export default async function DashboardPage() {
         <NoticeList
           eyebrow="Notificaciones y alertas"
           title={sessionUser.role === "guard" ? "Lectura del turno" : "Lectura operativa"}
-          description="Visibilidad fuerte para decidir que atender primero."
+          description="Visibilidad fuerte para decidir qué atender primero."
           notices={notices}
         />
         <ImportantInfoCard
           title="Info importante"
-          description="Resumen rapido para no perder contexto."
+          description="Resumen rápido para no perder contexto."
           items={infoItems}
         />
       </div>

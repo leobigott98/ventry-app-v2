@@ -4,7 +4,7 @@ import { SignupForm } from "@/components/forms/signup-form";
 export default function SignupPage() {
   return (
     <AuthShell
-      eyebrow="Configuracion inicial"
+      eyebrow="Configuración inicial"
       title="Crear cuenta"
       description="Registro pensado para el administrador inicial de la comunidad. Guardias y residentes reciben acceso luego desde la plataforma."
     >

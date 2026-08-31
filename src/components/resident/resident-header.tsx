@@ -20,7 +20,7 @@ export function ResidentHomeHeader({ communityName, firstName, greeting, notific
     <div className="md:grid md:max-w-[92rem] md:grid-cols-[minmax(0,1fr)_auto] md:items-end md:gap-8">
       <div>
         <p className="mt-5 text-[15px] font-medium text-white/65 md:mt-4">{communityName}</p>
-        <h1 className="mt-3 text-[2rem] font-extrabold leading-[1.15] tracking-[-0.035em] md:text-[2.35rem]">{greeting},<br className="md:hidden" />{firstName}</h1>
+        <h1 className="mt-3 text-[2rem] font-extrabold leading-[1.15] tracking-[-0.035em] md:text-[2.35rem]">{greeting}, <br className="md:hidden" />{firstName}</h1>
       </div>
       <p className="mt-2 text-[15px] font-medium text-white/70 md:mb-1 md:text-right">{unitLabel}</p>
     </div>

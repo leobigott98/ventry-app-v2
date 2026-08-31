@@ -104,11 +104,11 @@ export function LoginForm() {
         {isSubmitting ? "Ingresando..." : "Entrar a Ventry"}
       </Button>
       <div className="rounded-xl border border-border bg-secondary/50 px-4 py-3 text-sm text-muted-foreground">
-        Usa el correo y la clave entregados por la administracion. Si eres admin inicial,
+        Usa el correo y la clave entregados por la administración. Si eres admin inicial,
         puedes crear tu cuenta desde el registro.
       </div>
       <p className="text-center text-sm text-muted-foreground">
-        Primera vez aqui?{" "}
+        Primera vez aquí?{" "}
         <Link href="/signup" className="font-semibold text-primary hover:text-primary/80">
           Crear cuenta
         </Link>
