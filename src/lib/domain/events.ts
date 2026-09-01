@@ -72,9 +72,9 @@ export type PublicEventGuestRecord = Pick<ResidentEventRecord, "event_date" | "w
   allows_companions: boolean;
   max_companions: number;
   credential_type: "pin" | "qr";
-  credential_value: string;
+  credential_value: string | null;
   qr_payload: string | null;
-  status: EventStatus;
+  status: EventStatus | "credential_revoked" | "removed";
 };
 
 function normalizeOne<T>(value: T | T[] | null | undefined) {
@@ -108,7 +108,7 @@ function normalizeEvent(
   return {
     ...event,
     event_credentials: normalizeOne(event.event_credentials),
-    event_guests: [...(event.event_guests ?? [])].sort((a, b) =>
+    event_guests: [...(event.event_guests ?? [])].filter((guest) => !guest.removed_at).sort((a, b) =>
       a.full_name.localeCompare(b.full_name),
     ),
     event_activity: [...(event.event_activity ?? [])].sort((a, b) =>
@@ -336,7 +336,7 @@ export async function getEventValidationMatch(
     ...raw,
     residents: normalizeOne(raw.residents),
     units: normalizeOne(raw.units),
-    event_guests: [...(raw.event_guests ?? [])].sort((a, b) => a.full_name.localeCompare(b.full_name)),
+    event_guests: [...(raw.event_guests ?? [])].filter((guest) => !guest.removed_at).sort((a, b) => a.full_name.localeCompare(b.full_name)),
   };
   return { kind: "event" as const, event: { ...event, effective_status: effectiveStatus, identified_guest_id: identifiedGuestId ?? null } };
 }

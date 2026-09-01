@@ -5,7 +5,8 @@ import QRCode from "qrcode";
 
 import { EventCredentialCard } from "@/components/events/event-credential-card";
 import { EventGuestList } from "@/components/events/event-guest-list";
-import { RevokeEventButton } from "@/components/events/revoke-event-button";
+import { ManagedEventPanel } from "@/components/events/managed-event-panel";
+import { LifecycleActions } from "@/components/access/lifecycle-actions";
 import { ShareEventActions } from "@/components/events/share-event-actions";
 import { ResidentPageHeader } from "@/components/resident/resident-header";
 import { Badge } from "@/components/ui/badge";
@@ -21,6 +22,8 @@ import {
 } from "@/lib/domain/events";
 import { getCommunityContextOrRedirect } from "@/lib/domain/session-context";
 import { formatAppDateTime } from "@/lib/formatting";
+import { AccessChangeHistory } from "@/components/access/access-change-history";
+import { getAccessChangeHistory } from "@/lib/domain/access-lifecycle";
 
 function baseUrl(requestHeaders: Headers) {
   const host = requestHeaders.get("x-forwarded-host") || requestHeaders.get("host");
@@ -47,6 +50,7 @@ export default async function EventDetailPage({
     sessionUser.role === "resident" ? sessionUser.residentId : null,
   );
   if (!event) notFound();
+  const changeHistory = sessionUser.role === "guard" ? [] : await getAccessChangeHistory(context.community.id,"event",event.id);
 
   const status = getEventEffectiveStatus(event, context.community.time_zone);
   const requestHeaders = await headers();
@@ -127,7 +131,7 @@ export default async function EventDetailPage({
           </Card>
 
           {event.credential_mode === "shared" ? <EventCredentialCard credential={credential} qrImageDataUrl={qrImageDataUrl} /> : <div className="rounded-2xl bg-secondary p-4 text-sm text-muted-foreground">Cada invitado tiene una credencial personal. Comparte desde su fila; no se envia ningun mensaje automaticamente.</div>}
-          {sessionUser.role !== "guard" && status === "active" ? <RevokeEventButton eventId={event.id} /> : null}
+          {sessionUser.role !== "guard" ? <><ManagedEventPanel event={event} /><LifecycleActions canCancel={status === "active" || status === "scheduled"} kind="event" resourceId={event.id} version={event.version} window={{date:event.event_date,arrivalWindowMode:event.arrival_window_mode??"all_day",arrivalStart:event.arrival_start??null,arrivalEndDate:event.arrival_end_date??null,arrivalEnd:event.arrival_end??null,plannedExitDate:event.planned_exit_date,plannedExitTime:event.planned_exit_time}} /></> : null}
         </div>
 
         <div className="space-y-4">
@@ -143,6 +147,7 @@ export default async function EventDetailPage({
             </CardHeader>
             <CardContent><EventGuestList eventId={event.id} items={guestItems} /></CardContent>
           </Card>
+          {sessionUser.role !== "guard" ? <AccessChangeHistory items={changeHistory}/> : null}
 
           <Card>
             <CardHeader>

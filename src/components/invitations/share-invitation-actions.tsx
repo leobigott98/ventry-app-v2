@@ -1,7 +1,7 @@
 "use client";
 
 import { Copy, Share2 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 
@@ -18,6 +18,11 @@ export function ShareInvitationActions({
 }: ShareInvitationActionsProps) {
   const [isSharing, setIsSharing] = useState(false);
   const [copyMessage, setCopyMessage] = useState<string | null>(null);
+  const [hasNativeShare, setHasNativeShare] = useState(false);
+
+  useEffect(() => {
+    setHasNativeShare(typeof navigator.share === "function");
+  }, []);
 
   async function logShare(channel: "whatsapp" | "native") {
     await fetch(`/api/invitations/${invitationId}/share`, {
@@ -70,7 +75,7 @@ export function ShareInvitationActions({
           <Share2 className="h-4 w-4" />
           {mode === "whatsapp" ? "Compartir por WhatsApp" : "WhatsApp"}
         </Button> : null}
-        {mode !== "whatsapp" && typeof navigator !== "undefined" && "share" in navigator ? (
+        {mode !== "whatsapp" && hasNativeShare ? (
           <Button disabled={isSharing} type="button" variant="outline" onClick={handleNativeShare}>
             <Share2 className="h-4 w-4" />
             Compartir

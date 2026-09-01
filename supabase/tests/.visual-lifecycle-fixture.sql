@@ -1,0 +1,17 @@
+insert into auth.users(instance_id,id,aud,role,email,encrypted_password,email_confirmed_at,confirmation_token,recovery_token,email_change_token_new,email_change,raw_app_meta_data,raw_user_meta_data,created_at,updated_at)
+values('00000000-0000-0000-0000-000000000000','81000000-0000-4000-8000-000000009001','authenticated','authenticated','visual-lifecycle@example.test',crypt('VentryVisual!2026',gen_salt('bf')),now(),'','','','',jsonb_build_object('provider','email','providers',array['email']),'{}',now(),now());
+insert into auth.identities(provider_id,user_id,identity_data,provider,created_at,updated_at)
+values('81000000-0000-4000-8000-000000009001','81000000-0000-4000-8000-000000009001',jsonb_build_object('sub','81000000-0000-4000-8000-000000009001','email','visual-lifecycle@example.test'),'email',now(),now());
+insert into public.communities(id,name,address,location_label,planned_unit_count,access_policy_mode,gate_operation_mode,admin_contact_name,admin_contact_phone,created_by_email,time_zone)
+values('81000000-0000-4000-8000-000000000001','Visual Lifecycle','Local','Local',1,'invitation_only','24_7_guarded','Prueba','+5800000000','visual-lifecycle@example.test','America/Caracas');
+insert into public.units(id,community_id,identifier,building) values('81000000-0000-4000-8000-000000000011','81000000-0000-4000-8000-000000000001','A-1','Torre A');
+insert into public.residents(id,community_id,unit_id,full_name,phone) values('81000000-0000-4000-8000-000000000101','81000000-0000-4000-8000-000000000001','81000000-0000-4000-8000-000000000011','Residente Visual','+5800000001');
+insert into public.community_memberships(id,community_id,email,full_name,role,resident_id,auth_user_id,is_primary,is_active)
+values('81000000-0000-4000-8000-000000001001','81000000-0000-4000-8000-000000000001','visual-lifecycle@example.test','Residente Visual','resident','81000000-0000-4000-8000-000000000101','81000000-0000-4000-8000-000000009001',true,true);
+
+set role authenticated;
+select set_config('request.jwt.claims','{"sub":"81000000-0000-4000-8000-000000009001","role":"authenticated","email":"visual-lifecycle@example.test"}',false);
+select public.create_arrival_invitation('81000000-0000-4000-8000-000000000001','81000000-0000-4000-8000-000000000101',null,'Visitante individual con un nombre suficientemente largo',null,'visitor',(now() at time zone 'America/Caracas')::date+2,'from_time','11:00',null,null,null,null,'Acceso individual para validar la administración del ciclo de vida.','pin','81000000-0000-4000-8000-000000008001');
+select public.create_arrival_invitation_group('81000000-0000-4000-8000-000000000001','81000000-0000-4000-8000-000000000101','visitor',(now() at time zone 'America/Caracas')::date+3,'all_day',null,null,null,null,null,'Grupo sintético para responsive.','qr','[{"fullName":"Primera persona con nombre largo","phone":"+5800000011"},{"fullName":"Segunda persona con nombre largo","phone":"+5800000012"}]','81000000-0000-4000-8000-000000008002');
+select public.create_arrival_resident_event('81000000-0000-4000-8000-000000000001','81000000-0000-4000-8000-000000000101','Evento vecinal de prueba responsive',(now() at time zone 'America/Caracas')::date+4,'from_time','18:00',null,null,null,null,'Evento sintético sin datos personales.','pin','[{"fullName":"Invitada principal con nombre muy largo","phone":"+5800000021","allowsCompanions":true,"maxCompanions":3},{"fullName":"Segundo invitado","phone":"+5800000022","allowsCompanions":false,"maxCompanions":0}]','81000000-0000-4000-8000-000000008003');
+reset role;

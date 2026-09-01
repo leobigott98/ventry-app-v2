@@ -5,9 +5,10 @@ import { notFound, redirect } from "next/navigation";
 import QRCode from "qrcode";
 
 import { AccessEventCard } from "@/components/access-log/access-event-card";
+import { AccessChangeHistory } from "@/components/access/access-change-history";
 import { InvitationStatusBadge } from "@/components/invitations/invitation-status-badge";
-import { InvitationWindowForm } from "@/components/invitations/invitation-window-form";
-import { RevokeInvitationButton } from "@/components/invitations/revoke-invitation-button";
+import { ManagedInvitationForm } from "@/components/invitations/managed-invitation-form";
+import { LifecycleActions } from "@/components/access/lifecycle-actions";
 import { ShareInvitationActions } from "@/components/invitations/share-invitation-actions";
 import { SectionShell } from "@/components/layout/section-shell";
 import { ResidentPageHeader } from "@/components/resident/resident-header";
@@ -15,6 +16,7 @@ import { getInvitationAccessEventsPage } from "@/lib/domain/access-log";
 import { buildInvitationShareText, getInvitationAccessTypeLabel, getInvitationById, getInvitationEffectiveStatus, getInvitationEventsPage, getInvitationPlannedExitLabel, getInvitationStatusLabel, getInvitationWindowLabel } from "@/lib/domain/invitations";
 import { getCommunityContextOrRedirect } from "@/lib/domain/session-context";
 import { formatAppDateTime } from "@/lib/formatting";
+import { getAccessChangeHistory } from "@/lib/domain/access-lifecycle";
 
 function getBaseUrl(requestHeaders: Headers) { const host = requestHeaders.get("x-forwarded-host") || requestHeaders.get("host"); const proto = requestHeaders.get("x-forwarded-proto") || "http"; return host ? `${proto}://${host}` : ""; }
 function integer(value: string | string[] | undefined) { const parsed = Number.parseInt(Array.isArray(value) ? value[0] ?? "" : value ?? "", 10); return Number.isFinite(parsed) && parsed > 0 ? parsed : 1; }
@@ -38,6 +40,7 @@ export default async function InvitationDetailPage({ params, searchParams }: { p
     getInvitationEventsPage(invitation.id, eventPage, 5),
     getInvitationAccessEventsPage(context.community.id, invitation.id, movementPage, 5),
   ]);
+  const changeHistory = sessionUser.role === "guard" ? [] : await getAccessChangeHistory(context.community.id,"invitation",invitation.id);
   const status = getInvitationEffectiveStatus(invitation, context.community.time_zone);
   const canModify = status === "active" || status === "scheduled";
   const requestHeaders = await headers();
@@ -53,11 +56,12 @@ export default async function InvitationDetailPage({ params, searchParams }: { p
     </section>
 
     <details className="rounded-2xl bg-surface px-4"><summary className="flex min-h-14 cursor-pointer list-none items-center font-bold">Compartir y copiar</summary><div className="border-t border-border py-4"><ShareInvitationActions invitationId={invitation.id} mode="secondary" shareText={shareText} /></div></details>
-    {sessionUser.role !== "guard" && canModify ? <details className="rounded-2xl bg-surface px-4"><summary className="flex min-h-14 cursor-pointer list-none items-center font-bold">Modificar llegada</summary><div className="border-t border-border py-4"><InvitationWindowForm invitation={invitation} /></div></details> : null}
-    {sessionUser.role !== "guard" && canModify ? <details className="rounded-2xl bg-surface px-4"><summary className="flex min-h-14 cursor-pointer list-none items-center font-bold text-danger">Revocar invitación</summary><div className="border-t border-border py-4"><RevokeInvitationButton invitationId={invitation.id} /></div></details> : null}
+    {sessionUser.role !== "guard" && canModify ? <details className="rounded-2xl bg-surface px-4"><summary className="flex min-h-14 cursor-pointer list-none items-center font-bold">Editar invitación</summary><div className="border-t border-border py-4"><ManagedInvitationForm invitation={invitation} /></div></details> : null}
+    {sessionUser.role !== "guard" ? <LifecycleActions canCancel={canModify} kind="invitation" resourceId={invitation.id} version={invitation.version} window={{date:invitation.visit_date,arrivalWindowMode:invitation.arrival_window_mode??"all_day",arrivalStart:invitation.arrival_start??null,arrivalEndDate:invitation.arrival_end_date??null,arrivalEnd:invitation.arrival_end??null,plannedExitDate:invitation.planned_exit_date??null,plannedExitTime:invitation.planned_exit_time??null}} /> : null}
 
     <details className="rounded-2xl bg-surface px-4"><summary className="flex min-h-14 cursor-pointer list-none items-center justify-between font-bold"><span>Historial</span><span className="text-xs font-medium text-muted-foreground">{eventResult.total}</span></summary><div className="space-y-3 border-t border-border py-4">{eventResult.items.length ? eventResult.items.map((event) => <div className="border-b border-border pb-3 last:border-0" key={event.id}><div className="font-semibold">{event.event_label}</div><div className="mt-1 text-xs text-muted-foreground">{formatAppDateTime(event.created_at, { dateStyle: "medium", timeStyle: "short" })}</div>{eventSummary(event.payload) ? <div className="mt-1 text-sm text-muted-foreground">{eventSummary(event.payload)}</div> : null}</div>) : <p className="py-4 text-sm text-muted-foreground">Sin eventos registrados.</p>}<Pager current={eventResult.page} href={(page) => detailHref(invitation.id, page, movementPage)} total={eventResult.totalPages} /></div></details>
     <details className="rounded-2xl bg-surface px-4"><summary className="flex min-h-14 cursor-pointer list-none items-center justify-between font-bold"><span>Movimientos en garita</span><span className="text-xs font-medium text-muted-foreground">{movementResult.total}</span></summary><div className="space-y-3 border-t border-border py-4">{movementResult.items.length ? movementResult.items.map((event) => <AccessEventCard event={event} key={event.id} showEventLink={sessionUser.role !== "resident"} showInvitationLink={false} />) : <p className="py-4 text-sm text-muted-foreground">Sin movimientos registrados.</p>}<Pager current={movementResult.page} href={(page) => detailHref(invitation.id, eventPage, page)} total={movementResult.totalPages} /></div></details>
+    {sessionUser.role !== "guard" ? <AccessChangeHistory items={changeHistory} /> : null}
   </div>;
 
   if (sessionUser.role === "resident") return <section className="min-h-[100dvh] pb-28 md:pb-0"><ResidentPageHeader backHref="/app/invitations" subtitle={`${getInvitationStatusLabel(status)} · ${getInvitationAccessTypeLabel(invitation.access_type)}`} title={invitation.visitor_name || "Detalle de invitación"} /><div className="space-y-4 px-3 py-4 sm:px-6 md:max-w-3xl md:px-8 md:py-6 xl:px-10">{body}</div>{canModify ? <div className="fixed inset-x-0 bottom-0 z-50 w-full border-t border-border bg-surface p-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] md:sticky md:inset-auto md:max-w-3xl md:px-8 xl:px-10"><ShareInvitationActions invitationId={invitation.id} mode="whatsapp" shareText={shareText} /></div> : null}</section>;

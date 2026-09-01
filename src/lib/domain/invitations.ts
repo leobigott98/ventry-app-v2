@@ -95,7 +95,7 @@ function normalizeCredential(
   value: AccessCredentialRecord | AccessCredentialRecord[] | null | undefined,
 ) {
   if (Array.isArray(value)) {
-    return value[0] ?? null;
+    return value.find((credential) => !credential.revoked_at) ?? null;
   }
 
   return value ?? null;
@@ -171,7 +171,7 @@ export async function getInvitationGroupById(communityId: string, groupId: strin
   const { data, error } = await query.maybeSingle();
   if (error) throw new Error(error.message);
   if (!data) return null;
-  const { data: members, error: membersError } = await supabase.from("invitations").select("id").eq("community_id", communityId).eq("group_id", groupId).order("created_at").order("id");
+  const { data: members, error: membersError } = await supabase.from("invitations").select("id").eq("community_id", communityId).eq("group_id", groupId).is("removed_at", null).order("created_at").order("id");
   if (membersError) throw new Error(membersError.message);
   const invitations = (await Promise.all((members ?? []).map((member) => getInvitationById(communityId, member.id, residentId)))).filter((item): item is InvitationDetailRecord => item !== null);
   const raw = data as InvitationGroupRecord & { residents: InvitationGroupDetailRecord["residents"] | InvitationGroupDetailRecord["residents"][]; units: InvitationGroupDetailRecord["units"] | InvitationGroupDetailRecord["units"][] };
@@ -360,7 +360,7 @@ export async function getInvitationByShareToken(shareToken: string) {
     arrival_end: string | null;
     planned_exit_date: string | null;
     planned_exit_time: string | null;
-    status: InvitationStatus;
+    status: InvitationStatus | "credential_revoked";
     resident_name: string;
     unit_identifier: string | null;
     unit_building: string | null;
@@ -370,6 +370,8 @@ export async function getInvitationByShareToken(shareToken: string) {
     group_size: number | null;
     group_position: number | null;
   };
+
+  if (dto.status === "credential_revoked") return { status: "credential_revoked" as const };
 
   return {
     visitor_name: dto.visitor_name,

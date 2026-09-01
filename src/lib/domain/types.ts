@@ -132,7 +132,7 @@ export type AccessEventDirection = (typeof accessEventDirectionOptions)[number][
 export type AccessEventSource = (typeof accessEventSourceOptions)[number]["value"];
 
 export type EventStatus = "scheduled" | "active" | "expired" | "revoked";
-export type EventAttendanceStatus = "pending" | "inside" | "exited";
+export type EventAttendanceStatus = "pending" | "inside" | "exited" | "removed";
 
 export type CommunityRecord = {
   id: string;
@@ -252,6 +252,12 @@ export type InvitationRecord = {
   notes: string | null;
   share_token: string;
   revoked_at: string | null;
+  version: number;
+  cancelled_at: string | null;
+  cancelled_by: string | null;
+  cancellation_reason: string | null;
+  removed_at: string | null;
+  removed_by: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -276,6 +282,10 @@ export type InvitationGroupRecord = {
   legacy_indefinite?: boolean;
   notes: string | null;
   credential_type: CredentialType;
+  version: number;
+  cancelled_at: string | null;
+  cancelled_by: string | null;
+  cancellation_reason: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -286,13 +296,15 @@ export type AccessCredentialRecord = {
   credential_type: CredentialType;
   credential_value: string;
   qr_payload: string | null;
+  revoked_at: string | null;
+  revocation_reason: string | null;
   created_at: string;
 };
 
 export type InvitationEventRecord = {
   id: string;
   invitation_id: string;
-  event_type: "created" | "shared" | "revoked" | "status_changed" | "window_updated";
+  event_type: "created" | "shared" | "revoked" | "status_changed" | "window_updated" | "updated" | "credential_rotated" | "member_added" | "member_removed" | "cancelled" | "duplicated";
   event_label: string;
   payload: Record<string, unknown>;
   created_at: string;
@@ -370,6 +382,12 @@ export type ResidentEventRecord = {
   notes: string | null;
   share_token: string;
   revoked_at: string | null;
+  version: number;
+  cancelled_at: string | null;
+  cancelled_by: string | null;
+  cancellation_reason: string | null;
+  default_allows_companions: boolean;
+  default_max_companions: number;
   created_at: string;
   updated_at: string;
 };
@@ -377,6 +395,7 @@ export type ResidentEventRecord = {
 export type EventGuestRecord = {
   id: string;
   event_id: string;
+  resident_contact_id: string | null;
   full_name: string;
   phone: string | null;
   notes: string | null;
@@ -386,6 +405,10 @@ export type EventGuestRecord = {
   attendance_status: EventAttendanceStatus;
   checked_in_at: string | null;
   checked_out_at: string | null;
+  version: number;
+  removed_at: string | null;
+  removed_by: string | null;
+  removal_reason: string | null;
   created_at: string;
   updated_at: string;
 };
@@ -399,6 +422,8 @@ export type EventGuestCredentialRecord = {
   qr_payload: string | null;
   credential_audit_id: string;
   share_token: string;
+  revoked_at: string | null;
+  revocation_reason: string | null;
   created_at: string;
 };
 
@@ -414,7 +439,7 @@ export type EventCredentialRecord = {
 export type EventActivityRecord = {
   id: string;
   event_id: string;
-  activity_type: "created" | "shared" | "revoked" | "guest_checked_in" | "guest_checked_out";
+  activity_type: "created" | "shared" | "revoked" | "guest_checked_in" | "guest_checked_out" | "updated" | "guest_added" | "guest_updated" | "guest_removed" | "cancelled" | "duplicated" | "credential_rotated";
   activity_label: string;
   payload: Record<string, unknown>;
   created_at: string;

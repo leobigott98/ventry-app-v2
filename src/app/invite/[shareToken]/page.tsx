@@ -23,6 +23,10 @@ export default async function SharedInvitationPage({
     notFound();
   }
 
+  if (invitation.status === "credential_revoked") {
+    return <main className="mx-auto flex min-h-[100dvh] max-w-xl items-center px-4 py-8"><Card><CardHeader><CardTitle>Credencial regenerada</CardTitle><CardDescription>Este enlace ya no contiene una credencial válida. Solicita al anfitrión el enlace actualizado.</CardDescription></CardHeader></Card></main>;
+  }
+
   const status = getInvitationEffectiveStatus(invitation);
   const credential = invitation.access_credentials;
   const qrImageDataUrl =
