@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 
 import { requireApiCommunityContext } from "@/lib/auth/api";
-import { findAccessByCredential } from "@/lib/domain/event-access";
+import {
+  CredentialMatchHydrationError,
+  findAccessByCredential,
+} from "@/lib/domain/event-access";
 import { validateCredentialSchema } from "@/lib/schemas/guards";
 
 const guardDeviceCookie = "ventry_guard_device";
@@ -64,7 +67,10 @@ export async function POST(request: NextRequest) {
     if (validation.rateLimited) {
       const retryAfter = validation.retryAfterSeconds ?? 900;
       const response = NextResponse.json(
-        { error: "Demasiados intentos. Espera antes de volver a intentar." },
+        {
+          error: "Demasiados intentos. Espera antes de volver a intentar.",
+          attemptRef: validation.attemptRef ?? null,
+        },
         { status: 429, headers: { "Retry-After": String(retryAfter) } },
       );
       return withGuardDeviceCookie(response, deviceId, existingDeviceId === null);
@@ -75,14 +81,30 @@ export async function POST(request: NextRequest) {
         ok: false,
         match: null,
         message: "No encontramos una invitacion o evento con ese codigo.",
+        attemptRef: validation.attemptRef ?? null,
       });
       return withGuardDeviceCookie(response, deviceId, existingDeviceId === null);
     }
-    const response = NextResponse.json({ ok: true, match: validation.match });
+    const response = NextResponse.json({
+      ok: true,
+      match: validation.match,
+      attemptRef: validation.attemptRef ?? null,
+    });
     return withGuardDeviceCookie(response, deviceId, existingDeviceId === null);
-  } catch {
+  } catch (error) {
+    if (error instanceof CredentialMatchHydrationError) {
+      return NextResponse.json(
+        {
+          error:
+            "La credencial fue procesada, pero no pudimos cargar sus datos. No autorices el acceso y reintenta.",
+          attemptRef: error.attemptRef,
+        },
+        { status: 502 },
+      );
+    }
+    const requestId = randomUUID();
     return NextResponse.json(
-      { error: "No fue posible validar el codigo." },
+      { error: "No fue posible validar el codigo.", requestId },
       { status: 500 },
     );
   }

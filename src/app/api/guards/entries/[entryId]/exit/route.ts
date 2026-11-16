@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { requireApiCommunityContext } from "@/lib/auth/api";
 import { registerEntryExit } from "@/lib/domain/mutations";
+import { idempotencyKeySchema } from "@/lib/schemas/guards";
 
 export async function POST(
   request: NextRequest,
@@ -10,6 +11,16 @@ export async function POST(
   const auth = await requireApiCommunityContext(request, ["admin", "guard"]);
   if ("response" in auth) {
     return auth.response;
+  }
+
+  const idempotencyKey = idempotencyKeySchema.safeParse(
+    request.headers.get("Idempotency-Key"),
+  );
+  if (!idempotencyKey.success) {
+    return NextResponse.json(
+      { error: idempotencyKey.error.issues[0]?.message ?? "Idempotency-Key invalida." },
+      { status: 400 },
+    );
   }
 
   try {

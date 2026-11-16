@@ -22,6 +22,18 @@ export const registerExitSchema = z.object({
   entryId: z.string().uuid("Registro invalido."),
 });
 
+export const registerGuardRejectionSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("invitation"),
+    invitationId: z.string().uuid("Invitacion invalida."),
+  }),
+  z.object({
+    kind: z.literal("event"),
+    eventId: z.string().uuid("Evento invalido."),
+    eventGuestId: z.string().uuid("Invitado invalido.").nullable().optional(),
+  }),
+]);
+
 export const unannouncedVisitorSchema = z.object({
   visitorName: z.string().trim().min(2, "Ingresa el nombre del visitante."),
   residentId: nullableOptionalText,
@@ -48,5 +60,6 @@ export const guardSearchSchema = z.object({
 export type ValidateCredentialInput = z.infer<typeof validateCredentialSchema>;
 export type RegisterInvitationEntryInput = z.infer<typeof registerInvitationEntrySchema>;
 export type RegisterExitInput = z.infer<typeof registerExitSchema>;
+export type RegisterGuardRejectionInput = z.infer<typeof registerGuardRejectionSchema>;
 export type UnannouncedVisitorInput = z.infer<typeof unannouncedVisitorSchema>;
 export type ManualVehicleEntryInput = z.infer<typeof manualVehicleEntrySchema>;

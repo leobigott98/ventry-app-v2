@@ -3,10 +3,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { POST } from "@/app/api/guards/validate-credential/route";
 import { requireApiCommunityContext } from "@/lib/auth/api";
-import { findAccessByCredential } from "@/lib/domain/event-access";
+import {
+  CredentialMatchHydrationError,
+  findAccessByCredential,
+} from "@/lib/domain/event-access";
 
 vi.mock("@/lib/auth/api", () => ({ requireApiCommunityContext: vi.fn() }));
-vi.mock("@/lib/domain/event-access", () => ({ findAccessByCredential: vi.fn() }));
+vi.mock("@/lib/domain/event-access", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/lib/domain/event-access")>()),
+  findAccessByCredential: vi.fn(),
+}));
 
 const auth = {
   sessionUser: { email: "guard@example.com", role: "guard" },
@@ -67,6 +73,7 @@ describe("POST /api/guards/validate-credential", () => {
     expect(response.headers.get("Retry-After")).toBe("321");
     await expect(response.json()).resolves.toEqual({
       error: "Demasiados intentos. Espera antes de volver a intentar.",
+      attemptRef: null,
     });
   });
 
@@ -90,5 +97,18 @@ describe("POST /api/guards/validate-credential", () => {
       replacement,
       "203.0.113.8",
     );
+  });
+
+  it("returns the audit reference when the credential matched but hydration failed", async () => {
+    vi.mocked(findAccessByCredential).mockRejectedValue(
+      new CredentialMatchHydrationError("audit_ref_123"),
+    );
+
+    const response = await POST(request());
+    const payload = await response.json();
+
+    expect(response.status).toBe(502);
+    expect(payload.attemptRef).toBe("audit_ref_123");
+    expect(payload.error).toMatch(/no autorices/i);
   });
 });

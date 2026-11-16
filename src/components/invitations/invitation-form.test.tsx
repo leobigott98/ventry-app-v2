@@ -87,7 +87,7 @@ describe("InvitationForm", () => {
 
     await user.type(screen.getByLabelText(/Quién va a visitarte/), "Maria");
     await user.click(await screen.findByRole("option", { name: /María José Pérez/ }));
-    await user.click(screen.getByRole("button", { name: "Agregar otra persona" }));
+    await user.click(screen.getByRole("button", { name: "Agregar persona" }));
     await user.type(screen.getByLabelText(/Quién va a visitarte/), "Maria");
     await user.click(await screen.findByRole("option", { name: /María José Pérez/ }));
     expect(screen.getByText("Este contacto ya está incluido")).toBeInTheDocument();
@@ -218,7 +218,7 @@ describe("InvitationForm", () => {
     render(<InvitationForm residents={[resident]} />);
     await user.type(screen.getByLabelText(/Quién va a visitarte/), "Carlos Rojas");
     await user.type(screen.getByLabelText("Telefono o WhatsApp opcional"), "+58 111");
-    await user.click(screen.getByRole("button", { name: "Agregar otra persona" }));
+    await user.click(screen.getByRole("button", { name: "Agregar persona" }));
     await user.type(screen.getByLabelText(/Quién va a visitarte/), "Luisa Rojas");
     await user.click(screen.getByRole("button", { name: /Continuar/ }));
     await user.click(screen.getByRole("button", { name: /Continuar/ }));
@@ -243,7 +243,7 @@ describe("InvitationForm", () => {
 
     for (let index = 1; index <= 9; index += 1) {
       await user.type(screen.getByLabelText(/Quién va a visitarte/), `Persona ${index}`);
-      await user.click(screen.getByRole("button", { name: "Agregar otra persona" }));
+      await user.click(screen.getByRole("button", { name: "Agregar persona" }));
     }
 
     await user.click(screen.getByRole("button", { name: /Crear como evento con estas 9 personas/ }));

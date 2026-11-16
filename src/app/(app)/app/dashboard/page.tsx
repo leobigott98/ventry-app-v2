@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import type { LucideIcon } from "lucide-react";
 import {
   ClipboardList,
+  LayoutDashboard,
   KeyRound,
   PartyPopper,
   QrCode,
@@ -13,11 +14,15 @@ import {
 } from "lucide-react";
 
 import { SectionShell } from "@/components/layout/section-shell";
+import { ActivityFeed } from "@/components/guards/activity-feed";
+import { GuardPageHeader } from "@/components/guards/guard-page-header";
+import { GuardUpcomingAccess } from "@/components/guards/guard-upcoming-access";
 import { ResidentDashboard } from "@/components/resident/resident-dashboard";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getDashboardSummary, getResidentById, getRoleMembers, getUnitById } from "@/lib/domain/community";
+import { getGuardUpcomingAccess, getRecentAccessEvents } from "@/lib/domain/guards";
 import {
   getInvitationEffectiveStatus,
   getInvitationWindowLabel,
@@ -47,9 +52,9 @@ type InfoItem = {
   helper: string;
 };
 
-function QuickActionGrid({ actions }: { actions: QuickAction[] }) {
+function QuickActionGrid({ actions, columns = "sm:grid-cols-3" }: { actions: QuickAction[]; columns?: string }) {
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+    <div className={`grid grid-cols-2 gap-3 ${columns}`}>
       {actions.map((action) => {
         const Icon = action.icon;
         const isAccent = action.variant === "accent";
@@ -169,11 +174,10 @@ function getOperationsQuickActions(role: CommunityRole): QuickAction[] {
   if (role === "guard") {
     return [
       {
-        href: "/app/guards?action=pin",
-        label: "Validar acceso",
-        description: "PIN, QR y entrada manual sin pasos extra.",
-        icon: ShieldCheck,
-        variant: "accent",
+        href: "/app/events",
+        label: "Eventos",
+        description: "Consulta horarios y listas de invitados.",
+        icon: PartyPopper,
       },
       {
         href: "/app/invitations",
@@ -251,30 +255,37 @@ export default async function DashboardPage() {
     return <ResidentDashboard activeCount={snapshot.activeCount} communityName={context.community.name} contacts={snapshot.contacts} firstName={firstName} greeting={getGreeting()} notifications={notifications} unitLabel={unitLabel} />;
   }
 
+  if (sessionUser.role === "guard") {
+    const [upcoming, activity] = await Promise.all([
+      getGuardUpcomingAccess(context.community.id, { page: 1, pageSize: 3 }),
+      getRecentAccessEvents(context.community.id),
+    ]);
+
+    return (
+      <section className="space-y-4">
+        <GuardPageHeader
+          description={context.community.location_label}
+          icon={LayoutDashboard}
+          title={context.community.name}
+        >
+          <Button asChild className="min-h-12">
+            <Link href="/app/guards"><ShieldCheck aria-hidden="true" className="size-5" /> Abrir garita</Link>
+          </Button>
+        </GuardPageHeader>
+        <QuickActionGrid actions={getOperationsQuickActions("guard")} columns="xl:grid-cols-4" />
+        <div className="grid items-start gap-4 xl:grid-cols-[1.15fr_0.85fr]">
+          <GuardUpcomingAccess initial={upcoming} />
+          <ActivityFeed events={activity} />
+        </div>
+      </section>
+    );
+  }
+
   const summary = await getDashboardSummary(context.community.id);
   const roleMembers = await getRoleMembers(context.community.id);
   const missingUnits = Math.max(context.community.planned_unit_count - summary.activeUnitsCount, 0);
 
-  const notices: Notice[] =
-    sessionUser.role === "guard"
-      ? [
-          {
-            label: "Turno operativo",
-            description: "Usa Guardias para validar QR, PIN y registrar visitas no anunciadas sin cambiar de flujo.",
-            variant: "success",
-          },
-          {
-            label: "Trazabilidad activa",
-            description: "La bitácora central está lista para revisar entradas, salidas y validaciones del turno.",
-            variant: "outline",
-          },
-          {
-            label: "Contexto de comunidad",
-            description: `${summary.activeResidentsCount} residentes activos y política ${context.community.access_policy_mode === "invitation_only" ? "solo invitacion" : "mixta"}.`,
-            variant: "outline",
-          },
-        ]
-      : [
+  const notices: Notice[] = [
           missingUnits > 0
             ? {
                 label: "Carga pendiente",
@@ -322,15 +333,7 @@ export default async function DashboardPage() {
     },
   ];
 
-  const secondaryActions: QuickAction[] =
-    sessionUser.role === "guard"
-      ? [
-          { href: "/app/guards?action=pin", label: "Ir a validación", description: "", icon: ShieldCheck },
-          { href: "/app/invitations", label: "Buscar accesos", description: "", icon: KeyRound },
-          { href: "/app/access-log", label: "Abrir bitácora", description: "", icon: ClipboardList },
-          { href: "/app/events", label: "Revisar eventos", description: "", icon: PartyPopper },
-        ]
-      : [
+  const secondaryActions: QuickAction[] = [
           { href: "/app/residents/new", label: "Crear residente", description: "", icon: Users },
           { href: "/app/units", label: "Revisar unidades", description: "", icon: KeyRound },
           { href: "/app/invitations", label: "Ver invitaciones", description: "", icon: QrCode },
@@ -348,7 +351,7 @@ export default async function DashboardPage() {
       <div className="grid gap-4 xl:grid-cols-[1.08fr_0.92fr]">
         <NoticeList
           eyebrow="Notificaciones y alertas"
-          title={sessionUser.role === "guard" ? "Lectura del turno" : "Lectura operativa"}
+          title="Lectura operativa"
           description="Visibilidad fuerte para decidir qué atender primero."
           notices={notices}
         />

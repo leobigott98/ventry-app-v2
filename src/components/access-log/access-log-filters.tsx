@@ -31,13 +31,13 @@ export function AccessLogFilters({ values, residents, units }: AccessLogFiltersP
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Busqueda y filtros</CardTitle>
+        <CardTitle>Búsqueda y filtros</CardTitle>
         <CardDescription>
           Filtra por persona, unidad, tipo, movimiento, fecha o estado para reconstruir lo ocurrido.
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <form className="space-y-4" method="get">
+        <form aria-label="Buscar y filtrar la bitácora" className="space-y-4" method="get" role="search">
           <div className="space-y-2">
             <Label htmlFor="accessLogQuery">Buscar</Label>
             <Input

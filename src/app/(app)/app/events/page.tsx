@@ -3,6 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import { ResidentPageHeader } from "@/components/resident/resident-header";
+import { GuardPageHeader } from "@/components/guards/guard-page-header";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -33,12 +34,20 @@ export default async function EventsPage() {
   );
   const active = events.filter((event) => ["scheduled", "active"].includes(getEventEffectiveStatus(event, context.community.time_zone)));
   const past = events.filter((event) => !["scheduled", "active"].includes(getEventEffectiveStatus(event, context.community.time_zone)));
+  const guard = sessionUser.role === "guard";
 
   return (
-    <section className="min-h-[100dvh]">
-      <ResidentPageHeader backHref="/app/dashboard" subtitle={`${active.length} ${active.length === 1 ? "evento vigente" : "eventos vigentes"}`} title="Eventos y fiestas" />
-      <div className="space-y-5 px-4 py-5 sm:px-6 md:px-8 md:py-6 xl:px-10">
-      {sessionUser.role !== "guard" ? (
+    <section className={guard ? "space-y-4" : "min-h-[100dvh]"}>
+      {guard ? (
+        <GuardPageHeader description="Consulta ventanas de acceso y listas de invitados." icon={PartyPopper} title="Eventos de la comunidad">
+          <Badge variant="success">{active.length} próximos o activos</Badge>
+          <Button asChild className="min-h-12" variant="outline"><Link href="/app/guards">Validar acceso</Link></Button>
+        </GuardPageHeader>
+      ) : (
+        <ResidentPageHeader backHref="/app/dashboard" subtitle={`${active.length} ${active.length === 1 ? "evento vigente" : "eventos vigentes"}`} title="Eventos y fiestas" />
+      )}
+      <div className={guard ? "space-y-4" : "space-y-5 px-4 py-5 sm:px-6 md:px-8 md:py-6 xl:px-10"}>
+      {!guard ? (
         <Card className="overflow-hidden border-primary/25 bg-[linear-gradient(135deg,rgba(0,212,255,0.13),rgba(0,230,118,0.06))]">
           <CardContent className="flex flex-col gap-5 p-5 sm:flex-row sm:items-center sm:justify-between sm:p-6">
             <div className="flex items-start gap-4">
@@ -61,11 +70,11 @@ export default async function EventsPage() {
         </Card>
       ) : null}
 
-      <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+      <div className={guard ? "grid items-start gap-4 xl:grid-cols-[1.65fr_1fr]" : "grid gap-4 xl:grid-cols-[1.1fr_0.9fr]"}>
         <Card>
           <CardHeader>
-            <CardTitle>Proximos y activos</CardTitle>
-            <CardDescription>Listas que aun pueden validarse en garita.</CardDescription>
+            <CardTitle>Próximos y activos</CardTitle>
+            <CardDescription>Listas que aún pueden validarse en garita.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             {active.length ? (
@@ -74,7 +83,7 @@ export default async function EventsPage() {
                 return (
                   <Link
                     key={event.id}
-                    className="block rounded-[22px] border border-border bg-secondary/70 p-4 transition hover:border-primary/35"
+                    className={guard ? "block rounded-xl border border-border bg-surface p-4 transition hover:border-primary/35 hover:bg-secondary/45" : "block rounded-[22px] border border-border bg-secondary/70 p-4 transition hover:border-primary/35"}
                     href={`/app/events/${event.id}`}
                   >
                     <div className="flex items-start justify-between gap-3">

@@ -30,7 +30,13 @@ export async function requireApiAuthenticatedUser(): Promise<
 export async function requireApiCommunityContext(
   _request: NextRequest,
   allowedRoles?: CommunityRole[],
-) {
+): Promise<
+  | { response: NextResponse }
+  | {
+      sessionUser: ReturnType<typeof buildSessionUserFromMembership>;
+      context: NonNullable<Awaited<ReturnType<typeof getCommunityContextForUserId>>>;
+    }
+> {
   const auth = await requireApiAuthenticatedUser();
   if ("response" in auth) return { response: auth.response };
 

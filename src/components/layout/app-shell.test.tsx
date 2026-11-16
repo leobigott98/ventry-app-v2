@@ -1,6 +1,6 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AppShell } from "@/components/layout/app-shell";
 import type { SessionUser } from "@/lib/auth/session";
@@ -30,6 +30,8 @@ function userFor(role: SessionUser["role"]): SessionUser {
 }
 
 describe("AppShell navigation and responsive role layouts", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
   beforeEach(() => {
     navigationMocks.pathname = "/app/dashboard";
     navigationMocks.push.mockReset();
@@ -105,7 +107,7 @@ describe("AppShell navigation and responsive role layouts", () => {
     expect(shell).toHaveClass("xl:grid-cols-[17.5rem_minmax(0,1fr)]");
     expect(within(sidebar).getByRole("link", { name: "Residentes" })).toHaveAttribute("aria-current", "page");
     expect(within(sidebar).getByRole("link", { name: "Unidades" })).toHaveAttribute("href", "/app/units");
-    expect(within(sidebar).getByRole("link", { name: "Configuracion" })).toHaveAttribute(
+    expect(within(sidebar).getByRole("link", { name: "Configuración" })).toHaveAttribute(
       "href",
       "/app/settings",
     );
@@ -126,5 +128,19 @@ describe("AppShell navigation and responsive role layouts", () => {
     expect(menuButton).toHaveAttribute("aria-expanded", "true");
     expect(screen.getByRole("navigation", { name: "Navegación móvil" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Cerrar navegación" })).toBeInTheDocument();
+  });
+
+  it("closes the guard session through the logout endpoint", async () => {
+    navigationMocks.pathname = "/app/guards";
+    const fetchMock = vi.fn().mockResolvedValue(Response.json({ ok: true }));
+    vi.stubGlobal("fetch", fetchMock);
+    const user = userEvent.setup();
+    render(<AppShell currentUser={userFor("guard")}><div>Garita</div></AppShell>);
+
+    const sidebar = screen.getByTestId("desktop-sidebar");
+    await user.click(within(sidebar).getByRole("button", { name: "Cerrar sesión" }));
+    expect(fetchMock).toHaveBeenCalledWith("/api/auth/logout", { method: "POST" });
+    await waitFor(() => expect(navigationMocks.push).toHaveBeenCalledWith("/login"));
+    expect(navigationMocks.refresh).toHaveBeenCalledOnce();
   });
 });

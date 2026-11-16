@@ -1,14 +1,16 @@
 import Link from "next/link";
-import { CalendarDays, ChevronLeft, ChevronRight, Filter, Plus, Search } from "lucide-react";
+import { CalendarDays, ChevronLeft, ChevronRight, Filter, KeyRound, Plus, Search } from "lucide-react";
 import { redirect } from "next/navigation";
 
 import { InvitationStatusBadge } from "@/components/invitations/invitation-status-badge";
+import { GuardPageHeader } from "@/components/guards/guard-page-header";
 import { SectionShell } from "@/components/layout/section-shell";
 import { ResidentPageHeader } from "@/components/resident/resident-header";
 import { Button } from "@/components/ui/button";
 import { getInvitationAccessTypeLabel, getInvitationEffectiveStatus, getInvitationGroupSummaries, getInvitationWindowLabel, getPaginatedInvitations, type InvitationGroupSummary, type InvitationListFilter } from "@/lib/domain/invitations";
 import { getCommunityContextOrRedirect } from "@/lib/domain/session-context";
 import { APP_TIME_ZONE } from "@/lib/formatting";
+import { cn } from "@/lib/utils";
 
 function single(value: string | string[] | undefined) { return Array.isArray(value) ? value[0] ?? "" : value ?? ""; }
 function integer(value: string | string[] | undefined, fallback: number) { const parsed = Number.parseInt(single(value), 10); return Number.isFinite(parsed) ? parsed : fallback; }
@@ -36,30 +38,82 @@ export default async function InvitationsPage({ searchParams }: { searchParams: 
   const timeZone = context.community.time_zone ?? APP_TIME_ZONE;
   const groupSummaries = await getInvitationGroupSummaries(context.community.id, result.items.flatMap((item) => item.group_id ? [item.group_id] : []), timeZone, sessionUser.role === "resident" ? sessionUser.residentId : null);
   const resident = sessionUser.role === "resident";
+  const guard = sessionUser.role === "guard";
   const filterParams = { q: values.q, status: values.status, dateFrom: values.dateFrom, dateTo: values.dateTo };
 
   const content = <>
-    <form aria-label="Buscar y filtrar invitaciones" className="space-y-3" method="get" role="search">
-      <div className="relative"><Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" /><input aria-label="Buscar por visitante" className="h-12 w-full rounded-2xl border border-border bg-surface pl-11 pr-4 text-base outline-none focus:ring-2 focus:ring-primary/25" defaultValue={values.q} name="q" placeholder="Buscar visitante" /></div>
+    <form aria-label="Buscar y filtrar invitaciones" className={cn("space-y-3", guard && "rounded-2xl border border-border bg-surface p-4")} method="get" role="search">
+      <div className="flex gap-2">
+        <div className="relative min-w-0 flex-1"><Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" /><input aria-label="Buscar por visitante" className="h-12 w-full rounded-2xl border border-border bg-surface pl-11 pr-4 text-base outline-none focus:ring-2 focus:ring-primary/25" defaultValue={values.q} name="q" placeholder="Buscar visitante" /></div>
+        {guard ? <Button className="min-h-12 shrink-0" type="submit">Buscar</Button> : null}
+      </div>
       <details className="group rounded-2xl bg-surface px-4"><summary className="flex min-h-12 cursor-pointer list-none items-center justify-between font-semibold"><span className="inline-flex items-center gap-2"><Filter className="h-4 w-4 text-primary" /> Filtros</span><span className="text-xs font-medium text-muted-foreground">{values.status === "all" ? "Todas" : values.status === "current" ? "Vigentes" : values.status}</span></summary><div className="grid gap-3 border-t border-border py-4 sm:grid-cols-3"><label className="text-sm font-semibold">Estado<select className="mt-1 h-11 w-full rounded-xl border border-border bg-surface px-3 text-base" defaultValue={values.status} name="status"><option value="all">Todas</option><option value="current">Vigentes</option><option value="used">Usadas</option><option value="expired">Vencidas</option><option value="revoked">Revocadas</option></select></label><label className="text-sm font-semibold">Desde<input className="mt-1 h-11 w-full rounded-xl border border-border bg-surface px-3 text-base" defaultValue={values.dateFrom} name="dateFrom" type="date" /></label><label className="text-sm font-semibold">Hasta<input className="mt-1 h-11 w-full rounded-xl border border-border bg-surface px-3 text-base" defaultValue={values.dateTo} name="dateTo" type="date" /></label><Button className="sm:col-span-3" type="submit">Aplicar filtros</Button></div></details>
     </form>
 
     {resident ? <div className="flex items-center justify-between gap-3"><Link className="inline-flex min-h-11 items-center gap-2 text-sm font-bold text-primary" href="/app/events"><CalendarDays className="h-4 w-4" /> Eventos</Link><Link className="inline-flex min-h-11 items-center gap-2 rounded-xl bg-primary px-4 text-sm font-bold text-white" href="/app/invitations/new"><Plus className="h-4 w-4" /> Nueva invitación</Link></div> : sessionUser.role !== "guard" ? <Button asChild><Link href="/app/invitations/new">Nueva invitación</Link></Button> : null}
 
     <div className="space-y-5">
-      {result.items.length > 0 ? <InvitationGroup groupSummaries={groupSummaries} invitations={result.items} timeZone={timeZone} title={values.status === "current" ? "Vigentes" : values.status === "all" ? "Invitaciones" : "Resultados"} /> : null}
-      {result.items.length === 0 ? <div className="rounded-2xl border border-dashed border-border bg-surface px-6 py-10 text-center"><p className="font-bold">No encontramos invitaciones</p><p className="mt-2 text-sm text-muted-foreground">Ajusta los filtros o crea una nueva visita.</p></div> : null}
+      {result.items.length > 0 ? <InvitationGroup guard={guard} groupSummaries={groupSummaries} invitations={result.items} timeZone={timeZone} title={values.status === "current" ? "Vigentes" : values.status === "all" ? "Invitaciones" : "Resultados"} /> : null}
+      {result.items.length === 0 ? <div className="rounded-2xl border border-dashed border-border bg-surface px-6 py-10 text-center"><p className="font-bold">No encontramos invitaciones</p><p className="mt-2 text-sm text-muted-foreground">{guard ? "Prueba otro nombre o ajusta los filtros." : "Ajusta los filtros o crea una nueva visita."}</p></div> : null}
     </div>
 
     <nav aria-label="Paginación de invitaciones" className="flex items-center justify-between gap-3 border-t border-border pt-4"><Button asChild={result.page > 1} disabled={result.page <= 1} variant="outline">{result.page > 1 ? <Link href={pageHref(filterParams, result.page - 1)}><ChevronLeft className="h-4 w-4" /> Anterior</Link> : <span><ChevronLeft className="h-4 w-4" /> Anterior</span>}</Button><span className="text-sm text-muted-foreground">Página {result.page} de {result.totalPages}</span><Button asChild={result.page < result.totalPages} disabled={result.page >= result.totalPages} variant="outline">{result.page < result.totalPages ? <Link href={pageHref(filterParams, result.page + 1)}>Siguiente <ChevronRight className="h-4 w-4" /></Link> : <span>Siguiente <ChevronRight className="h-4 w-4" /></span>}</Button></nav>
   </>;
 
   if (resident) return <section className="min-h-[100dvh]"><ResidentPageHeader subtitle={`${result.total} ${result.total === 1 ? "invitación" : "invitaciones"}`} title="Mis invitaciones" /><div className="space-y-4 px-4 py-4 sm:px-6 md:px-8 md:py-6 xl:max-w-6xl xl:px-10">{content}</div></section>;
-  return <SectionShell eyebrow={`${result.total} registradas`} title="Invitaciones" description={sessionUser.role === "guard" ? "Consulta accesos vigentes y detalles operativos." : "Crea y administra accesos para la comunidad."}>{content}</SectionShell>;
+  if (guard) return (
+    <section className="space-y-4">
+      <GuardPageHeader description={`${result.total} ${result.total === 1 ? "invitación encontrada" : "invitaciones encontradas"}`} icon={KeyRound} title="Consultar invitaciones">
+        <Button asChild className="min-h-12" variant="outline"><Link href="/app/guards">Validar PIN o QR</Link></Button>
+      </GuardPageHeader>
+      {content}
+    </section>
+  );
+  return <SectionShell eyebrow={`${result.total} registradas`} title="Invitaciones" description="Crea y administra accesos para la comunidad.">{content}</SectionShell>;
 }
 
-function InvitationGroup({ groupSummaries, invitations, timeZone, title }: { groupSummaries: Map<string, InvitationGroupSummary>; invitations: Awaited<ReturnType<typeof getPaginatedInvitations>>["items"]; timeZone: string; title: string }) {
+function InvitationGroup({ guard, groupSummaries, invitations, timeZone, title }: {
+  guard: boolean;
+  groupSummaries: Map<string, InvitationGroupSummary>;
+  invitations: Awaited<ReturnType<typeof getPaginatedInvitations>>["items"];
+  timeZone: string;
+  title: string;
+}) {
   const seenGroups = new Set<string>();
-  const cards = invitations.filter((invitation) => { if (!invitation.group_id) return true; if (seenGroups.has(invitation.group_id)) return false; seenGroups.add(invitation.group_id); return true; });
-  return <section><h2 className="mb-2 px-1 text-sm font-bold text-muted-foreground">{title}</h2><div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">{cards.map((invitation) => { const summary=invitation.group_id?groupSummaries.get(invitation.group_id):null; const status = summary?.current ? "active" : getInvitationEffectiveStatus(invitation,timeZone); return <Link className="block rounded-2xl border border-border bg-surface p-4 transition hover:border-primary/35" href={invitation.group_id ? `/app/invitation-groups/${invitation.group_id}` : `/app/invitations/${invitation.id}`} key={invitation.group_id ?? invitation.id}><div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate text-[17px] font-bold">{summary ? `Invitación para ${summary.total} personas` : invitation.visitor_name || "Acceso rápido sin nombre"}</p><p className="mt-1 text-sm text-muted-foreground">{getInvitationAccessTypeLabel(invitation.access_type)} · {getInvitationWindowLabel(invitation)}</p>{summary?<p className="mt-2 text-xs text-muted-foreground">{summary.current} vigentes · {summary.used} usadas · {summary.expired} vencidas · {summary.revoked} revocadas</p>:null}</div><InvitationStatusBadge status={status} /></div></Link>; })}</div></section>;
+  const cards = invitations.filter(({ group_id }) => {
+    if (!group_id) return true;
+    if (seenGroups.has(group_id)) return false;
+    seenGroups.add(group_id);
+    return true;
+  });
+  return (
+    <section className={guard ? "overflow-hidden rounded-2xl border border-border bg-surface" : undefined}>
+      <h2 className={guard ? "border-b border-border px-4 py-3 font-bold" : "mb-2 px-1 text-sm font-bold text-muted-foreground"}>{title}</h2>
+      <div className={guard ? "divide-y divide-border" : "grid gap-3 md:grid-cols-2 xl:grid-cols-3"}>
+        {cards.map((invitation) => {
+          const summary = invitation.group_id ? groupSummaries.get(invitation.group_id) : null;
+          const status = summary?.current ? "active" : getInvitationEffectiveStatus(invitation, timeZone);
+          return (
+            <Link
+              className={cn("block p-4 transition", guard ? "hover:bg-secondary/60 focus-visible:bg-secondary" : "rounded-2xl border border-border bg-surface hover:border-primary/35")}
+              href={invitation.group_id ? `/app/invitation-groups/${invitation.group_id}` : `/app/invitations/${invitation.id}`}
+              key={invitation.group_id ?? invitation.id}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="truncate text-[17px] font-bold">{summary ? `Invitación para ${summary.total} personas` : invitation.visitor_name || "Acceso rápido sin nombre"}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{getInvitationAccessTypeLabel(invitation.access_type)} · {getInvitationWindowLabel(invitation)}</p>
+                  {summary ? <p className="mt-2 text-xs text-muted-foreground">{summary.current} vigentes · {summary.used} usadas · {summary.expired} vencidas · {summary.revoked} revocadas</p> : null}
+                </div>
+                <span className="flex shrink-0 items-center gap-2">
+                  <InvitationStatusBadge status={status} />
+                  {guard ? <ChevronRight aria-hidden="true" className="size-4 text-muted-foreground" /> : null}
+                </span>
+              </div>
+            </Link>
+          );
+        })}
+      </div>
+    </section>
+  );
 }

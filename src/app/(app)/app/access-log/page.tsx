@@ -1,7 +1,9 @@
 import Link from "next/link";
+import { ClipboardList } from "lucide-react";
 
 import { AccessEventCard } from "@/components/access-log/access-event-card";
 import { AccessLogFilters } from "@/components/access-log/access-log-filters";
+import { GuardPageHeader } from "@/components/guards/guard-page-header";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { getUnitsForCommunity, getResidentsForCommunity } from "@/lib/domain/community";
@@ -23,8 +25,8 @@ function getSingleValue(value: string | string[] | undefined) {
   return value ?? "";
 }
 
-function pageUrl(values: Record<string, string>, page: number) {
-  const params = new URLSearchParams(values);
+function pageUrl({ query, ...values }: Record<string, string>, page: number) {
+  const params = new URLSearchParams({ q: query, ...values });
   if (page > 1) params.set("page", String(page)); else params.delete("page");
   return `/app/access-log?${params.toString()}`;
 }
@@ -43,7 +45,8 @@ export default async function AccessLogPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { context } = await getCommunityContextOrRedirect({ allowedRoles: ["admin", "guard"] });
+  const { context, sessionUser } = await getCommunityContextOrRedirect({ allowedRoles: ["admin", "guard"] });
+  const guard = sessionUser.role === "guard";
   const params = await searchParams;
 
   const values = {
@@ -78,10 +81,25 @@ export default async function AccessLogPage({
   const entriesCount = events.filter((event) => event.event_direction === "entry").length;
   const exitsCount = events.filter((event) => event.event_direction === "exit").length;
   const rejectedCount = events.filter((event) => event.event_status === "rejected").length;
+  const filters = <AccessLogFilters residents={residents} units={units} values={values} />;
+  const pagination = (
+    <nav aria-label="Paginación de bitácora" className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface p-3">
+      <PaginationLink href={pageUrl(values, eventResult.page - 1)} disabled={eventResult.page <= 1}>Anterior</PaginationLink>
+      <span className="text-center text-sm text-muted-foreground">Página {eventResult.page} de {eventResult.totalPages}</span>
+      <PaginationLink href={pageUrl(values, eventResult.page + 1)} disabled={eventResult.page >= eventResult.totalPages}>Siguiente</PaginationLink>
+    </nav>
+  );
 
   return (
     <div className="space-y-4">
-      <Card className="hidden md:block">
+      {guard ? (
+        <>
+          <GuardPageHeader description="Busca movimientos y revisa el detalle de cada acceso." icon={ClipboardList} title="Registro de accesos">
+            <ButtonLink />
+          </GuardPageHeader>
+          {filters}
+        </>
+      ) : <Card className="hidden md:block">
         <CardHeader className="gap-3">
           <Badge variant="outline" className="w-fit">
             Bitacora auditable
@@ -95,41 +113,41 @@ export default async function AccessLogPage({
             </CardDescription>
           </div>
         </CardHeader>
-      </Card>
+      </Card>}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <Card>
           <CardContent className="p-5">
-            <div className="text-sm text-muted-foreground">Eventos mostrados</div>
+            <div className="text-sm text-muted-foreground">Resultados totales</div>
             <div className="mt-2 font-display text-3xl font-semibold text-foreground">{eventResult.total}</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-5">
-            <div className="text-sm text-muted-foreground">Entradas</div>
+            <div className="text-sm text-muted-foreground">Entradas en esta página</div>
             <div className="mt-2 font-display text-3xl font-semibold text-foreground">{entriesCount}</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-5">
-            <div className="text-sm text-muted-foreground">Salidas</div>
+            <div className="text-sm text-muted-foreground">Salidas en esta página</div>
             <div className="mt-2 font-display text-3xl font-semibold text-foreground">{exitsCount}</div>
           </CardContent>
         </Card>
         <Card>
           <CardContent className="p-5">
-            <div className="text-sm text-muted-foreground">Validaciones rechazadas</div>
+            <div className="text-sm text-muted-foreground">Rechazos en esta página</div>
             <div className="mt-2 font-display text-3xl font-semibold text-foreground">{rejectedCount}</div>
           </CardContent>
         </Card>
       </div>
 
-      <AccessLogFilters residents={residents} units={units} values={values} />
+      {!guard ? filters : null}
 
-      <div className="grid gap-4 xl:grid-cols-[1.2fr_0.8fr]">
+      <div className={guard ? "grid items-start gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(16rem,0.38fr)]" : "grid gap-4 xl:grid-cols-[1.2fr_0.8fr]"}>
         <Card>
           <CardHeader>
-            <CardTitle>Eventos</CardTitle>
+            <CardTitle>{guard ? "Movimientos registrados" : "Eventos"}</CardTitle>
             <CardDescription>
               Lista ordenada por hora. Cada tarjeta resume visitante, residente, unidad, estado y
               operador.
@@ -144,6 +162,7 @@ export default async function AccessLogPage({
                 resultados.
               </div>
             )}
+            {guard ? pagination : null}
           </CardContent>
         </Card>
 
@@ -182,7 +201,7 @@ export default async function AccessLogPage({
             </CardContent>
           </Card>
 
-          <Card>
+          {!guard ? <Card>
             <CardHeader>
               <CardTitle>Lectura rapida</CardTitle>
               <CardDescription>Estados y movimientos para interpretar la bitacora sin ambiguedad.</CardDescription>
@@ -206,16 +225,21 @@ export default async function AccessLogPage({
               </div>
               <ButtonLink />
             </CardContent>
-          </Card>
+          </Card> : null}
         </div>
       </div>
 
-      <nav aria-label="Paginación de bitácora" className="flex items-center justify-between gap-3">
-        <Link aria-disabled={eventResult.page <= 1} className={`inline-flex min-h-11 items-center rounded-xl border border-border px-4 text-sm font-semibold ${eventResult.page <= 1 ? "pointer-events-none opacity-45" : "bg-surface"}`} href={pageUrl(values, eventResult.page - 1)}>Anterior</Link>
-        <span className="text-sm text-muted-foreground">Página {eventResult.page} de {eventResult.totalPages}</span>
-        <Link aria-disabled={eventResult.page >= eventResult.totalPages} className={`inline-flex min-h-11 items-center rounded-xl border border-border px-4 text-sm font-semibold ${eventResult.page >= eventResult.totalPages ? "pointer-events-none opacity-45" : "bg-surface"}`} href={pageUrl(values, eventResult.page + 1)}>Siguiente</Link>
-      </nav>
+      {!guard ? pagination : null}
     </div>
+  );
+}
+
+function PaginationLink({ href, disabled, children }: { href: string; disabled: boolean; children: string }) {
+  const className = "inline-flex min-h-11 items-center rounded-xl border border-border px-3 text-sm font-semibold";
+  return disabled ? (
+    <span aria-disabled="true" className={`${className} text-muted-foreground`}>{children}</span>
+  ) : (
+    <Link className={`${className} bg-surface text-primary hover:bg-secondary`} href={href}>{children}</Link>
   );
 }
 

@@ -307,12 +307,12 @@ function WorkspaceShell({
               </Button>
               <div className="min-w-0">
                 <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">
-                  {admin ? "Administración" : "Workspace de garita"}
+                  {admin ? "Administración" : "Garita"}
                 </p>
                 <h1 className="truncate text-xl font-bold text-foreground sm:text-2xl">{activeItem.label}</h1>
               </div>
             </div>
-            <div className="hidden items-center gap-3 sm:flex">
+            <div className={cn("hidden items-center gap-3 sm:flex", !admin && "md:hidden")}>
               {!admin ? <Badge variant="success">Operativo</Badge> : null}
               <div className="text-right">
                 <div className="text-sm font-semibold text-foreground">{currentUser.fullName}</div>
