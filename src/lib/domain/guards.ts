@@ -123,6 +123,7 @@ export async function getInvitationValidationMatch(
   const openEntry = await getOpenEntryForInvitation(communityId, invitation.id);
 
   return {
+    kind: "invitation" as const,
     invitation: {
       ...invitation,
       effective_status: effectiveStatus,

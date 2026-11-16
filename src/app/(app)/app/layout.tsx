@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 
+import { PushDeviceMaintenance } from "@/components/pwa/push-device-maintenance";
 import { AppShell } from "@/components/layout/app-shell";
 import { getCurrentAppUserOrRedirect } from "@/lib/domain/session-context";
 
@@ -10,5 +11,8 @@ export default async function ProtectedAppLayout({
 }) {
   const currentUser = await getCurrentAppUserOrRedirect();
 
-  return <AppShell currentUser={currentUser}>{children}</AppShell>;
+  return <AppShell currentUser={currentUser}>
+    {currentUser.authUserId ? <PushDeviceMaintenance owner={currentUser.authUserId} /> : null}
+    {children}
+  </AppShell>;
 }

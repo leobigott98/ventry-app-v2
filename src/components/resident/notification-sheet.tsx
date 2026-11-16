@@ -43,7 +43,7 @@ export function NotificationSheet({ notifications }: { notifications: ResidentNo
         <div className="fixed inset-0 z-[70] flex items-end justify-center bg-foreground/35 sm:items-center" onMouseDown={(event) => { if (event.target === event.currentTarget) setOpen(false); }}>
           <section aria-label="Notificaciones" aria-modal="true" className="max-h-[78dvh] w-full max-w-lg overflow-y-auto rounded-t-[1.5rem] bg-surface px-5 pb-[calc(env(safe-area-inset-bottom)+1.25rem)] pt-5 shadow-elevated sm:rounded-[1.5rem]" role="dialog">
             <div className="flex items-center justify-between gap-4">
-              <div><h2 className="text-xl font-bold">Notificaciones</h2><p className="mt-1 text-sm text-muted-foreground">Accesos que requieren tu atención.</p></div>
+              <div><h2 className="text-xl font-bold">Notificaciones</h2><p className="mt-1 text-sm text-muted-foreground">Avisos de garita e invitaciones vigentes.</p></div>
               <button ref={closeButtonRef} aria-label="Cerrar notificaciones" className="flex h-11 w-11 items-center justify-center rounded-full bg-muted text-foreground" onClick={() => setOpen(false)} type="button"><X className="h-5 w-5" /></button>
             </div>
             <div className="mt-5 divide-y divide-border">
@@ -51,9 +51,12 @@ export function NotificationSheet({ notifications }: { notifications: ResidentNo
                 <Link key={notification.id} className="flex min-h-20 items-center justify-between gap-3 py-4" href={notification.href} onClick={() => setOpen(false)}>
                   <span><span className="block font-semibold">{notification.title}</span><span className="mt-1 block text-sm text-muted-foreground">{notification.detail}</span></span><ChevronRight className="h-5 w-5 shrink-0 text-muted-foreground" />
                 </Link>
-              )) : <div className="py-10 text-center"><span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-secondary text-primary"><Bell className="h-6 w-6" /></span><p className="mt-4 font-semibold">Todo está al día</p><p className="mt-2 text-sm text-muted-foreground">No hay invitaciones activas o programadas que mostrar.</p></div>}
+              )) : <div className="py-10 text-center"><span className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-secondary text-primary"><Bell className="h-6 w-6" /></span><p className="mt-4 font-semibold">Todo está al día</p><p className="mt-2 text-sm text-muted-foreground">No hay avisos recientes ni invitaciones vigentes que mostrar.</p></div>}
             </div>
-            <p className="mt-4 text-xs leading-5 text-muted-foreground">El punto rojo indica accesos vigentes o programados; no representa mensajes sin leer.</p>
+            <Link className="mt-3 inline-flex min-h-11 items-center font-semibold text-primary" href="/app/notifications" onClick={() => setOpen(false)}>
+              Ver todos los avisos y sus preferencias
+            </Link>
+            <p className="mt-4 text-xs leading-5 text-muted-foreground">El punto rojo indica actividad reciente y no representa mensajes sin leer.</p>
           </section>
         </div>
       ) : null}

@@ -87,7 +87,7 @@ export async function getCommunityContextOrRedirect(options?: {
   }
 
   return {
-    sessionUser: currentUser,
+    sessionUser: { ...currentUser, authUserId: user.id },
     context,
   };
 }

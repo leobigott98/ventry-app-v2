@@ -16,6 +16,7 @@ import type { CommunityRole } from "@/lib/domain/types";
 
 export type AppNavItem = {
   href:
+    | "/app/notifications"
     | "/app/dashboard"
     | "/app/invitations"
     | "/app/events"
@@ -97,6 +98,14 @@ export const appNavigation: AppNavItem[] = [
     description: "Apartamentos, casas y reglas por unidad.",
     icon: BellRing,
     allowedRoles: ["admin"],
+  },
+  {
+    href: "/app/notifications",
+    label: "Notificaciones",
+    shortLabel: "Avisos",
+    description: "Avisos y preferencias personales.",
+    icon: BellRing,
+    allowedRoles: ["admin", "guard"],
   },
   {
     href: "/app/settings",

@@ -7,8 +7,10 @@ import {
   CredentialMatchHydrationError,
   findAccessByCredential,
 } from "@/lib/domain/event-access";
+import { createServerSupabaseClient } from "@/lib/supabase/server";
 
 vi.mock("@/lib/auth/api", () => ({ requireApiCommunityContext: vi.fn() }));
+vi.mock("@/lib/supabase/server", () => ({ createServerSupabaseClient: vi.fn() }));
 vi.mock("@/lib/domain/event-access", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/lib/domain/event-access")>()),
   findAccessByCredential: vi.fn(),
@@ -20,7 +22,7 @@ const auth = {
 } as never;
 const deviceId = "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
 
-function request(credentialValue = "123456", cookieDeviceId = deviceId) {
+function request(credentialValue = "123456", cookieDeviceId = deviceId, credentialType = "pin") {
   return new NextRequest("https://ventry.test/api/guards/validate-credential", {
     method: "POST",
     headers: {
@@ -28,7 +30,7 @@ function request(credentialValue = "123456", cookieDeviceId = deviceId) {
       "x-forwarded-for": "203.0.113.8, 10.0.0.1",
       Cookie: `ventry_guard_device=${cookieDeviceId}`,
     },
-    body: JSON.stringify({ credentialType: "pin", credentialValue }),
+    body: JSON.stringify({ credentialType, credentialValue }),
   });
 }
 
@@ -57,6 +59,56 @@ describe("POST /api/guards/validate-credential", () => {
       "203.0.113.8",
     );
     await expect(response.json()).resolves.toMatchObject({ ok: false, match: null });
+  });
+
+  it.each([
+    { credentialType: "pin", credentialValue: "123456", status: "active", openEntry: null },
+    { credentialType: "qr", credentialValue: "ventry:invitation:fixture", status: "used", openEntry: { id: "entry-a" } },
+  ])("serializes a hydrated $status invitation from $credentialType with its kind", async ({
+    credentialType, credentialValue, status, openEntry,
+  }) => {
+    const actual = await vi.importActual<typeof import("@/lib/domain/event-access")>("@/lib/domain/event-access");
+    vi.mocked(findAccessByCredential).mockImplementationOnce(actual.findAccessByCredential);
+
+    function queryReturning(data: object | null) {
+      return {
+        select: vi.fn().mockReturnThis(),
+        eq: vi.fn().mockReturnThis(),
+        order: vi.fn().mockReturnThis(),
+        limit: vi.fn().mockReturnThis(),
+        maybeSingle: vi.fn().mockResolvedValue({ data, error: null }),
+      };
+    }
+
+    const invitation = { id: "invitation-a", visitor_name: "Ana", visit_date: "2026-11-16", status };
+    const invitationQuery = queryReturning(invitation);
+    const entryQuery = queryReturning(openEntry);
+    const rpc = vi.fn()
+      .mockResolvedValueOnce({ data: null, error: null })
+      .mockResolvedValueOnce({
+        data: { rateLimited: false, kind: "invitation", resourceId: invitation.id, status, credentialRef: "audit-a" },
+        error: null,
+      });
+    const from = vi.fn().mockReturnValueOnce(invitationQuery).mockReturnValueOnce(entryQuery);
+    vi.mocked(createServerSupabaseClient).mockResolvedValue({ rpc, from } as never);
+
+    const response = await POST(request(credentialValue, deviceId, credentialType));
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      ok: true,
+      attemptRef: "audit-a",
+      match: {
+        kind: "invitation",
+        invitation: { ...invitation, effective_status: status },
+        openEntry,
+      },
+    });
+    expect(rpc).toHaveBeenLastCalledWith("validate_access_credential", expect.objectContaining({
+      p_community_id: "community-a",
+      p_credential_type: credentialType,
+    }));
+    expect(invitationQuery.eq).toHaveBeenCalledWith("community_id", "community-a");
+    expect(entryQuery.eq).toHaveBeenCalledWith("invitation_id", invitation.id);
   });
 
   it("returns 429 and Retry-After while the tuple is temporarily blocked", async () => {

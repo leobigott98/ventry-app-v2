@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { LoaderCircle, LogOut } from "lucide-react";
 
+import { clearBrowserPush, readPushDevice, rememberPushDevice } from "@/lib/push/browser";
 import { Button } from "@/components/ui/button";
 
 type LogoutButtonProps = Omit<ComponentProps<typeof Button>, "children" | "onClick"> & {
@@ -27,7 +28,15 @@ export function LogoutButton({
     setIsPending(true);
 
     try {
-      await fetch("/api/auth/logout", { method: "POST" });
+      const device = readPushDevice();
+      if (device) rememberPushDevice(null);
+      const cleanup = clearBrowserPush().catch(() => undefined);
+      await fetch("/api/auth/logout", device ? {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ installationId: device.id }),
+      } : { method: "POST" });
+      void cleanup;
       onLoggedOut?.();
       router.push("/login");
       router.refresh();

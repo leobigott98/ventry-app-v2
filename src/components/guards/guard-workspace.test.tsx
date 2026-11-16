@@ -119,13 +119,13 @@ describe("GuardWorkspace", () => {
     );
   });
 
-  it("muestra la invitacion devuelta por una validacion exitosa", async () => {
+  it.each(["invitation", undefined])("muestra la invitación con kind=%s", async (kind) => {
     const fetchMock = vi.fn().mockResolvedValue(
       new Response(
         JSON.stringify({
           ok: true,
           match: {
-            kind: "invitation",
+            kind,
             invitation: {
               id: "invitation-1",
               visitor_name: "Carlos Rojas",
@@ -177,6 +177,25 @@ describe("GuardWorkspace", () => {
     await user.type(screen.getByLabelText("PIN del visitante"), "7");
     expect(screen.queryByRole("button", { name: "Registrar entrada" })).not.toBeInTheDocument();
     expect(screen.queryByText("Carlos Rojas")).not.toBeInTheDocument();
+  });
+
+  it("muestra un error recuperable si falta el recurso de la credencial", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(Response.json({
+      ok: true,
+      match: { kind: "event" },
+      attemptRef: "audit-incomplete",
+    })));
+    const user = userEvent.setup();
+    render(<GuardWorkspace residents={[]} recentInvitations={[]} openEntries={[]} recentEvents={[]} />);
+
+    await user.type(screen.getByLabelText("PIN del visitante"), "123456");
+    await user.click(screen.getByRole("button", { name: "Validar PIN" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(/datos incompletos.*no autorizar acceso/i);
+    expect(screen.getByText("Referencia: audit-incomplete")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Validar PIN" })).toBeEnabled();
+    expect(screen.queryByRole("region", { name: "Resultado de validación" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Registrar entrada" })).not.toBeInTheDocument();
   });
 
   it("procesa un deep-link QR una sola vez y no muestra autorización antes del servidor", async () => {
@@ -499,6 +518,7 @@ describe("GuardWorkspace", () => {
   it("registra a un invitado de evento con acompañantes y muestra la actividad del servidor", async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(Response.json({
+        ok: true,
         match: { kind: "event", event: {
           id: "event-a", name: "Asamblea", event_date: "2026-08-17", arrival_window_mode: "all_day",
           effective_status: "active", identified_guest_id: "guest-a",

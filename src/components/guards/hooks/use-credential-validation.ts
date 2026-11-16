@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
+import { z } from "zod";
+
 
 import { getGuardApiError, readGuardApiPayload } from "@/components/guards/guard-api";
 import type {
@@ -19,9 +21,36 @@ const initialState: ValidationState = {
 
 type ValidationPayload = {
   attemptRef?: string | null;
-  match?: ValidationMatch | null;
+  match?: unknown;
   ok?: boolean;
 };
+
+const resourceId = z.string().min(1);
+const resource = z.object({
+  id: resourceId,
+  effective_status: z.enum(["scheduled", "active", "expired", "revoked", "used"]),
+});
+const invitationMatch = z.object({
+  kind: z.literal("invitation").optional(),
+  invitation: resource.extend({ visit_date: z.string() }),
+  openEntry: z.object({ id: resourceId }).nullable(),
+});
+const eventMatch = z.object({
+  kind: z.literal("event"),
+  event: resource.extend({
+    event_date: z.string(),
+    event_guests: z.array(z.object({ id: resourceId, full_name: z.string() })),
+  }),
+});
+
+function parseValidationMatch(match: unknown): ValidationMatch | null {
+  if (invitationMatch.safeParse(match).success) {
+    // Older API responses omit the discriminator, but still include the invitation and openEntry.
+    const data = match as Extract<ValidationMatch, { kind: "invitation" }>;
+    return { ...data, kind: "invitation" };
+  }
+  return eventMatch.safeParse(match).success ? (match as ValidationMatch) : null;
+}
 
 export function useCredentialValidation(onServerAttempt?: () => void) {
   const [credentialValue, setCredentialValue] = useState("");
@@ -77,7 +106,7 @@ export function useCredentialValidation(onServerAttempt?: () => void) {
         const payload = await readGuardApiPayload<ValidationPayload>(response);
         const attemptRef = payload.attemptRef ?? payload.requestId ?? null;
 
-        if (!response.ok) {
+        if (!response.ok || payload.error) {
           setState({
             attemptRef,
             match: null,
@@ -88,7 +117,7 @@ export function useCredentialValidation(onServerAttempt?: () => void) {
           return false;
         }
 
-        if (!payload.match) {
+        if (payload.match == null && payload.ok !== true) {
           setState({
             attemptRef,
             match: null,
@@ -99,9 +128,21 @@ export function useCredentialValidation(onServerAttempt?: () => void) {
           return false;
         }
 
+        const match = payload.ok === true ? parseValidationMatch(payload.match) : null;
+        if (!match) {
+          setState({
+            attemptRef,
+            match: null,
+            message: "La garita recibió datos incompletos del servidor. Intenta nuevamente.",
+            phase: "error",
+          });
+          onServerAttempt?.();
+          return false;
+        }
+
         setState({
           attemptRef,
-          match: payload.match,
+          match,
           message: "Credencial consultada. Revisa los datos antes de actuar.",
           phase: "matched",
         });

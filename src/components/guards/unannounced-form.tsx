@@ -4,6 +4,7 @@ import { AlertTriangle, LoaderCircle, UserCheck } from "lucide-react";
 import { useState } from "react";
 
 import type { ResidentOption, UnannouncedFormValue } from "@/components/guards/guard-types";
+import { RequestVisitConfirmation } from "@/components/guards/request-visit-confirmation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -37,7 +38,7 @@ export function UnannouncedForm({
     <form className="space-y-4" onSubmit={(event) => void submit(event)}>
       <div className="flex gap-3 rounded-xl border border-warning/25 bg-warning/10 p-4 text-sm text-warning">
         <AlertTriangle aria-hidden="true" className="mt-0.5 h-5 w-5 shrink-0" />
-        <p>Confirma con el residente antes de registrar. Este formulario crea una entrada real y auditada.</p>
+        <p>Pide la confirmación en Ventry o contacta al residente antes de registrar la entrada.</p>
       </div>
       <div className="space-y-2">
         <Label htmlFor="unannouncedName">Nombre del visitante</Label>
@@ -90,6 +91,11 @@ export function UnannouncedForm({
           value={value.notes}
         />
       </div>
+      <RequestVisitConfirmation
+        key={JSON.stringify([value.residentId, value.visitorName.trim()])}
+        residentId={value.residentId}
+        visitorName={value.visitorName.trim()}
+      />
       <Button aria-busy={isSubmitting} className="h-14 w-full text-base" disabled={isSubmitting} type="submit">
         {isSubmitting ? <LoaderCircle aria-hidden="true" className="h-5 w-5 animate-spin" /> : <UserCheck aria-hidden="true" className="h-5 w-5" />}
         {isSubmitting ? "Esperando al servidor…" : "Registrar visitante"}

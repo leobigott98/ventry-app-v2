@@ -1,5 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
+
+import { getNotificationFeed } from "@/lib/push/inbox";
+import { notificationCopy, notificationHref } from "@/lib/push/notifications";
 import type { LucideIcon } from "lucide-react";
 import {
   ClipboardList,
@@ -239,20 +242,27 @@ export default async function DashboardPage() {
       redirect("/app");
     }
 
-    const [snapshot, resident] = await Promise.all([
+    const [snapshot, resident, alerts] = await Promise.all([
       getResidentDashboardSnapshot(context.community.id, sessionUser.residentId, context.community.time_zone),
       getResidentById(context.community.id, sessionUser.residentId),
+      getNotificationFeed(context.community.id, sessionUser.authUserId, 5),
     ]);
     const unit = resident?.unit_id ? await getUnitById(context.community.id, resident.unit_id) : null;
     const firstName = sessionUser.fullName.trim().split(/\s+/)[0] || "residente";
     const unitLabel = unit ? `${unit.identifier}${unit.building ? ` · ${unit.building}` : ""}` : "Sin unidad asignada";
-    const notifications = snapshot.currentInvitations.map((invitation) => ({
+    const notices = (alerts ?? []).map((alert) => ({
+      id: alert.id,
+      title: notificationCopy[alert.kind].title,
+      detail: notificationCopy[alert.kind].body,
+      href: notificationHref(alert.id),
+    }));
+    const invitations = snapshot.currentInvitations.map((invitation) => ({
       id: invitation.id,
       title: invitation.visitor_name || "Visita sin nombre",
       detail: `${getInvitationEffectiveStatus(invitation, context.community.time_zone) === "scheduled" ? "Programada" : "Activa"} · ${getInvitationWindowLabel(invitation)}`,
       href: `/app/invitations/${invitation.id}`,
     }));
-    return <ResidentDashboard activeCount={snapshot.activeCount} communityName={context.community.name} contacts={snapshot.contacts} firstName={firstName} greeting={getGreeting()} notifications={notifications} unitLabel={unitLabel} />;
+    return <ResidentDashboard activeCount={snapshot.activeCount} communityName={context.community.name} contacts={snapshot.contacts} firstName={firstName} greeting={getGreeting()} notifications={[...notices, ...invitations]} unitLabel={unitLabel} />;
   }
 
   if (sessionUser.role === "guard") {
